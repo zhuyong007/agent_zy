@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "baseUrl": ".",
+    "paths": {
+      "@agent-zy/shared-types": [
+        "packages/shared-types/src/index.ts"
+      ],
+      "@agent-zy/task-core": [
+        "packages/task-core/src/index.ts"
+      ],
+      "@agent-zy/agent-sdk": [
+        "packages/agent-sdk/src/index.ts"
+      ],
+      "@agent-zy/agent-registry": [
+        "packages/agent-registry/src/index.ts"
+      ],
+      "@agent-zy/router-core": [
+        "packages/router-core/src/index.ts"
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.agent-zy-data/
+.agent-zy-test-data/
+.superpowers/
+apps/web/dist/
