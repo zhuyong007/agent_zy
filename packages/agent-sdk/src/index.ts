@@ -2,6 +2,9 @@ import type {
   AppState,
   NewsArticleBody,
   NewsState,
+  HistoryPostPayload,
+  HistoryPushState,
+  NotificationKind,
   ScheduleState,
   TaskStatus,
   TaskTrigger,
@@ -54,15 +57,18 @@ export interface AgentExecutionResult {
   summary: string;
   assistantMessage: string;
   notifications?: Array<{
-    kind: "nightly-review" | "task-update" | "news-refresh";
+    kind: NotificationKind;
     title: string;
     body: string;
+    persistent?: boolean;
+    payload?: HistoryPostPayload;
   }>;
   domainUpdates?: {
     ledger?: LedgerState;
     schedule?: ScheduleState;
     news?: NewsState;
     newsBodies?: NewsArticleBody[];
+    historyPush?: HistoryPushState;
   };
 }
 

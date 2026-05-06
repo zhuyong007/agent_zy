@@ -76,6 +76,9 @@ function createState(news?: Partial<NewsState>): AppState {
       ...news
     },
     newsBodies: [],
+    historyPush: {
+      lastTriggeredDate: null
+    },
     nightlyReview: {
       lastTriggeredDate: null
     }

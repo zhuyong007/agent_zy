@@ -179,6 +179,18 @@ describe("control-plane app", () => {
     });
   });
 
+  it("exposes a notification cancellation endpoint", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/api/notifications/missing-notification"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      notifications: expect.any(Array)
+    });
+  });
+
   it("uses a 30-minute default news refresh interval", () => {
     expect(DEFAULT_NEWS_INTERVAL_MS).toBe(30 * 60 * 1000);
   });

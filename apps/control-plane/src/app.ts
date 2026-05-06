@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
+import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
 import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
 import { manifest as scheduleManifest } from "@agent-zy/schedule-agent/manifest";
 import { createAgentRegistry } from "@agent-zy/agent-registry";
@@ -20,7 +21,7 @@ export function createControlPlaneApp(options?: {
   const app = Fastify();
   const eventBus = createEventBus();
   const registry = createAgentRegistry();
-  registry.registerMany([ledgerManifest, scheduleManifest, newsManifest]);
+  registry.registerMany([ledgerManifest, scheduleManifest, newsManifest, historyManifest]);
 
   const store = createControlPlaneStore(options?.dataDir ?? ".agent-zy-data");
   const router = createHybridRouter({
@@ -50,6 +51,14 @@ export function createControlPlaneApp(options?: {
   }));
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
+
+  app.delete("/api/notifications/:id", async (request) => {
+    const params = request.params as {
+      id: string;
+    };
+
+    return orchestrator.cancelNotification(params.id);
+  });
 
   app.get("/api/news", async () => orchestrator.getNews());
 

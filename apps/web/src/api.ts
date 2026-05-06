@@ -18,6 +18,18 @@ export async function fetchDashboard(): Promise<DashboardData> {
   return response.json();
 }
 
+export async function cancelNotification(notificationId: string): Promise<DashboardData> {
+  const response = await fetch(`${API_BASE}/api/notifications/${notificationId}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to cancel notification");
+  }
+
+  return response.json();
+}
+
 export async function fetchNews(): Promise<NewsState> {
   const response = await fetch(`${API_BASE}/api/news`);
 
