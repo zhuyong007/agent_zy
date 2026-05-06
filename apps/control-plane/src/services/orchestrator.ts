@@ -8,6 +8,7 @@ import type {
   NewsCategory,
   NewsState,
   NotificationRecord,
+  TopicState,
   TaskRecord,
   TaskTrigger
 } from "@agent-zy/shared-types";
@@ -72,6 +73,8 @@ export interface ControlPlaneOrchestrator {
   refreshNews(meta?: Record<string, unknown>): Promise<NewsState>;
   fetchNewsItemArticles(itemId: string): Promise<NewsItemArticlesResponse>;
   analyzeNewsItem(itemId: string): Promise<NewsState>;
+  getTopics(): TopicState;
+  generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
   runSystemTask(input: {
     agentId: string;
     trigger: TaskTrigger;
@@ -334,6 +337,22 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return options.store.getState().news;
+    },
+    getTopics() {
+      return options.store.getState().topics;
+    },
+    async generateTopics(meta = {}) {
+      await this.runSystemTask({
+        agentId: "topic-agent",
+        trigger: "system",
+        summary: "生成 AI 自媒体选题",
+        meta: {
+          ...meta,
+          action: "generate"
+        }
+      });
+
+      return options.store.getState().topics;
     },
     getDashboard() {
       return options.store.getDashboard(

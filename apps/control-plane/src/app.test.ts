@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createControlPlaneApp } from "./app";
-import { DEFAULT_NEWS_INTERVAL_MS } from "./services/scheduler";
+import {
+  DEFAULT_NEWS_INTERVAL_MS,
+  DEFAULT_TOPIC_INTERVAL_MS
+} from "./services/scheduler";
 
 describe("control-plane app", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-test-"));
@@ -179,7 +182,37 @@ describe("control-plane app", () => {
     });
   });
 
+  it("generates and returns AI self-media topic ideas", async () => {
+    const generateResponse = await app.inject({
+      method: "POST",
+      url: "/api/topics/generate",
+      payload: {
+        reason: "test"
+      }
+    });
+
+    expect(generateResponse.statusCode).toBe(200);
+    expect(generateResponse.json()).toMatchObject({
+      current: expect.any(Array),
+      history: expect.any(Array),
+      status: "idle"
+    });
+    expect(generateResponse.json().current).toHaveLength(5);
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: "/api/topics"
+    });
+
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().current).toHaveLength(5);
+  });
+
   it("uses a 30-minute default news refresh interval", () => {
     expect(DEFAULT_NEWS_INTERVAL_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("uses a 3-hour default topic push interval", () => {
+    expect(DEFAULT_TOPIC_INTERVAL_MS).toBe(3 * 60 * 60 * 1000);
   });
 });

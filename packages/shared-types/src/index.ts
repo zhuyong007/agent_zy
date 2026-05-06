@@ -166,9 +166,40 @@ export interface NewsItemArticlesResponse {
   articles: NewsArticleBody[];
 }
 
+export type TopicScoreLabel = "low" | "medium" | "high";
+export type TopicIdeaStatus = "new" | "saved" | "dismissed";
+
+export interface TopicIdea {
+  id: string;
+  batchId: string;
+  title: string;
+  hook: string;
+  summary: string;
+  audience: string;
+  angle: string;
+  contentDirection: string;
+  whyNow: string;
+  sourceNewsItemIds: string[];
+  sourceTitles: string[];
+  score: number;
+  scoreLabel: TopicScoreLabel;
+  status: TopicIdeaStatus;
+  createdAt: string;
+}
+
+export interface TopicState {
+  current: TopicIdea[];
+  history: TopicIdea[];
+  lastGeneratedAt: string | null;
+  nextRunAt: string | null;
+  status: "idle" | "generating";
+  strategy: "news-to-content";
+  lastError: string | null;
+}
+
 export interface NotificationRecord {
   id: string;
-  kind: "nightly-review" | "task-update" | "news-refresh";
+  kind: "nightly-review" | "task-update" | "news-refresh" | "topic-push";
   title: string;
   body: string;
   createdAt: string;
@@ -188,6 +219,7 @@ export interface AppState {
   schedule: ScheduleState;
   news: NewsState;
   newsBodies: NewsArticleBody[];
+  topics: TopicState;
   nightlyReview: NightlyReviewState;
 }
 
@@ -216,6 +248,7 @@ export interface DashboardData {
     todayItems: ScheduleItem[];
   };
   news: NewsState;
+  topics: TopicState;
   agents: AgentRuntimeView[];
 }
 

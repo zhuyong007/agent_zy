@@ -9,6 +9,8 @@ import type {
   NewsArticleBody,
   NotificationRecord,
   NewsState,
+  TopicIdea,
+  TopicState,
   ScheduleItem,
   TaskRecord
 } from "@agent-zy/shared-types";
@@ -79,6 +81,15 @@ function createInitialState(): AppState {
       status: "idle"
     },
     newsBodies: [],
+    topics: {
+      current: [],
+      history: [],
+      lastGeneratedAt: null,
+      nextRunAt: null,
+      status: "idle",
+      strategy: "news-to-content",
+      lastError: null
+    },
     nightlyReview: {
       lastTriggeredDate: null
     }
@@ -227,13 +238,33 @@ function normalizeNewsBodies(
   );
 }
 
+function normalizeTopicIdea(topic: TopicIdea): TopicIdea {
+  return {
+    ...topic,
+    contentDirection: topic.contentDirection ?? topic.angle
+  };
+}
+
+function normalizeTopicState(topics: Partial<TopicState> | undefined): TopicState {
+  return {
+    current: (topics?.current ?? []).map(normalizeTopicIdea),
+    history: (topics?.history ?? []).map(normalizeTopicIdea),
+    lastGeneratedAt: topics?.lastGeneratedAt ?? null,
+    nextRunAt: topics?.nextRunAt ?? null,
+    status: topics?.status ?? "idle",
+    strategy: "news-to-content",
+    lastError: topics?.lastError ?? null
+  };
+}
+
 function normalizeAppState(state: AppState): AppState {
   const news = normalizeNewsState(state.news);
 
   return {
     ...state,
     news,
-    newsBodies: normalizeNewsBodies(state.newsBodies, news)
+    newsBodies: normalizeNewsBodies(state.newsBodies, news),
+    topics: normalizeTopicState(state.topics)
   };
 }
 
@@ -307,6 +338,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         state.newsBodies = normalizeNewsBodies(state.newsBodies, state.news);
       }
 
+      if (result.domainUpdates?.topics) {
+        state.topics = result.domainUpdates.topics;
+      }
+
       state = normalizeAppState(state);
 
       persist();
@@ -355,6 +390,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           todayItems: state.schedule.items.filter((item) => item.date === today)
         },
         news: state.news,
+        topics: state.topics,
         agents: manifests.map((manifest) => {
           const runtimeView = runtimeViews.find((item) => item.id === manifest.id);
 

@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
 import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
 import { manifest as scheduleManifest } from "@agent-zy/schedule-agent/manifest";
+import { manifest as topicManifest } from "@agent-zy/topic-agent/manifest";
 import { createAgentRegistry } from "@agent-zy/agent-registry";
 import { createHeuristicRouterModel, createHybridRouter } from "@agent-zy/router-core";
 
@@ -20,7 +21,7 @@ export function createControlPlaneApp(options?: {
   const app = Fastify();
   const eventBus = createEventBus();
   const registry = createAgentRegistry();
-  registry.registerMany([ledgerManifest, scheduleManifest, newsManifest]);
+  registry.registerMany([ledgerManifest, scheduleManifest, newsManifest, topicManifest]);
 
   const store = createControlPlaneStore(options?.dataDir ?? ".agent-zy-data");
   const router = createHybridRouter({
@@ -52,6 +53,14 @@ export function createControlPlaneApp(options?: {
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
 
   app.get("/api/news", async () => orchestrator.getNews());
+
+  app.get("/api/topics", async () => orchestrator.getTopics());
+
+  app.post("/api/topics/generate", async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    return orchestrator.generateTopics(body);
+  });
 
   app.post("/api/news/sources", async (request) => {
     const body = request.body as {

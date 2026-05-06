@@ -8,7 +8,8 @@ import type {
 const CAPABILITY_KEYWORDS: Record<string, string[]> = {
   ledger: ["记账", "账本", "花", "花了", "赚", "收入", "支出", "报销", "元"],
   schedule: ["日程", "待办", "安排", "计划", "今天", "晚上", "完成"],
-  news: ["热点", "新闻", "热搜", "分析", "快讯"]
+  news: ["热点", "新闻", "热搜", "分析", "快讯"],
+  topics: ["选题", "自媒体", "内容", "视频", "公众号", "爆款"]
 };
 
 function scoreManifest(manifest: AgentManifest, input: RouteInput): number {

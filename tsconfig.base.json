@@ -26,6 +26,12 @@
       ],
       "@agent-zy/router-core": [
         "packages/router-core/src/index.ts"
+      ],
+      "@agent-zy/topic-agent/manifest": [
+        "agents/topic-agent/src/manifest.ts"
+      ],
+      "@agent-zy/topic-agent": [
+        "agents/topic-agent/src/index.ts"
       ]
     }
   }

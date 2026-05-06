@@ -76,6 +76,15 @@ function createState(news?: Partial<NewsState>): AppState {
       ...news
     },
     newsBodies: [],
+    topics: {
+      current: [],
+      history: [],
+      lastGeneratedAt: null,
+      nextRunAt: null,
+      status: "idle",
+      strategy: "news-to-content",
+      lastError: null
+    },
     nightlyReview: {
       lastTriggeredDate: null
     }

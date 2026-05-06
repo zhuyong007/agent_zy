@@ -3,7 +3,8 @@ import type {
   DashboardData,
   NewsItemArticlesResponse,
   NewsCategory,
-  NewsState
+  NewsState,
+  TopicState
 } from "@agent-zy/shared-types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:4378";
@@ -23,6 +24,34 @@ export async function fetchNews(): Promise<NewsState> {
 
   if (!response.ok) {
     throw new Error("Failed to fetch news");
+  }
+
+  return response.json();
+}
+
+export async function fetchTopics(): Promise<TopicState> {
+  const response = await fetch(`${API_BASE}/api/topics`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch topics");
+  }
+
+  return response.json();
+}
+
+export async function generateTopics(reason = "manual"): Promise<TopicState> {
+  const response = await fetch(`${API_BASE}/api/topics/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reason
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to generate topics");
   }
 
   return response.json();

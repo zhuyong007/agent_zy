@@ -14,14 +14,18 @@ export interface ControlPlaneScheduler {
 }
 
 export const DEFAULT_NEWS_INTERVAL_MS = 30 * 60 * 1000;
+export const DEFAULT_TOPIC_INTERVAL_MS = 3 * 60 * 60 * 1000;
 
 export function createControlPlaneScheduler(options: {
   orchestrator: ControlPlaneOrchestrator;
   store: ControlPlaneStore;
   newsIntervalMs?: number;
+  topicIntervalMs?: number;
 }): ControlPlaneScheduler {
   const newsIntervalMs = options.newsIntervalMs ?? DEFAULT_NEWS_INTERVAL_MS;
+  const topicIntervalMs = options.topicIntervalMs ?? DEFAULT_TOPIC_INTERVAL_MS;
   let newsTimer: NodeJS.Timeout | null = null;
+  let topicTimer: NodeJS.Timeout | null = null;
   let reviewTimer: NodeJS.Timeout | null = null;
 
   async function refreshNews(reason: string) {
@@ -31,6 +35,18 @@ export function createControlPlaneScheduler(options: {
       summary: "刷新热点",
       meta: {
         reason
+      }
+    });
+  }
+
+  async function generateTopics(reason: string) {
+    await options.orchestrator.runSystemTask({
+      agentId: "topic-agent",
+      trigger: "schedule",
+      summary: "推送 AI 自媒体选题",
+      meta: {
+        reason,
+        action: "generate"
       }
     });
   }
@@ -58,11 +74,25 @@ export function createControlPlaneScheduler(options: {
 
   return {
     start() {
+      let startupNewsRefresh: Promise<void> | null = null;
+
       if (!newsTimer) {
-        void refreshNews("startup");
+        startupNewsRefresh = refreshNews("startup");
+        void startupNewsRefresh;
         newsTimer = setInterval(() => {
           void refreshNews("interval");
         }, newsIntervalMs);
+      }
+
+      if (!topicTimer) {
+        const startupTopics = startupNewsRefresh
+          ? startupNewsRefresh.finally(() => generateTopics("startup"))
+          : generateTopics("startup");
+
+        void startupTopics;
+        topicTimer = setInterval(() => {
+          void generateTopics("interval");
+        }, topicIntervalMs);
       }
 
       if (!reviewTimer) {
@@ -80,6 +110,11 @@ export function createControlPlaneScheduler(options: {
       if (reviewTimer) {
         clearInterval(reviewTimer);
         reviewTimer = null;
+      }
+
+      if (topicTimer) {
+        clearInterval(topicTimer);
+        topicTimer = null;
       }
     }
   };

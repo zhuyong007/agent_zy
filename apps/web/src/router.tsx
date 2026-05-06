@@ -9,6 +9,7 @@ import { QueryClient } from "@tanstack/react-query";
 
 import { DashboardPage, DetailPlaceholderPage } from "./components/dashboard-page";
 import { NewsPage } from "./components/news-page";
+import { TopicPage } from "./components/topic-page";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,12 @@ const newsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/news",
   component: NewsPage
+});
+
+const topicsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/topics",
+  component: TopicPage
 });
 
 const ledgerRoute = createRoute({
@@ -56,7 +63,13 @@ const todoRoute = createRoute({
   )
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, newsRoute, ledgerRoute, todoRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  newsRoute,
+  topicsRoute,
+  ledgerRoute,
+  todoRoute
+]);
 
 const router = createRouter({
   routeTree,

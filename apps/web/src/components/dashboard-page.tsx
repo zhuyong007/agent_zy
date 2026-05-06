@@ -7,7 +7,8 @@ import type {
   DashboardData,
   NewsCategory,
   NewsItem,
-  ScheduleItem
+  ScheduleItem,
+  TopicIdea
 } from "@agent-zy/shared-types";
 
 import { fetchDashboard, openDashboardStream, sendChat } from "../api";
@@ -29,7 +30,7 @@ import {
 } from "../theme";
 import { homeImageAssets } from "../image-assets";
 
-export type RailSection = "home" | "news" | "ledger" | "todo";
+export type RailSection = "home" | "news" | "topics" | "ledger" | "todo";
 type NewsFilter = "all" | NewsCategory;
 type SummaryStat = {
   label: string;
@@ -45,8 +46,9 @@ const railItems: Array<{
 }> = [
   { key: "home", label: "工作台", stamp: "00", to: "/" },
   { key: "news", label: "热点情报", stamp: "01", to: "/news" },
-  { key: "ledger", label: "记账", stamp: "02", to: "/ledger" },
-  { key: "todo", label: "待办", stamp: "03", to: "/todo" }
+  { key: "topics", label: "选题", stamp: "02", to: "/topics" },
+  { key: "ledger", label: "记账", stamp: "03", to: "/ledger" },
+  { key: "todo", label: "待办", stamp: "04", to: "/todo" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -140,18 +142,6 @@ function getMessageLabel(role: DashboardData["messages"][number]["role"]) {
   return "AGENT";
 }
 
-function getUrgencyLabel(urgency: ScheduleItem["urgency"]) {
-  if (urgency === "high") {
-    return "高";
-  }
-
-  if (urgency === "medium") {
-    return "中";
-  }
-
-  return "低";
-}
-
 function formatAmount(amount: number) {
   return amount.toLocaleString("zh-CN");
 }
@@ -163,92 +153,13 @@ function formatShortCount(count: number) {
   });
 }
 
-function HomeRouteMenu({ activeSection }: { activeSection: RailSection }) {
-  return (
-    <nav className="route-stack" aria-label="工作台导航">
-      {railItems.map((item) => (
-        <Link
-          key={item.key}
-          className={`route-stack__item${activeSection === item.key ? " is-active" : ""}`}
-          to={item.to}
-        >
-          <span className="route-stack__stamp">{item.stamp}</span>
-          <strong>{item.label}</strong>
-          <img src={homeImageAssets.iconMore} alt="" aria-hidden="true" />
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-function SceneMarker({
-  title,
-  icon,
-  primaryLabel,
-  primaryValue,
-  secondaryLabel,
-  secondaryValue,
-  tertiaryLabel,
-  tertiaryValue,
-  emphasized = false,
-  className
-}: {
-  title: string;
-  icon: string;
-  primaryLabel: string;
-  primaryValue: string;
-  secondaryLabel: string;
-  secondaryValue: string;
-  tertiaryLabel: string;
-  tertiaryValue: string;
-  emphasized?: boolean;
-  className: string;
-}) {
-  return (
-    <article className={`scene-marker ${className}${emphasized ? " is-emphasized" : ""}`}>
-      <div
-        className="scene-marker__skin"
-        style={{
-          backgroundImage: `url(${emphasized ? homeImageAssets.floatingCardTip : homeImageAssets.floatingCard})`
-        }}
-        aria-hidden="true"
-      />
-      <div className="scene-marker__body">
-        <div className="scene-marker__head">
-          <span className="scene-marker__icon-wrap">
-            <img src={icon} alt="" aria-hidden="true" className="scene-marker__icon" />
-          </span>
-          <div>
-            <p>{title}</p>
-            <strong>{primaryValue}</strong>
-          </div>
-        </div>
-        <dl className="scene-marker__metrics">
-          <div>
-            <dt>{primaryLabel}</dt>
-            <dd>{primaryValue}</dd>
-          </div>
-          <div>
-            <dt>{secondaryLabel}</dt>
-            <dd>{secondaryValue}</dd>
-          </div>
-          <div>
-            <dt>{tertiaryLabel}</dt>
-            <dd>{tertiaryValue}</dd>
-          </div>
-        </dl>
-      </div>
-    </article>
-  );
-}
-
 export function CommandRail({
   activeSection,
   expanded,
   onToggle,
   themeKey,
   onThemeChange,
-  rightMeta,
+  rightMeta: _rightMeta,
   clockLine,
   showNavigation = true
 }: {
@@ -261,42 +172,50 @@ export function CommandRail({
   clockLine: string;
   showNavigation?: boolean;
 }) {
+  const railStyle = {
+    "--route-frame": `url("${homeImageAssets.routeFrame}")`
+  } as CSSProperties;
+  const [dateTimePart, weekdayPart] = clockLine.split(" · ");
+  const timeLabel = dateTimePart?.slice(11, 16) ?? clockLine;
+  const dateLabel = [dateTimePart?.slice(5, 10), weekdayPart].filter(Boolean).join(" ");
+
   return (
-    <header className={`command-rail${showNavigation ? "" : " command-rail--compact"}`}>
-      <div className="command-rail__left">
-        <div className="command-rail__mark">
-          <span className="command-rail__prompt">$</span>
-          <span className="command-rail__label">agent.ops</span>
+    <header
+      className={`command-rail${showNavigation ? "" : " command-rail--compact"}${expanded ? " is-expanded" : ""}`}
+      style={railStyle}
+    >
+      {showNavigation ? (
+        <nav className="command-rail__nav" aria-label="主导航">
+          {railItems.map((item) => {
+            const active = activeSection === item.key;
+
+            return (
+              <Link
+                key={item.key}
+                className={`command-link${active ? " is-active" : ""}${expanded || active ? "" : " is-hidden"}`}
+                to={item.to}
+              >
+                <strong>{item.label}</strong>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            className="command-route__toggle"
+            onClick={onToggle}
+            aria-label={expanded ? "收回顶栏路由" : "展开顶栏路由"}
+            aria-expanded={expanded}
+          >
+            <span aria-hidden="true" />
+          </button>
+        </nav>
+      ) : null}
+      <div className="command-rail__tools">
+        <div className="command-clock">
+          <strong>{timeLabel}</strong>
+          <span>{dateLabel}</span>
         </div>
-        {showNavigation ? (
-          <>
-            <nav className={`command-rail__nav${expanded ? " is-expanded" : ""}`} aria-label="主导航">
-              {railItems.map((item) => (
-                <Link
-                  key={item.key}
-                  className={`command-link${activeSection === item.key ? " is-active" : ""}${
-                    item.key !== "home" && !expanded ? " is-hidden" : ""
-                  }`}
-                  to={item.to}
-                >
-                  <span>{item.stamp}</span>
-                  <strong>{item.label}</strong>
-                </Link>
-              ))}
-            </nav>
-            <button
-              type="button"
-              className="command-rail__toggle"
-              onClick={onToggle}
-              aria-expanded={expanded}
-            >
-              {expanded ? "收起路由" : "展开路由"}
-            </button>
-          </>
-        ) : null}
-      </div>
-      <div className="command-rail__meta">
-        <label className="theme-switcher">
+        <label className="theme-switcher theme-switcher--inline">
           <span>theme</span>
           <select
             value={themeKey}
@@ -323,16 +242,6 @@ export function CommandRail({
             </optgroup>
           </select>
         </label>
-        <div className="command-clock">
-          <span>system time</span>
-          <strong>{clockLine}</strong>
-        </div>
-        {rightMeta.map((item) => (
-          <div key={item.label} className="command-meta">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </div>
-        ))}
       </div>
     </header>
   );
@@ -370,13 +279,7 @@ function NewsPanel({
 
   return (
     <aside className="edge-panel edge-panel--news edge-panel--ops">
-      <div
-        className="edge-panel__frame-art"
-        style={{ backgroundImage: `url(${homeImageAssets.leftPanelFrame})` }}
-        aria-hidden="true"
-      />
       <div className="edge-panel__content">
-        <HomeRouteMenu activeSection="home" />
         <div className="ops-summary-grid">
           {summaryStats.map((item) => (
             <div key={item.label} className="ops-summary-tile">
@@ -446,99 +349,122 @@ function NewsPanel({
 }
 
 function TodoPanel({
-  items,
-  pendingReview,
-  collapsed,
-  onToggle,
-  overviewStats,
-  healthLabel
+  items
 }: {
   items: ScheduleItem[];
-  pendingReview: DashboardData["schedule"]["pendingReview"];
-  collapsed: boolean;
-  onToggle: () => void;
-  overviewStats: SummaryStat[];
-  healthLabel: string;
 }) {
-  if (collapsed) {
-    return (
-      <aside className="edge-panel edge-panel--collapsed edge-panel--todo">
-        <button type="button" className="edge-panel__collapsed" onClick={onToggle}>
-          <span>Todo</span>
-          <strong>{items.length}</strong>
-        </button>
-      </aside>
-    );
-  }
+  const pendingCount = items.filter((item) => item.status === "pending").length;
+  const completedCount = items.filter((item) => item.status === "done").length;
+  const highPriorityCount = items.filter((item) => item.urgency === "high" && item.status !== "done").length;
+  const pendingNote = pendingCount > 0 ? "优先清掉关键事项" : "当前没有未完成事项";
+  const footerNote =
+    items.length > 0 ? `共 ${formatShortCount(items.length)} 项任务，建议先处理高优先事项。` : "今天还没有待办安排。";
 
   return (
     <aside className="edge-panel edge-panel--todo edge-panel--ops edge-panel--right">
-      <div className="edge-panel__header">
+      <div className="edge-panel__header edge-panel__header--compact">
         <div>
-          <p className="eyebrow">System Status</p>
-          <h2>运行状态</h2>
-        </div>
-        <div className="edge-panel__actions">
-          <span className="panel-stamp">{pendingReview ? "待确认" : "稳定在线"}</span>
-          <button type="button" className="panel-toggle" onClick={onToggle}>
-            收起
-          </button>
-        </div>
-      </div>
-      <div className="ops-health-banner">
-        <img src={homeImageAssets.iconSensor} alt="" aria-hidden="true" />
-        <strong>{healthLabel}</strong>
-      </div>
-      <div className="ops-summary-grid ops-summary-grid--compact">
-        {overviewStats.map((item) => (
-          <div key={item.label} className="ops-summary-tile">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.note}</small>
-          </div>
-        ))}
-      </div>
-      <div className="edge-panel__header edge-panel__header--minor">
-        <div>
-          <p className="eyebrow">Task Preview</p>
+          <p className="eyebrow">Today Focus</p>
           <h2>今日待办</h2>
         </div>
       </div>
-      <div className="edge-panel__scroll">
-        <div className="todo-list">
-          {items.slice(0, 7).map((item) => (
-            <Link key={item.id} to="/todo" className="todo-item">
-              <div className="todo-item__head">
-                <div className="todo-item__title">
-                  {item.status === "done" ? (
-                    <img src={homeImageAssets.checkboxSelected} alt="" aria-hidden="true" />
-                  ) : (
-                    <span className="todo-item__checkbox" aria-hidden="true" />
-                  )}
-                  <h3>{item.title}</h3>
-                </div>
-                <span className={`todo-badge todo-badge--${item.status}`}>{item.status === "done" ? "DONE" : "TODO"}</span>
-              </div>
-              <div className="todo-item__meta">
-                <span>{item.suggestedWindow}</span>
-                <span className={`urgency urgency--${item.urgency}`}>P{getUrgencyLabel(item.urgency)}</span>
-              </div>
-            </Link>
-          ))}
-          {items.length === 0 ? <div className="edge-empty">今天还没有待办预览。</div> : null}
+      <div className="todo-panel__summary">
+        <div className="todo-panel__hero">
+          <span>待处理</span>
+          <strong>{formatShortCount(pendingCount)}</strong>
+          <small>{pendingNote}</small>
+        </div>
+        <div className="todo-summary-grid">
+          <div className="todo-summary-tile">
+            <span>高优先</span>
+            <strong>{formatShortCount(highPriorityCount)}</strong>
+            <small>需要尽快处理</small>
+          </div>
+          <div className="todo-summary-tile">
+            <span>已完成</span>
+            <strong>{formatShortCount(completedCount)}</strong>
+            <small>今日已勾选</small>
+          </div>
         </div>
       </div>
-      <div className="ops-guide-card">
-        <div className="ops-guide-card__head">
-          <span>园区导览</span>
-          <img src={homeImageAssets.iconMore} alt="" aria-hidden="true" />
-        </div>
-        <img src={homeImageAssets.guideMap} alt="" className="ops-guide-card__map" />
+      <div className="todo-panel__footer">
+        <p>{footerNote}</p>
+        <Link to="/todo" className="panel-link">
+          进入任务页
+        </Link>
       </div>
-      <Link to="/todo" className="panel-link">
-        进入完整任务页
-      </Link>
     </aside>
+  );
+}
+
+function LedgerPanel({
+  balance,
+  todayIncome,
+  todayExpense
+}: {
+  balance: number;
+  todayIncome: number;
+  todayExpense: number;
+}) {
+  return (
+    <Link to="/ledger" className="ledger-panel">
+      <div className="ledger-panel__header">
+        <p className="eyebrow">Ledger Snapshot</p>
+        <h2>记账</h2>
+      </div>
+      <div className="ledger-panel__metrics">
+        <div>
+          <span>支出</span>
+          <strong>{formatAmount(todayExpense)}</strong>
+        </div>
+        <div>
+          <span>收入</span>
+          <strong>{formatAmount(todayIncome)}</strong>
+        </div>
+        <div>
+          <span>结余</span>
+          <strong>{formatAmount(balance)}</strong>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function TopicPanel({
+  items,
+  generatedAt
+}: {
+  items: TopicIdea[];
+  generatedAt: string | null;
+}) {
+  const lead = items[0];
+
+  return (
+    <Link to="/topics" className="topic-panel">
+      <div className="topic-panel__header">
+        <div>
+          <p className="eyebrow">AI Media Topics</p>
+          <h2>AI 自媒体选题</h2>
+        </div>
+        <span>{generatedAt ? `更新 ${formatTime(generatedAt)}` : "等待推送"}</span>
+      </div>
+      {lead ? (
+        <div className="topic-panel__lead">
+          <strong>{lead.title}</strong>
+          <p>{lead.hook}</p>
+        </div>
+      ) : (
+        <div className="edge-empty">还没有选题推送。</div>
+      )}
+      <div className="topic-panel__list">
+        {items.slice(0, 3).map((item) => (
+          <div key={item.id} className="topic-panel__item">
+            <span>{item.score}</span>
+            <p>{item.contentDirection}</p>
+          </div>
+        ))}
+      </div>
+    </Link>
   );
 }
 
@@ -627,59 +553,6 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
     activeSession && activeSession.progress.length > 0
       ? activeSession.progress
       : buildFallbackProgress(dashboard);
-  const busyAgents = dashboard.agents.filter((agent) => agent.status === "busy").length;
-  const doneToday = dashboard.schedule.todayItems.filter((item) => item.status === "done").length;
-  const unreadNotifications = dashboard.notifications.filter((item) => !item.read).length;
-  const sceneMarkers = [
-    {
-      className: "scene-marker--office",
-      title: "办公楼",
-      icon: homeImageAssets.iconOffice,
-      primaryLabel: "余额",
-      primaryValue: formatAmount(dashboard.ledger.summary.balance),
-      secondaryLabel: "今日入账",
-      secondaryValue: formatAmount(dashboard.ledger.summary.todayIncome),
-      tertiaryLabel: "提醒",
-      tertiaryValue: formatShortCount(unreadNotifications)
-    },
-    {
-      className: "scene-marker--factory",
-      title: "多层厂房",
-      icon: homeImageAssets.iconFactory,
-      primaryLabel: "待办",
-      primaryValue: formatShortCount(dashboard.schedule.todayItems.length),
-      secondaryLabel: "已完成",
-      secondaryValue: formatShortCount(doneToday),
-      tertiaryLabel: "高优先",
-      tertiaryValue: formatShortCount(
-        dashboard.schedule.todayItems.filter((item) => item.urgency === "high").length
-      ),
-      emphasized: true
-    },
-    {
-      className: "scene-marker--device",
-      title: "设备网络",
-      icon: homeImageAssets.iconDevice,
-      primaryLabel: "Agent",
-      primaryValue: formatShortCount(dashboard.agents.length),
-      secondaryLabel: "运行中",
-      secondaryValue: formatShortCount(busyAgents),
-      tertiaryLabel: "任务流",
-      tertiaryValue: formatShortCount(dashboard.recentTasks.length)
-    },
-    {
-      className: "scene-marker--intel",
-      title: "情报中枢",
-      icon: homeImageAssets.iconEnergy,
-      primaryLabel: "热点",
-      primaryValue: formatShortCount(dashboard.news.items.length),
-      secondaryLabel: "信源",
-      secondaryValue: formatShortCount(dashboard.news.sources.length),
-      tertiaryLabel: "归纳",
-      tertiaryValue: dashboard.news.lastUpdatedAt ? formatTime(dashboard.news.lastUpdatedAt) : "--:--"
-    }
-  ] as const;
-
   function handleCreateSession() {
     const now = new Date().toISOString();
     let createdSessionId = "";
@@ -713,36 +586,6 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
 
   return (
     <section className="console-shell console-shell--ops">
-      <div className="ops-stage">
-        <div className="ops-stage__backdrop" aria-hidden="true">
-          <div className="ops-stage__halo" />
-          <div className="ops-stage__terrain ops-stage__terrain--left" />
-          <div className="ops-stage__terrain ops-stage__terrain--right" />
-          <div className="ops-stage__road ops-stage__road--main" />
-          <div className="ops-stage__road ops-stage__road--cross" />
-          <div className="ops-stage__block ops-stage__block--a" />
-          <div className="ops-stage__block ops-stage__block--b" />
-          <div className="ops-stage__block ops-stage__block--c" />
-          <div className="ops-stage__block ops-stage__block--d" />
-        </div>
-        <div className="ops-stage__badge">
-          <span className="ops-stage__badge-dot" aria-hidden="true" />
-          <span>主工作区</span>
-        </div>
-        {sceneMarkers.map((marker) => (
-          <SceneMarker key={marker.title} {...marker} />
-        ))}
-        <div
-          className="ops-stage__tools"
-          style={{ backgroundImage: `url(${homeImageAssets.controlStrip})` }}
-          aria-hidden="true"
-        >
-          <img src={homeImageAssets.iconZoomIn} alt="" />
-          <img src={homeImageAssets.iconZoomOut} alt="" />
-          <img src={homeImageAssets.iconReset} alt="" />
-          <img src={homeImageAssets.iconFullscreen} alt="" />
-        </div>
-      </div>
       <div className="session-tabs">
         <div className="session-tabs__track">
           {workspace.sessions.map((session) => (
@@ -887,7 +730,7 @@ export function DetailPlaceholderPage({
   title,
   description
 }: {
-  section: Exclude<RailSection, "home">;
+  section: Exclude<RailSection, "home" | "topics">;
   title: string;
   description: string;
 }) {
@@ -928,7 +771,6 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const [railExpanded, setRailExpanded] = useState(false);
   const [newsCollapsed, setNewsCollapsed] = useState(false);
-  const [todoCollapsed, setTodoCollapsed] = useState(false);
   const [newsFilter, setNewsFilter] = useState<NewsFilter>("all");
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
@@ -950,8 +792,6 @@ export function DashboardPage() {
 
   const dashboard = dashboardQuery.data;
   const unreadNotifications = dashboard.notifications.filter((item) => !item.read).length;
-  const pendingItems = dashboard.schedule.todayItems.filter((item) => item.status === "pending").length;
-  const busyAgents = dashboard.agents.filter((agent) => agent.status === "busy").length;
   const newsSummaryStats: SummaryStat[] = [
     {
       label: "今日支出",
@@ -969,31 +809,13 @@ export function DashboardPage() {
       note: dashboard.schedule.pendingReview ? "有待复盘" : "无待确认"
     }
   ];
-  const todoSummaryStats: SummaryStat[] = [
-    {
-      label: "Agent",
-      value: formatShortCount(dashboard.agents.length),
-      note: `${formatShortCount(busyAgents)} 个忙碌`
-    },
-    {
-      label: "任务流",
-      value: formatShortCount(dashboard.recentTasks.length),
-      note: `${formatShortCount(pendingItems)} 项待办`
-    },
-    {
-      label: "消息",
-      value: formatShortCount(unreadNotifications),
-      note: dashboard.schedule.pendingReview ? "待确认 01" : "全部已读"
-    },
-    {
-      label: "新闻源",
-      value: formatShortCount(dashboard.news.sources.length),
-      note: `${formatShortCount(dashboard.news.items.length)} 条归纳`
-    }
-  ];
   const layoutStyle = {
     "--news-width": newsCollapsed ? "64px" : "326px",
-    "--todo-width": todoCollapsed ? "72px" : "332px"
+    "--todo-width": "408px",
+    "--news-panel-frame": `url("${homeImageAssets.newsPanelFrame}")`,
+    "--todo-panel-frame": `url("${homeImageAssets.todoPanelFrame}")`,
+    "--ledger-panel-frame": `url("${homeImageAssets.routeFrame}")`,
+    "--topic-panel-frame": `url("${homeImageAssets.topicPanelFrame}")`
   } as CSSProperties;
 
   return (
@@ -1005,7 +827,6 @@ export function DashboardPage() {
         themeKey={themeKey}
         onThemeChange={setThemeKey}
         clockLine={clockLine}
-        showNavigation={false}
         rightMeta={[
           { label: "agents", value: String(dashboard.agents.length) },
           { label: "tasks", value: String(dashboard.recentTasks.length) },
@@ -1026,14 +847,18 @@ export function DashboardPage() {
 
         <ChatPanel dashboard={dashboard} />
 
-        <TodoPanel
-          items={dashboard.schedule.todayItems}
-          pendingReview={dashboard.schedule.pendingReview}
-          collapsed={todoCollapsed}
-          onToggle={() => setTodoCollapsed((value) => !value)}
-          overviewStats={todoSummaryStats}
-          healthLabel={busyAgents > 0 ? `连续 ${busyAgents} 个执行流在线` : "所有执行流运行平稳"}
-        />
+        <div className="workspace-side">
+          <TodoPanel items={dashboard.schedule.todayItems} />
+          <LedgerPanel
+            balance={dashboard.ledger.summary.balance}
+            todayIncome={dashboard.ledger.summary.todayIncome}
+            todayExpense={dashboard.ledger.summary.todayExpense}
+          />
+          <TopicPanel
+            items={dashboard.topics.current}
+            generatedAt={dashboard.topics.lastGeneratedAt}
+          />
+        </div>
       </div>
     </main>
   );

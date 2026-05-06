@@ -2,10 +2,12 @@ import type {
   AppState,
   NewsArticleBody,
   NewsState,
+  NotificationRecord,
   ScheduleState,
   TaskStatus,
   TaskTrigger,
-  LedgerState
+  LedgerState,
+  TopicState
 } from "@agent-zy/shared-types";
 
 export type { TaskTrigger } from "@agent-zy/shared-types";
@@ -54,7 +56,7 @@ export interface AgentExecutionResult {
   summary: string;
   assistantMessage: string;
   notifications?: Array<{
-    kind: "nightly-review" | "task-update" | "news-refresh";
+    kind: NotificationRecord["kind"];
     title: string;
     body: string;
   }>;
@@ -63,6 +65,7 @@ export interface AgentExecutionResult {
     schedule?: ScheduleState;
     news?: NewsState;
     newsBodies?: NewsArticleBody[];
+    topics?: TopicState;
   };
 }
 

@@ -36,11 +36,11 @@ class MemoryStorage implements Storage {
 
 describe("theme", () => {
   test("defines color and image themes for the switcher", () => {
-    expect(themeOptions.filter((theme) => theme.kind === "color")).toHaveLength(6);
+    expect(themeOptions.filter((theme) => theme.kind === "color")).toHaveLength(7);
     expect(themeOptions.filter((theme) => theme.kind === "image")).toHaveLength(3);
     expect(themeOptions).toContainEqual({
-      key: "midnight-agent",
-      label: "夜航",
+      key: "harbor-frame",
+      label: "港蓝",
       kind: "color"
     });
   });
@@ -50,7 +50,7 @@ describe("theme", () => {
 
     storage.setItem("agent-zy-theme", "unknown-theme");
 
-    expect(getInitialThemeKey(storage)).toBe("midnight-agent");
+    expect(getInitialThemeKey(storage)).toBe("harbor-frame");
     expect(isThemeKey("unknown-theme")).toBe(false);
   });
 
