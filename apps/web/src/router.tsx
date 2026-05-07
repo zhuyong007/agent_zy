@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 
-import { DashboardPage, DetailPlaceholderPage } from "./components/dashboard-page";
+import { DashboardPage, DetailPlaceholderPage, HomeManagePage } from "./components/dashboard-page";
 import { NewsPage } from "./components/news-page";
 import { TopicPage } from "./components/topic-page";
 
@@ -39,6 +39,12 @@ const topicsRoute = createRoute({
   component: TopicPage
 });
 
+const manageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/manage",
+  component: HomeManagePage
+});
+
 const ledgerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/ledger",
@@ -65,6 +71,7 @@ const todoRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  manageRoute,
   newsRoute,
   topicsRoute,
   ledgerRoute,

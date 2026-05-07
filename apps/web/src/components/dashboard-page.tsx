@@ -1,7 +1,28 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+  type DragEndEvent,
+  type DragStartEvent
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import type {
   DashboardData,
@@ -29,14 +50,24 @@ import {
   themeOptions
 } from "../theme";
 import { homeImageAssets } from "../image-assets";
+import {
+  HOME_MODULE_DEFINITIONS,
+  HOME_MODULE_SIZE_OPTIONS,
+  getHomeModuleGeometry,
+  getHomeModulePreviewSize,
+  loadHomeLayout,
+  moveHomeModule,
+  moveHomeModuleByOffset,
+  persistHomeLayout,
+  resetHomeLayout,
+  updateHomeModulePreference,
+  type HomeModuleId,
+  type HomeModulePreference,
+  type HomeModuleSize
+} from "../home-layout";
 
-export type RailSection = "home" | "news" | "topics" | "ledger" | "todo";
+export type RailSection = "home" | "manage" | "news" | "topics" | "ledger" | "todo";
 type NewsFilter = "all" | NewsCategory;
-type SummaryStat = {
-  label: string;
-  value: string;
-  note: string;
-};
 
 const railItems: Array<{
   key: RailSection;
@@ -45,15 +76,28 @@ const railItems: Array<{
   to: string;
 }> = [
   { key: "home", label: "工作台", stamp: "00", to: "/" },
-  { key: "news", label: "热点情报", stamp: "01", to: "/news" },
-  { key: "topics", label: "选题", stamp: "02", to: "/topics" },
-  { key: "ledger", label: "记账", stamp: "03", to: "/ledger" },
-  { key: "todo", label: "待办", stamp: "04", to: "/todo" }
+  { key: "manage", label: "管理", stamp: "01", to: "/manage" },
+  { key: "news", label: "热点情报", stamp: "02", to: "/news" },
+  { key: "topics", label: "选题", stamp: "03", to: "/topics" },
+  { key: "ledger", label: "记账", stamp: "04", to: "/ledger" },
+  { key: "todo", label: "待办", stamp: "05", to: "/todo" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 const colorThemes = themeOptions.filter((theme) => theme.kind === "color");
 const imageThemes = themeOptions.filter((theme) => theme.kind === "image");
+const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
+  HOME_MODULE_DEFINITIONS.map((definition) => [definition.id, definition])
+);
+const moduleSizeLabels = new Map(HOME_MODULE_SIZE_OPTIONS.map((item) => [item.value, item.label]));
+
+const moduleFramesBySize: Record<HomeModuleSize, string> = {
+  max: homeImageAssets.newsPanelFrame,
+  large: homeImageAssets.newsPanelFrame,
+  medium: homeImageAssets.todoPanelFrame,
+  smaller: homeImageAssets.topicPanelFrame,
+  small: homeImageAssets.routeFrame
+};
 
 export function useThemePreference() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(() => getInitialThemeKey());
@@ -153,6 +197,131 @@ function formatShortCount(count: number) {
   });
 }
 
+function getModuleDefinition(id: HomeModuleId) {
+  return moduleDefinitionsById.get(id) ?? {
+    id,
+    label: id,
+    description: "模块已注册，内容组件待接入。",
+    defaultSize: "smaller" as HomeModuleSize,
+    defaultVisible: false
+  };
+}
+
+function getModuleSizeLabel(size: HomeModuleSize) {
+  return moduleSizeLabels.get(size) ?? size;
+}
+
+function getModuleFrameStyle(size: HomeModuleSize, collapsed: boolean) {
+  const geometry = getHomeModuleGeometry(size, collapsed);
+  const previewSize = getHomeModulePreviewSize(size, collapsed);
+
+  return {
+    "--home-module-frame": `url("${moduleFramesBySize[size]}")`,
+    "--home-module-columns": String(geometry.columns),
+    "--home-module-rows": String(geometry.rows),
+    "--home-module-preview-width": `${previewSize.width}px`,
+    "--home-module-preview-height": `${previewSize.height}px`
+  } as CSSProperties;
+}
+
+function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
+  if (id === "news") {
+    return `${formatShortCount(dashboard.news.items.length)} 条热点`;
+  }
+
+  if (id === "chat") {
+    return dashboard.tasks.inProgress.length > 0 ? "会话运行中" : `${formatShortCount(dashboard.messages.length)} 条消息`;
+  }
+
+  if (id === "todo") {
+    const pendingCount = dashboard.schedule.todayItems.filter((item) => item.status === "pending").length;
+    return `${formatShortCount(pendingCount)} 项待处理`;
+  }
+
+  if (id === "ledger") {
+    return `结余 ${formatAmount(dashboard.ledger.summary.balance)}`;
+  }
+
+  if (id === "topics") {
+    return `${formatShortCount(dashboard.topics.current.length)} 个选题`;
+  }
+
+  return "待接入";
+}
+
+function useHomeLayoutPreferences() {
+  const [layout, setLayout] = useState<HomeModulePreference[]>(() => loadHomeLayout());
+
+  function applyLayoutUpdate(updater: (current: HomeModulePreference[]) => HomeModulePreference[]) {
+    setLayout((current) => {
+      const next = updater(current);
+      persistHomeLayout(next);
+      return next;
+    });
+  }
+
+  return {
+    layout,
+    updateModule: (
+      id: HomeModuleId,
+      patch: Partial<Pick<HomeModulePreference, "visible" | "size" | "collapsed">>
+    ) => {
+      applyLayoutUpdate((current) => updateHomeModulePreference(current, id, patch));
+    },
+    moveModule: (sourceId: HomeModuleId, targetId: HomeModuleId) => {
+      applyLayoutUpdate((current) => moveHomeModule(current, sourceId, targetId));
+    },
+    moveModuleByOffset: (id: HomeModuleId, offset: -1 | 1) => {
+      applyLayoutUpdate((current) => moveHomeModuleByOffset(current, id, offset));
+    },
+    resetLayout: () => {
+      const next = resetHomeLayout();
+      setLayout(next);
+    }
+  };
+}
+
+function useSortableModuleDnd(onMove: (sourceId: HomeModuleId, targetId: HomeModuleId) => void) {
+  const [activeId, setActiveId] = useState<HomeModuleId | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8
+      }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id) as HomeModuleId);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const sourceId = String(event.active.id) as HomeModuleId;
+    const targetId = event.over ? (String(event.over.id) as HomeModuleId) : null;
+
+    setActiveId(null);
+
+    if (targetId && sourceId !== targetId) {
+      onMove(sourceId, targetId);
+    }
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
+  return {
+    activeId,
+    sensors,
+    handleDragStart,
+    handleDragEnd,
+    handleDragCancel
+  };
+}
+
 export function CommandRail({
   activeSection,
   expanded,
@@ -250,56 +419,25 @@ export function CommandRail({
 function NewsPanel({
   items,
   updatedAt,
-  collapsed,
   filter,
-  onFilterChange,
-  onToggle,
-  summaryStats
+  onFilterChange
 }: {
   items: NewsItem[];
   updatedAt: string | null;
-  collapsed: boolean;
   filter: NewsFilter;
   onFilterChange: (next: NewsFilter) => void;
-  onToggle: () => void;
-  summaryStats: SummaryStat[];
 }) {
   const filteredItems = items.filter((item) => filter === "all" || item.category === filter);
 
-  if (collapsed) {
-    return (
-      <aside className="edge-panel edge-panel--collapsed edge-panel--news">
-        <button type="button" className="edge-panel__collapsed" onClick={onToggle}>
-          <span>Hot News</span>
-          <strong>{items.length}</strong>
-        </button>
-      </aside>
-    );
-  }
-
   return (
     <aside className="edge-panel edge-panel--news edge-panel--ops">
-      <div className="edge-panel__content">
-        <div className="ops-summary-grid">
-          {summaryStats.map((item) => (
-            <div key={item.label} className="ops-summary-tile">
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.note}</small>
-            </div>
-          ))}
-        </div>
-      </div>
       <div className="edge-panel__header">
         <div>
           <p className="eyebrow">Decision Feed</p>
-          <h2>热点情报</h2>
+          <h2>AI 热点</h2>
         </div>
         <div className="edge-panel__actions">
           <span className="panel-stamp">{updatedAt ? `刷新 ${formatTime(updatedAt)}` : "等待刷新"}</span>
-          <button type="button" className="panel-toggle" onClick={onToggle}>
-            收起
-          </button>
         </div>
       </div>
       <div className="filter-strip" role="tablist" aria-label="热点筛选">
@@ -730,7 +868,7 @@ export function DetailPlaceholderPage({
   title,
   description
 }: {
-  section: Exclude<RailSection, "home" | "topics">;
+  section: RailSection;
   title: string;
   description: string;
 }) {
@@ -767,13 +905,331 @@ export function DetailPlaceholderPage({
   );
 }
 
+function HomeModuleShell({
+  preference,
+  summary,
+  children,
+  onToggleCollapsed,
+  setNodeRef,
+  sortableStyle,
+  dragAttributes,
+  dragListeners,
+  preview = false,
+  isDragging = false
+}: {
+  preference: HomeModulePreference;
+  summary: string;
+  children: ReactNode;
+  onToggleCollapsed: () => void;
+  setNodeRef?: (node: HTMLElement | null) => void;
+  sortableStyle?: CSSProperties;
+  dragAttributes?: DraggableAttributes;
+  dragListeners?: DraggableSyntheticListeners;
+  preview?: boolean;
+  isDragging?: boolean;
+}) {
+  const definition = getModuleDefinition(preference.id);
+  const moduleStyle = {
+    ...getModuleFrameStyle(preference.size, preference.collapsed),
+    ...sortableStyle
+  } as CSSProperties;
+
+  return (
+    <article
+      ref={setNodeRef}
+      className={`home-module home-module--size-${preference.size}${preference.collapsed ? " is-collapsed" : ""}${
+        isDragging ? " is-dragging" : ""
+      }${preview ? " home-module--drag-overlay" : ""}`}
+      style={moduleStyle}
+      {...(dragAttributes ?? {})}
+      {...(dragListeners ?? {})}
+    >
+      <div className="home-module__meta" aria-hidden="true">
+        <span>{getModuleSizeLabel(preference.size)}</span>
+        <strong>{definition.label}</strong>
+      </div>
+      <div className="home-module__body">
+        {preference.collapsed ? (
+          <div className="home-module__collapsed-content">
+            <div>
+              <strong>{definition.label}</strong>
+              <span>{summary}</span>
+            </div>
+            <span>已收起</span>
+          </div>
+        ) : (
+          children
+        )}
+      </div>
+      {preview ? null : (
+        <div className="home-module__actions" onPointerDown={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            className="home-module__collapse"
+            onClick={onToggleCollapsed}
+          >
+            {preference.collapsed ? "展开" : "收起"}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function SortableHomeModuleShell({
+  preference,
+  summary,
+  children,
+  onToggleCollapsed
+}: {
+  preference: HomeModulePreference;
+  summary: string;
+  children: ReactNode;
+  onToggleCollapsed: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({
+    id: preference.id
+  });
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition
+  } as CSSProperties;
+
+  return (
+    <HomeModuleShell
+      preference={preference}
+      summary={summary}
+      onToggleCollapsed={onToggleCollapsed}
+      setNodeRef={setNodeRef}
+      sortableStyle={sortableStyle}
+      dragAttributes={attributes}
+      dragListeners={listeners}
+      isDragging={isDragging}
+    >
+      {children}
+    </HomeModuleShell>
+  );
+}
+
+function renderHomeModuleContent({
+  id,
+  dashboard,
+  newsFilter,
+  onNewsFilterChange
+}: {
+  id: HomeModuleId;
+  dashboard: DashboardData;
+  newsFilter: NewsFilter;
+  onNewsFilterChange: (next: NewsFilter) => void;
+}) {
+  if (id === "news") {
+    return (
+      <NewsPanel
+        items={dashboard.news.items}
+        updatedAt={dashboard.news.lastUpdatedAt}
+        filter={newsFilter}
+        onFilterChange={onNewsFilterChange}
+      />
+    );
+  }
+
+  if (id === "chat") {
+    return <ChatPanel dashboard={dashboard} />;
+  }
+
+  if (id === "todo") {
+    return <TodoPanel items={dashboard.schedule.todayItems} />;
+  }
+
+  if (id === "ledger") {
+    return (
+      <LedgerPanel
+        balance={dashboard.ledger.summary.balance}
+        todayIncome={dashboard.ledger.summary.todayIncome}
+        todayExpense={dashboard.ledger.summary.todayExpense}
+      />
+    );
+  }
+
+  if (id === "topics") {
+    return (
+      <TopicPanel
+        items={dashboard.topics.current}
+        generatedAt={dashboard.topics.lastGeneratedAt}
+      />
+    );
+  }
+
+  return <div className="edge-empty">模块已注册，内容组件待接入。</div>;
+}
+
+function SortableManageItem({
+  preference,
+  onVisibleChange,
+  onSizeChange,
+  onToggleCollapsed
+}: {
+  preference: HomeModulePreference;
+  onVisibleChange: (visible: boolean) => void;
+  onSizeChange: (size: HomeModuleSize) => void;
+  onToggleCollapsed: () => void;
+}) {
+  const definition = getModuleDefinition(preference.id);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({
+    id: preference.id
+  });
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition
+  } as CSSProperties;
+
+  return (
+    <article
+      ref={setNodeRef}
+      className={`manage-item${isDragging ? " is-dragging" : ""}`}
+      style={sortableStyle}
+      {...attributes}
+      {...listeners}
+    >
+      <div className="manage-item__identity">
+        <span>拖拽</span>
+        <div>
+          <strong>{definition.label}</strong>
+          <p>{definition.description}</p>
+        </div>
+      </div>
+
+      <label className="manage-switch" onPointerDown={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={preference.visible}
+          onChange={(event) => onVisibleChange(event.target.checked)}
+        />
+        <span>{preference.visible ? "展示" : "隐藏"}</span>
+      </label>
+
+      <label className="manage-select" onPointerDown={(event) => event.stopPropagation()}>
+        <span>大小</span>
+        <select
+          value={preference.size}
+          onChange={(event) => onSizeChange(event.target.value as HomeModuleSize)}
+        >
+          {HOME_MODULE_SIZE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <button
+        type="button"
+        className="manage-item__state"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onToggleCollapsed}
+      >
+        {preference.collapsed ? "展开" : "收起"}
+      </button>
+    </article>
+  );
+}
+
+export function HomeManagePage() {
+  const [railExpanded, setRailExpanded] = useState(true);
+  const [themeKey, setThemeKey] = useThemePreference();
+  const clockLine = useLiveClock();
+  const { layout, updateModule, moveModule, resetLayout } = useHomeLayoutPreferences();
+  const { activeId, sensors, handleDragStart, handleDragEnd, handleDragCancel } = useSortableModuleDnd(moveModule);
+  const visibleCount = layout.filter((item) => item.visible).length;
+
+  return (
+    <main className="workspace workspace--ops">
+      <CommandRail
+        activeSection="manage"
+        expanded={railExpanded}
+        onToggle={() => setRailExpanded((value) => !value)}
+        themeKey={themeKey}
+        onThemeChange={setThemeKey}
+        clockLine={clockLine}
+        rightMeta={[
+          { label: "modules", value: String(layout.length) },
+          { label: "visible", value: String(visibleCount) },
+          { label: "storage", value: "local" }
+        ]}
+      />
+
+      <section className="manage-shell">
+        <div className="manage-shell__header">
+          <div>
+            <p className="eyebrow">Home Modules</p>
+            <h1>首页模块管理</h1>
+          </div>
+          <button type="button" onClick={resetLayout}>
+            恢复默认布局
+          </button>
+        </div>
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <SortableContext items={layout.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+            <div className="manage-list">
+              {layout.map((preference) => (
+                <SortableManageItem
+                  key={preference.id}
+                  preference={preference}
+                  onVisibleChange={(visible) => updateModule(preference.id, { visible })}
+                  onSizeChange={(size) => updateModule(preference.id, { size })}
+                  onToggleCollapsed={() => updateModule(preference.id, { collapsed: !preference.collapsed })}
+                />
+              ))}
+            </div>
+          </SortableContext>
+          <DragOverlay>
+            {activeId ? (
+              <div className="manage-item manage-item--drag-overlay">
+                <div className="manage-item__identity">
+                  <span>拖拽</span>
+                  <div>
+                    <strong>{getModuleDefinition(activeId).label}</strong>
+                    <p>{getModuleDefinition(activeId).description}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      </section>
+    </main>
+  );
+}
+
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const [railExpanded, setRailExpanded] = useState(false);
-  const [newsCollapsed, setNewsCollapsed] = useState(false);
   const [newsFilter, setNewsFilter] = useState<NewsFilter>("all");
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
+  const { layout, updateModule, moveModule } = useHomeLayoutPreferences();
+  const { activeId, sensors, handleDragStart, handleDragEnd, handleDragCancel } = useSortableModuleDnd(moveModule);
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard"],
@@ -791,32 +1247,8 @@ export function DashboardPage() {
   }
 
   const dashboard = dashboardQuery.data;
-  const unreadNotifications = dashboard.notifications.filter((item) => !item.read).length;
-  const newsSummaryStats: SummaryStat[] = [
-    {
-      label: "今日支出",
-      value: formatAmount(dashboard.ledger.summary.todayExpense),
-      note: `结余 ${formatAmount(dashboard.ledger.summary.balance)}`
-    },
-    {
-      label: "热点归纳",
-      value: formatShortCount(dashboard.news.items.length),
-      note: dashboard.news.lastUpdatedAt ? `更新 ${formatTime(dashboard.news.lastUpdatedAt)}` : "等待刷新"
-    },
-    {
-      label: "待处理",
-      value: formatShortCount(unreadNotifications),
-      note: dashboard.schedule.pendingReview ? "有待复盘" : "无待确认"
-    }
-  ];
-  const layoutStyle = {
-    "--news-width": newsCollapsed ? "64px" : "326px",
-    "--todo-width": "408px",
-    "--news-panel-frame": `url("${homeImageAssets.newsPanelFrame}")`,
-    "--todo-panel-frame": `url("${homeImageAssets.todoPanelFrame}")`,
-    "--ledger-panel-frame": `url("${homeImageAssets.routeFrame}")`,
-    "--topic-panel-frame": `url("${homeImageAssets.topicPanelFrame}")`
-  } as CSSProperties;
+  const visibleLayout = layout.filter((item) => item.visible);
+  const activePreference = activeId ? visibleLayout.find((item) => item.id === activeId) : null;
 
   return (
     <main className="workspace workspace--ops">
@@ -834,32 +1266,62 @@ export function DashboardPage() {
         ]}
       />
 
-      <div className="workspace-grid" style={layoutStyle}>
-        <NewsPanel
-          items={dashboard.news.items}
-          updatedAt={dashboard.news.lastUpdatedAt}
-          collapsed={newsCollapsed}
-          filter={newsFilter}
-          onFilterChange={setNewsFilter}
-          onToggle={() => setNewsCollapsed((value) => !value)}
-          summaryStats={newsSummaryStats}
-        />
-
-        <ChatPanel dashboard={dashboard} />
-
-        <div className="workspace-side">
-          <TodoPanel items={dashboard.schedule.todayItems} />
-          <LedgerPanel
-            balance={dashboard.ledger.summary.balance}
-            todayIncome={dashboard.ledger.summary.todayIncome}
-            todayExpense={dashboard.ledger.summary.todayExpense}
-          />
-          <TopicPanel
-            items={dashboard.topics.current}
-            generatedAt={dashboard.topics.lastGeneratedAt}
-          />
-        </div>
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <SortableContext items={visibleLayout.map((item) => item.id)} strategy={rectSortingStrategy}>
+          <div className="workspace-grid">
+            {visibleLayout.length > 0 ? (
+              visibleLayout.map((preference) => (
+                <SortableHomeModuleShell
+                  key={preference.id}
+                  preference={preference}
+                  summary={getModuleSummary(preference.id, dashboard)}
+                  onToggleCollapsed={() =>
+                    updateModule(preference.id, {
+                      collapsed: !preference.collapsed
+                    })
+                  }
+                >
+                  {renderHomeModuleContent({
+                    id: preference.id,
+                    dashboard,
+                    newsFilter,
+                    onNewsFilterChange: setNewsFilter
+                  })}
+                </SortableHomeModuleShell>
+              ))
+            ) : (
+              <section className="home-empty">
+                <p className="eyebrow">Home Modules</p>
+                <h1>首页暂无展示模块</h1>
+                <Link to="/manage">进入管理页开启模块</Link>
+              </section>
+            )}
+          </div>
+        </SortableContext>
+        <DragOverlay>
+          {activePreference ? (
+            <HomeModuleShell
+              preference={activePreference}
+              summary={getModuleSummary(activePreference.id, dashboard)}
+              onToggleCollapsed={() => undefined}
+              preview
+            >
+              {renderHomeModuleContent({
+                id: activePreference.id,
+                dashboard,
+                newsFilter,
+                onNewsFilterChange: setNewsFilter
+              })}
+            </HomeModuleShell>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </main>
   );
 }
