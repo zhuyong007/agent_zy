@@ -27,11 +27,23 @@
       "@agent-zy/router-core": [
         "packages/router-core/src/index.ts"
       ],
+      "@agent-zy/ledger-agent/manifest": [
+        "agents/ledger-agent/src/manifest.ts"
+      ],
+      "@agent-zy/news-agent/manifest": [
+        "agents/news-agent/src/manifest.ts"
+      ],
+      "@agent-zy/schedule-agent/manifest": [
+        "agents/schedule-agent/src/manifest.ts"
+      ],
       "@agent-zy/topic-agent/manifest": [
         "agents/topic-agent/src/manifest.ts"
       ],
       "@agent-zy/topic-agent": [
         "agents/topic-agent/src/index.ts"
+      ],
+      "@agent-zy/history-agent/manifest": [
+        "agents/history-agent/src/manifest.ts"
       ]
     }
   }

@@ -1,12 +1,14 @@
 import type {
   AppState,
+  HistoryPostPayload,
+  HistoryPushState,
+  LedgerState,
   NewsArticleBody,
   NewsState,
-  NotificationRecord,
+  NotificationKind,
   ScheduleState,
   TaskStatus,
   TaskTrigger,
-  LedgerState,
   TopicState
 } from "@agent-zy/shared-types";
 
@@ -56,9 +58,11 @@ export interface AgentExecutionResult {
   summary: string;
   assistantMessage: string;
   notifications?: Array<{
-    kind: NotificationRecord["kind"];
+    kind: NotificationKind;
     title: string;
     body: string;
+    persistent?: boolean;
+    payload?: HistoryPostPayload;
   }>;
   domainUpdates?: {
     ledger?: LedgerState;
@@ -66,6 +70,7 @@ export interface AgentExecutionResult {
     news?: NewsState;
     newsBodies?: NewsArticleBody[];
     topics?: TopicState;
+    historyPush?: HistoryPushState;
   };
 }
 

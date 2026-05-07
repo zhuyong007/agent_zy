@@ -7,6 +7,7 @@ import type {
   DashboardData,
   LedgerEntry,
   NewsArticleBody,
+  HistoryPushState,
   NotificationRecord,
   NewsState,
   TopicIdea,
@@ -89,6 +90,9 @@ function createInitialState(): AppState {
       status: "idle",
       strategy: "news-to-content",
       lastError: null
+    },
+    historyPush: {
+      lastTriggeredDate: null
     },
     nightlyReview: {
       lastTriggeredDate: null
@@ -257,6 +261,14 @@ function normalizeTopicState(topics: Partial<TopicState> | undefined): TopicStat
   };
 }
 
+function normalizeHistoryPushState(
+  historyPush: Partial<HistoryPushState> | undefined
+): HistoryPushState {
+  return {
+    lastTriggeredDate: historyPush?.lastTriggeredDate ?? null
+  };
+}
+
 function normalizeAppState(state: AppState): AppState {
   const news = normalizeNewsState(state.news);
 
@@ -264,7 +276,8 @@ function normalizeAppState(state: AppState): AppState {
     ...state,
     news,
     newsBodies: normalizeNewsBodies(state.newsBodies, news),
-    topics: normalizeTopicState(state.topics)
+    topics: normalizeTopicState(state.topics),
+    historyPush: normalizeHistoryPushState(state.historyPush)
   };
 }
 
@@ -274,6 +287,7 @@ export interface ControlPlaneStore {
   upsertTask(task: TaskRecord): void;
   addMessage(message: ChatMessage): void;
   addNotifications(notifications: NotificationRecord[]): void;
+  cancelNotification(notificationId: string): void;
   applyAgentResult(result: AgentExecutionResult): void;
   setNightlyReviewDate(date: string): void;
   getDashboard(
@@ -316,7 +330,31 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
     },
     addNotifications(notifications) {
-      state.notifications = [...notifications, ...state.notifications].slice(0, 20);
+      const merged = new Map<string, NotificationRecord>();
+
+      for (const notification of [...notifications, ...state.notifications]) {
+        if (!merged.has(notification.id)) {
+          merged.set(notification.id, notification);
+        }
+      }
+
+      const sorted = [...merged.values()].sort((left, right) =>
+        right.createdAt.localeCompare(left.createdAt)
+      );
+      const persistent = sorted.filter((notification) => notification.persistent);
+      const regular = sorted
+        .filter((notification) => !notification.persistent)
+        .slice(0, 20);
+
+      state.notifications = [...persistent, ...regular].sort((left, right) =>
+        right.createdAt.localeCompare(left.createdAt)
+      );
+      persist();
+    },
+    cancelNotification(notificationId) {
+      state.notifications = state.notifications.filter(
+        (notification) => notification.id !== notificationId
+      );
       persist();
     },
     applyAgentResult(result) {
@@ -340,6 +378,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       if (result.domainUpdates?.topics) {
         state.topics = result.domainUpdates.topics;
+      }
+
+      if (result.domainUpdates?.historyPush) {
+        state.historyPush = result.domainUpdates.historyPush;
       }
 
       state = normalizeAppState(state);
@@ -380,7 +422,19 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         tasks: groups,
         recentTasks: state.tasks.slice(0, 8),
         messages: state.messages.slice(-20),
-        notifications: state.notifications.slice(0, 12),
+        notifications: (() => {
+          const sorted = [...state.notifications].sort((left, right) =>
+            right.createdAt.localeCompare(left.createdAt)
+          );
+          const persistent = sorted.filter((notification) => notification.persistent);
+          const regular = sorted
+            .filter((notification) => !notification.persistent)
+            .slice(0, 12);
+
+          return [...persistent, ...regular].sort((left, right) =>
+            right.createdAt.localeCompare(left.createdAt)
+          );
+        })(),
         ledger: {
           ...state.ledger,
           summary

@@ -85,6 +85,9 @@ function createState(news?: Partial<NewsState>): AppState {
       strategy: "news-to-content",
       lastError: null
     },
+    historyPush: {
+      lastTriggeredDate: null
+    },
     nightlyReview: {
       lastTriggeredDate: null
     }

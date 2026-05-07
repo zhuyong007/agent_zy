@@ -26,13 +26,14 @@ import { CSS } from "@dnd-kit/utilities";
 
 import type {
   DashboardData,
+  NotificationRecord,
   NewsCategory,
   NewsItem,
   ScheduleItem,
   TopicIdea
 } from "@agent-zy/shared-types";
 
-import { fetchDashboard, openDashboardStream, sendChat } from "../api";
+import { cancelNotification, fetchDashboard, openDashboardStream, sendChat } from "../api";
 import {
   addSession,
   applyChatSuccess,
@@ -631,6 +632,89 @@ function buildFallbackProgress(dashboard: DashboardData): ChatProgressStep[] {
   ];
 }
 
+function HistoryNotificationTray({
+  notifications
+}: {
+  notifications: NotificationRecord[];
+}) {
+  const queryClient = useQueryClient();
+  const [expandedId, setExpandedId] = useState<string | null>(notifications[0]?.id ?? null);
+  const historyNotifications = notifications.filter(
+    (notification) => notification.kind === "history-post" && notification.payload
+  );
+  const cancelMutation = useMutation({
+    mutationFn: cancelNotification,
+    onSuccess: (dashboard) => {
+      queryClient.setQueryData(["dashboard"], dashboard);
+    }
+  });
+
+  useEffect(() => {
+    if (historyNotifications[0] && !historyNotifications.some((item) => item.id === expandedId)) {
+      setExpandedId(historyNotifications[0].id);
+    }
+  }, [expandedId, historyNotifications]);
+
+  if (historyNotifications.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="history-notice-tray" aria-label="每日历史知识点通知">
+      {historyNotifications.map((notification) => {
+        const payload = notification.payload;
+        const expanded = expandedId === notification.id;
+
+        if (!payload) {
+          return null;
+        }
+
+        return (
+          <article className="history-notice" key={notification.id}>
+            <div className="history-notice__head">
+              <button
+                type="button"
+                className="history-notice__title"
+                onClick={() => setExpandedId(expanded ? null : notification.id)}
+              >
+                <span>常驻通知</span>
+                <strong>{notification.title}</strong>
+              </button>
+              <button
+                type="button"
+                className="history-notice__cancel"
+                disabled={cancelMutation.isPending}
+                onClick={() => cancelMutation.mutate(notification.id)}
+              >
+                取消
+              </button>
+            </div>
+            <p>{notification.body}</p>
+            {expanded ? (
+              <div className="history-notice__detail">
+                <div className="history-notice__caption">
+                  <span>小红书正文</span>
+                  <p>{payload.xiaohongshuCaption}</p>
+                </div>
+                <div className="history-notice__cards">
+                  {payload.cards.map((card, index) => (
+                    <div className="history-card-plan" key={`${notification.id}-${card.title}`}>
+                      <span>图 {index + 1}</span>
+                      <strong>{card.title}</strong>
+                      <p>{card.imageText}</p>
+                      <small>{card.prompt}</small>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
 function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
   const queryClient = useQueryClient();
   const [workspace, setWorkspace] = useState(() =>
@@ -764,6 +848,8 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
           ＋ 新建会话
         </button>
       </div>
+
+      <HistoryNotificationTray notifications={dashboard.notifications} />
 
       <div className="chat-shell">
         <div className="chat-shell__main">

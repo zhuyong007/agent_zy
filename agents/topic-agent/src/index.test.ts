@@ -53,6 +53,9 @@ function createState(state?: {
     news: createNewsState(state?.news),
     newsBodies: [],
     topics: createTopicState(state?.topics),
+    historyPush: {
+      lastTriggeredDate: null
+    },
     nightlyReview: {
       lastTriggeredDate: null
     }

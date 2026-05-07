@@ -15,6 +15,7 @@ export interface ControlPlaneScheduler {
 
 export const DEFAULT_NEWS_INTERVAL_MS = 30 * 60 * 1000;
 export const DEFAULT_TOPIC_INTERVAL_MS = 3 * 60 * 60 * 1000;
+export const DEFAULT_HISTORY_PUSH_HOUR = 7;
 
 export function createControlPlaneScheduler(options: {
   orchestrator: ControlPlaneOrchestrator;
@@ -27,6 +28,8 @@ export function createControlPlaneScheduler(options: {
   let newsTimer: NodeJS.Timeout | null = null;
   let topicTimer: NodeJS.Timeout | null = null;
   let reviewTimer: NodeJS.Timeout | null = null;
+  let historyTimer: NodeJS.Timeout | null = null;
+  let historyAttemptedDate: string | null = null;
 
   async function refreshNews(reason: string) {
     await options.orchestrator.runSystemTask({
@@ -72,6 +75,29 @@ export function createControlPlaneScheduler(options: {
     }
   }
 
+  async function maybeTriggerHistoryPush() {
+    const now = new Date();
+    const currentDate = localDate(now);
+    const state = options.store.getState();
+
+    if (
+      now.getHours() === DEFAULT_HISTORY_PUSH_HOUR &&
+      state.historyPush.lastTriggeredDate !== currentDate &&
+      historyAttemptedDate !== currentDate
+    ) {
+      historyAttemptedDate = currentDate;
+      await options.orchestrator.runSystemTask({
+        agentId: "history-agent",
+        trigger: "schedule",
+        summary: "生成每日历史知识点",
+        meta: {
+          action: "generate",
+          localDate: currentDate
+        }
+      });
+    }
+  }
+
   return {
     start() {
       let startupNewsRefresh: Promise<void> | null = null;
@@ -100,6 +126,13 @@ export function createControlPlaneScheduler(options: {
           void maybeTriggerNightlyReview();
         }, 60_000);
       }
+
+      if (!historyTimer) {
+        void maybeTriggerHistoryPush();
+        historyTimer = setInterval(() => {
+          void maybeTriggerHistoryPush();
+        }, 60_000);
+      }
     },
     stop() {
       if (newsTimer) {
@@ -115,6 +148,11 @@ export function createControlPlaneScheduler(options: {
       if (topicTimer) {
         clearInterval(topicTimer);
         topicTimer = null;
+      }
+
+      if (historyTimer) {
+        clearInterval(historyTimer);
+        historyTimer = null;
       }
     }
   };

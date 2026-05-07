@@ -197,14 +197,42 @@ export interface TopicState {
   lastError: string | null;
 }
 
+export interface HistoryPostCard {
+  title: string;
+  imageText: string;
+  prompt: string;
+}
+
+export interface HistoryPostPayload {
+  topic: string;
+  summary: string;
+  cardCount: number;
+  cards: HistoryPostCard[];
+  xiaohongshuCaption: string;
+  generatedAt: string;
+}
+
+export interface HistoryPushState {
+  lastTriggeredDate: string | null;
+}
+
+export type NotificationKind =
+  | "nightly-review"
+  | "task-update"
+  | "news-refresh"
+  | "topic-push"
+  | "history-post";
+
 export interface NotificationRecord {
   id: string;
-  kind: "nightly-review" | "task-update" | "news-refresh" | "topic-push";
+  kind: NotificationKind;
   title: string;
   body: string;
   createdAt: string;
   read: boolean;
   taskId?: string;
+  persistent?: boolean;
+  payload?: HistoryPostPayload;
 }
 
 export interface NightlyReviewState {
@@ -220,6 +248,7 @@ export interface AppState {
   news: NewsState;
   newsBodies: NewsArticleBody[];
   topics: TopicState;
+  historyPush: HistoryPushState;
   nightlyReview: NightlyReviewState;
 }
 

@@ -48,7 +48,9 @@ function createNotifications(
     body: item.body,
     createdAt: new Date().toISOString(),
     read: false,
-    taskId
+    taskId,
+    persistent: item.persistent,
+    payload: item.payload
   }));
 }
 
@@ -75,6 +77,7 @@ export interface ControlPlaneOrchestrator {
   analyzeNewsItem(itemId: string): Promise<NewsState>;
   getTopics(): TopicState;
   generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
+  cancelNotification(notificationId: string): ReturnType<ControlPlaneStore["getDashboard"]>;
   runSystemTask(input: {
     agentId: string;
     trigger: TaskTrigger;
@@ -353,6 +356,12 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return options.store.getState().topics;
+    },
+    cancelNotification(notificationId) {
+      options.store.cancelNotification(notificationId);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+
+      return this.getDashboard();
     },
     getDashboard() {
       return options.store.getDashboard(
