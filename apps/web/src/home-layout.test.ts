@@ -48,16 +48,34 @@ describe("home-layout", () => {
       "chat",
       "todo",
       "ledger",
-      "topics"
+      "topics",
+      "history"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
       "large",
       "max",
       "medium",
       "small",
+      "smaller",
       "smaller"
     ]);
-    expect(DEFAULT_HOME_LAYOUT.every((item) => item.visible && !item.collapsed)).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.map((item) => item.visible)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]);
+    expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]);
+    expect(DEFAULT_HOME_LAYOUT.every((item) => !item.collapsed)).toBe(true);
   });
 
   test("defines fixed homepage size geometry for the approved layout shapes", () => {
@@ -90,6 +108,7 @@ describe("home-layout", () => {
     const storage = new MemoryStorage();
     const changed = updateHomeModulePreference(DEFAULT_HOME_LAYOUT, "topics", {
       visible: false,
+      showInNavigation: false,
       size: "medium",
       collapsed: true
     });
@@ -98,8 +117,37 @@ describe("home-layout", () => {
 
     expect(loadHomeLayout(storage).find((item) => item.id === "topics")).toMatchObject({
       visible: false,
+      showInNavigation: false,
       size: "medium",
       collapsed: true
+    });
+  });
+
+  test("migrates stored layouts without navigation preferences from module visibility", () => {
+    const storage = new MemoryStorage();
+
+    storage.setItem(
+      HOME_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        layout: [
+          { id: "news", visible: true, size: "large", collapsed: false, order: 0 },
+          { id: "chat", visible: true, size: "max", collapsed: false, order: 1 },
+          { id: "todo", visible: false, size: "medium", collapsed: false, order: 2 }
+        ]
+      })
+    );
+
+    const loaded = loadHomeLayout(storage);
+
+    expect(loaded.find((item) => item.id === "news")).toMatchObject({
+      showInNavigation: true
+    });
+    expect(loaded.find((item) => item.id === "chat")).toMatchObject({
+      showInNavigation: false
+    });
+    expect(loaded.find((item) => item.id === "todo")).toMatchObject({
+      showInNavigation: false
     });
   });
 
@@ -152,6 +200,7 @@ describe("home-layout", () => {
     expect(loaded.find((item) => item.id === "future")).toMatchObject({
       id: "future",
       visible: false,
+      showInNavigation: false,
       size: "medium"
     });
   });
@@ -164,9 +213,10 @@ describe("home-layout", () => {
       "news",
       "chat",
       "todo",
-      "ledger"
+      "ledger",
+      "history"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {

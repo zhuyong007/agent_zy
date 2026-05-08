@@ -1,6 +1,8 @@
+import { SUB_AGENT_HOME_MODULE_DEFINITIONS } from "@agent-zy/agent-registry/sub-agents";
+
 export const HOME_LAYOUT_STORAGE_KEY = "agent-zy-home-layout-v1";
 
-export type BuiltInHomeModuleId = "news" | "chat" | "todo" | "ledger" | "topics";
+export type BuiltInHomeModuleId = "news" | "chat" | "todo" | "ledger" | "topics" | "history";
 export type HomeModuleId = BuiltInHomeModuleId | (string & {});
 export type HomeModuleSize = "max" | "large" | "medium" | "smaller" | "small";
 
@@ -15,6 +17,7 @@ export interface HomeModuleDefinition {
 export interface HomeModulePreference {
   id: HomeModuleId;
   visible: boolean;
+  showInNavigation: boolean;
   size: HomeModuleSize;
   collapsed: boolean;
   order: number;
@@ -52,45 +55,32 @@ export const HOME_MODULE_SIZE_GEOMETRY = {
   small: { columns: 4, rows: 2 }
 } as const satisfies Record<HomeModuleSize, HomeModuleGeometry>;
 
-export const HOME_MODULE_DEFINITIONS = [
-  {
-    id: "news",
-    label: "AI 热点",
-    description: "热点情报、信源和分类筛选",
-    defaultSize: "large",
-    defaultVisible: true
-  },
+const CORE_HOME_MODULE_DEFINITIONS = [
   {
     id: "chat",
     label: "会话",
     description: "主 Agent 会话和处理进度",
     defaultSize: "max",
     defaultVisible: true
-  },
-  {
-    id: "todo",
-    label: "今日待办",
-    description: "今日任务数量、优先级和完成状态",
-    defaultSize: "medium",
-    defaultVisible: true
-  },
-  {
-    id: "ledger",
-    label: "记账",
-    description: "今日收支和当前结余",
-    defaultSize: "small",
-    defaultVisible: true
-  },
-  {
-    id: "topics",
-    label: "AI 自媒体选题",
-    description: "基于热点生成的选题建议",
-    defaultSize: "smaller",
-    defaultVisible: true
   }
 ] as const satisfies readonly HomeModuleDefinition[];
 
+export const HOME_MODULE_DEFINITIONS = [
+  ...SUB_AGENT_HOME_MODULE_DEFINITIONS.slice(0, 1),
+  ...CORE_HOME_MODULE_DEFINITIONS,
+  ...SUB_AGENT_HOME_MODULE_DEFINITIONS.slice(1)
+] as const satisfies readonly HomeModuleDefinition[];
+
 const sizeValues = new Set<HomeModuleSize>(HOME_MODULE_SIZE_OPTIONS.map((item) => item.value));
+const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>(["news", "topics", "ledger", "todo"]);
+
+export function canShowHomeModuleInNavigation(id: HomeModuleId) {
+  return HOME_MODULE_NAVIGATION_ROUTES.has(id);
+}
+
+function getDefaultNavigationVisibility(definition: HomeModuleDefinition) {
+  return canShowHomeModuleInNavigation(definition.id) && definition.defaultVisible;
+}
 
 export function getHomeModuleGeometry(size: HomeModuleSize, collapsed: boolean): HomeModuleGeometry {
   const geometry = HOME_MODULE_SIZE_GEOMETRY[size];
@@ -175,6 +165,10 @@ function parseStoredPreference(
   return {
     id: value.id,
     visible: typeof value.visible === "boolean" ? value.visible : false,
+    showInNavigation:
+      typeof value.showInNavigation === "boolean"
+        ? value.showInNavigation
+        : canShowHomeModuleInNavigation(value.id) && (typeof value.visible === "boolean" ? value.visible : false),
     size: legacyStorage
       ? migrateLegacyHomeModuleSize(value.id, value.size)
       : isHomeModuleSize(value.size)
@@ -212,6 +206,7 @@ export function getDefaultHomeLayout(
   return definitions.map((definition, index) => ({
     id: definition.id,
     visible: definition.defaultVisible,
+    showInNavigation: getDefaultNavigationVisibility(definition),
     size: definition.defaultSize,
     collapsed: false,
     order: index
@@ -236,6 +231,7 @@ export function mergeHomeLayoutPreferences(
         return {
           id: definition.id,
           visible: stored.visible,
+          showInNavigation: canShowHomeModuleInNavigation(definition.id) && stored.showInNavigation,
           size: stored.size,
           collapsed: stored.collapsed,
           order: stored.order
@@ -245,6 +241,7 @@ export function mergeHomeLayoutPreferences(
       return {
         id: definition.id,
         visible: false,
+        showInNavigation: false,
         size: definition.defaultSize,
         collapsed: false,
         order: fallbackOrderOffset + index
@@ -306,7 +303,7 @@ export function resetHomeLayout(
 export function updateHomeModulePreference(
   layout: readonly HomeModulePreference[],
   id: HomeModuleId,
-  patch: Partial<Pick<HomeModulePreference, "visible" | "size" | "collapsed">>
+  patch: Partial<Pick<HomeModulePreference, "visible" | "showInNavigation" | "size" | "collapsed">>
 ) {
   return normalizeOrder(
     layout.map((item) =>

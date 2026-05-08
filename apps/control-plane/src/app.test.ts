@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createControlPlaneApp } from "./app";
 import {
@@ -12,34 +12,18 @@ import {
 
 describe("control-plane app", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-test-"));
-  let feedUrl = "";
-  let articleUrl = "";
   const app = createControlPlaneApp({
     dataDir,
     startSchedulers: false
   });
 
   beforeAll(async () => {
-    articleUrl = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
-        <html>
-          <body>
-            <article>
-              <p>First paragraph from the full article.</p>
-              <p>Second paragraph explains why the update matters.</p>
-            </article>
-          </body>
-        </html>`)}`;
-    feedUrl = `data:application/rss+xml;charset=utf-8,${encodeURIComponent(`<?xml version="1.0"?>
-        <rss>
-          <channel>
-            <item>
-              <title>AI agents reshape personal workspaces</title>
-              <link>${articleUrl}</link>
-              <pubDate>${new Date().toUTCString()}</pubDate>
-            </item>
-          </channel>
-        </rss>`)}`;
     await app.ready();
+  });
+
+  afterEach(() => {
+    delete process.env.AIHOT_BASE_URL;
+    delete process.env.AIHOT_ITEMS_FIXTURE_JSON;
   });
 
   afterAll(async () => {
@@ -70,26 +54,23 @@ describe("control-plane app", () => {
     });
   });
 
-  it("manages news sources, fetches full articles, and analyzes an item on demand", async () => {
-    const sourceResponse = await app.inject({
-      method: "POST",
-      url: "/api/news/sources",
-      payload: {
-        name: "AI Daily",
-        url: feedUrl,
-        category: "ai"
-      }
+  it("syncs AI HOT items and analyzes an item on demand", async () => {
+    process.env.AIHOT_ITEMS_FIXTURE_JSON = JSON.stringify({
+      count: 1,
+      hasNext: false,
+      nextCursor: null,
+      items: [
+        {
+          id: "cmow6i2aq036jslcxxneym5zm",
+          title: "Claude v2.1.133 版本更新",
+          url: "https://github.com/anthropics/claude-code/releases/tag/v2.1.133",
+          source: "Claude Code：GitHub Releases（RSS）",
+          publishedAt: "2026-05-07T23:49:04.000Z",
+          summary: "Claude 发布 v2.1.133 版本，新增多项配置与优化。",
+          category: "ai-products"
+        }
+      ]
     });
-
-    expect(sourceResponse.statusCode).toBe(200);
-    expect(sourceResponse.json().sources).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "AI Daily",
-          category: "ai"
-        })
-      ])
-    );
 
     const refreshResponse = await app.inject({
       method: "POST",
@@ -101,47 +82,19 @@ describe("control-plane app", () => {
 
     expect(refreshResponse.statusCode).toBe(200);
     const refreshedNews = refreshResponse.json();
-    expect(refreshedNews.items.length).toBeGreaterThan(0);
-    expect(refreshedNews.lastSummaryInputItemIds.length).toBeGreaterThan(0);
-    const sourceId = refreshedNews.sources[0].id;
-
-    const itemId = refreshedNews.items[0].id;
-    const articlesResponse = await app.inject({
-      method: "POST",
-      url: `/api/news/items/${itemId}/articles`
-    });
-
-    expect(articlesResponse.statusCode).toBe(200);
-    expect(articlesResponse.json()).toMatchObject({
-      itemId,
-      articles: [
+    expect(refreshedNews).toMatchObject({
+      lastSummaryProvider: "aihot",
+      sources: [],
+      items: [
         expect.objectContaining({
-          sourceName: "AI Daily",
-          url: articleUrl,
-          content: expect.stringContaining("First paragraph from the full article.")
+          title: "Claude v2.1.133 版本更新",
+          category: "ai-products",
+          sources: ["Claude Code：GitHub Releases（RSS）"]
         })
       ]
     });
 
-    const patchResponse = await app.inject({
-      method: "PATCH",
-      url: `/api/news/sources/${sourceId}`,
-      payload: {
-        name: "AI Brief",
-        enabled: false
-      }
-    });
-
-    expect(patchResponse.statusCode).toBe(200);
-    expect(patchResponse.json().sources).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: sourceId,
-          name: "AI Brief",
-          enabled: false
-        })
-      ])
-    );
+    const itemId = refreshedNews.items[0].id;
 
     const analysisResponse = await app.inject({
       method: "POST",
@@ -153,18 +106,6 @@ describe("control-plane app", () => {
       personalImpact: expect.any(String),
       possibleChanges: expect.any(String),
       relationToMe: expect.any(String)
-    });
-
-    const deleteResponse = await app.inject({
-      method: "DELETE",
-      url: `/api/news/sources/${sourceId}`
-    });
-
-    expect(deleteResponse.statusCode).toBe(200);
-    expect(deleteResponse.json()).toMatchObject({
-      sources: [],
-      rawItems: [],
-      items: []
     });
   });
 

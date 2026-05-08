@@ -3,9 +3,6 @@ import { nanoid } from "nanoid";
 import type {
   ChatMessage,
   ChatResponse,
-  NewsArticleBody,
-  NewsItemArticlesResponse,
-  NewsCategory,
   NewsState,
   NotificationRecord,
   TopicState,
@@ -57,23 +54,7 @@ function createNotifications(
 export interface ControlPlaneOrchestrator {
   handleChat(message: string): Promise<ChatResponse>;
   getNews(): NewsState;
-  addNewsSource(source: {
-    name: string;
-    url: string;
-    category: NewsCategory;
-  }): Promise<NewsState>;
-  updateNewsSource(
-    sourceId: string,
-    patch: Partial<{
-      name: string;
-      url: string;
-      category: NewsCategory;
-      enabled: boolean;
-    }>
-  ): Promise<NewsState>;
-  removeNewsSource(sourceId: string): Promise<NewsState>;
   refreshNews(meta?: Record<string, unknown>): Promise<NewsState>;
-  fetchNewsItemArticles(itemId: string): Promise<NewsItemArticlesResponse>;
   analyzeNewsItem(itemId: string): Promise<NewsState>;
   getTopics(): TopicState;
   generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
@@ -246,46 +227,6 @@ export function createControlPlaneOrchestrator(options: {
     getNews() {
       return options.store.getState().news;
     },
-    async addNewsSource(source) {
-      await this.runSystemTask({
-        agentId: "news-agent",
-        trigger: "system",
-        summary: "添加热点信源",
-        meta: {
-          action: "add-source",
-          source
-        }
-      });
-
-      return options.store.getState().news;
-    },
-    async updateNewsSource(sourceId, patch) {
-      await this.runSystemTask({
-        agentId: "news-agent",
-        trigger: "system",
-        summary: "更新热点信源",
-        meta: {
-          action: "update-source",
-          sourceId,
-          patch
-        }
-      });
-
-      return options.store.getState().news;
-    },
-    async removeNewsSource(sourceId) {
-      await this.runSystemTask({
-        agentId: "news-agent",
-        trigger: "system",
-        summary: "删除热点信源",
-        meta: {
-          action: "remove-source",
-          sourceId
-        }
-      });
-
-      return options.store.getState().news;
-    },
     async refreshNews(meta = {}) {
       await this.runSystemTask({
         agentId: "news-agent",
@@ -298,35 +239,6 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return options.store.getState().news;
-    },
-    async fetchNewsItemArticles(itemId) {
-      await this.runSystemTask({
-        agentId: "news-agent",
-        trigger: "user",
-        summary: "抓取新闻全文",
-        meta: {
-          action: "fetch-articles",
-          itemId
-        }
-      });
-
-      const state = options.store.getState();
-      const item = state.news.items.find((candidate) => candidate.id === itemId);
-
-      if (!item) {
-        throw new Error(`Unknown news item: ${itemId}`);
-      }
-
-      const articlesByRawItemId = new Map<string, NewsArticleBody>(
-        state.newsBodies.map((article) => [article.rawItemId, article])
-      );
-
-      return {
-        itemId,
-        articles: item.rawItemIds
-          .map((rawItemId) => articlesByRawItemId.get(rawItemId))
-          .filter((article): article is NewsArticleBody => article !== undefined)
-      };
     },
     async analyzeNewsItem(itemId) {
       await this.runSystemTask({

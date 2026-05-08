@@ -19,8 +19,7 @@ import {
   SortableContext,
   rectSortingStrategy,
   sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy
+  useSortable
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -54,6 +53,7 @@ import { homeImageAssets } from "../image-assets";
 import {
   HOME_MODULE_DEFINITIONS,
   HOME_MODULE_SIZE_OPTIONS,
+  canShowHomeModuleInNavigation,
   getHomeModuleGeometry,
   getHomeModulePreviewSize,
   loadHomeLayout,
@@ -75,13 +75,14 @@ const railItems: Array<{
   label: string;
   stamp: string;
   to: string;
+  moduleId?: HomeModuleId;
 }> = [
   { key: "home", label: "工作台", stamp: "00", to: "/" },
   { key: "manage", label: "管理", stamp: "01", to: "/manage" },
-  { key: "news", label: "热点情报", stamp: "02", to: "/news" },
-  { key: "topics", label: "选题", stamp: "03", to: "/topics" },
-  { key: "ledger", label: "记账", stamp: "04", to: "/ledger" },
-  { key: "todo", label: "待办", stamp: "05", to: "/todo" }
+  { key: "news", label: "热点情报", stamp: "02", to: "/news", moduleId: "news" },
+  { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
+  { key: "ledger", label: "记账", stamp: "04", to: "/ledger", moduleId: "ledger" },
+  { key: "todo", label: "待办", stamp: "05", to: "/todo", moduleId: "todo" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -91,6 +92,14 @@ const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITI
   HOME_MODULE_DEFINITIONS.map((definition) => [definition.id, definition])
 );
 const moduleSizeLabels = new Map(HOME_MODULE_SIZE_OPTIONS.map((item) => [item.value, item.label]));
+const newsCategoryFilters: Array<[NewsFilter, string]> = [
+  ["all", "全部"],
+  ["ai-models", "模型"],
+  ["ai-products", "产品"],
+  ["industry", "行业"],
+  ["paper", "论文"],
+  ["tip", "技巧"]
+];
 
 const moduleFramesBySize: Record<HomeModuleSize, string> = {
   max: homeImageAssets.newsPanelFrame,
@@ -265,7 +274,7 @@ function useHomeLayoutPreferences() {
     layout,
     updateModule: (
       id: HomeModuleId,
-      patch: Partial<Pick<HomeModulePreference, "visible" | "size" | "collapsed">>
+      patch: Partial<Pick<HomeModulePreference, "visible" | "showInNavigation" | "size" | "collapsed">>
     ) => {
       applyLayoutUpdate((current) => updateHomeModulePreference(current, id, patch));
     },
@@ -331,7 +340,8 @@ export function CommandRail({
   onThemeChange,
   rightMeta: _rightMeta,
   clockLine,
-  showNavigation = true
+  showNavigation = true,
+  navigationLayout
 }: {
   activeSection: RailSection;
   expanded: boolean;
@@ -341,6 +351,7 @@ export function CommandRail({
   rightMeta: Array<{ label: string; value: string }>;
   clockLine: string;
   showNavigation?: boolean;
+  navigationLayout?: readonly HomeModulePreference[];
 }) {
   const railStyle = {
     "--route-frame": `url("${homeImageAssets.routeFrame}")`
@@ -348,6 +359,11 @@ export function CommandRail({
   const [dateTimePart, weekdayPart] = clockLine.split(" · ");
   const timeLabel = dateTimePart?.slice(11, 16) ?? clockLine;
   const dateLabel = [dateTimePart?.slice(5, 10), weekdayPart].filter(Boolean).join(" ");
+  const navigationPreferences = navigationLayout ?? loadHomeLayout();
+  const shownNavigationIds = new Set(
+    navigationPreferences.filter((item) => item.showInNavigation).map((item) => item.id)
+  );
+  const visibleRailItems = railItems.filter((item) => !item.moduleId || shownNavigationIds.has(item.moduleId));
 
   return (
     <header
@@ -356,7 +372,7 @@ export function CommandRail({
     >
       {showNavigation ? (
         <nav className="command-rail__nav" aria-label="主导航">
-          {railItems.map((item) => {
+          {visibleRailItems.map((item) => {
             const active = activeSection === item.key;
 
             return (
@@ -420,59 +436,79 @@ export function CommandRail({
 function NewsPanel({
   items,
   updatedAt,
+  size,
   filter,
   onFilterChange
 }: {
   items: NewsItem[];
   updatedAt: string | null;
+  size: HomeModuleSize;
   filter: NewsFilter;
   onFilterChange: (next: NewsFilter) => void;
 }) {
   const filteredItems = items.filter((item) => filter === "all" || item.category === filter);
+  const lead = filteredItems[0];
+  const visibleItemsBySize: Record<HomeModuleSize, number> = {
+    max: 8,
+    large: 5,
+    medium: 3,
+    smaller: 3,
+    small: 2
+  };
+  const showFilters = size === "max" || size === "large" || size === "medium";
+  const showSummary = size === "max" || size === "large" || size === "smaller";
+  const showSources = size === "max" || size === "large";
 
   return (
-    <aside className="edge-panel edge-panel--news edge-panel--ops">
+    <aside className={`edge-panel edge-panel--news edge-panel--ops news-panel news-panel--${size}`}>
       <div className="edge-panel__header">
         <div>
-          <p className="eyebrow">Decision Feed</p>
+          <p className="eyebrow">AI HOT Feed</p>
           <h2>AI 热点</h2>
         </div>
         <div className="edge-panel__actions">
           <span className="panel-stamp">{updatedAt ? `刷新 ${formatTime(updatedAt)}` : "等待刷新"}</span>
         </div>
       </div>
-      <div className="filter-strip" role="tablist" aria-label="热点筛选">
-        {[
-          ["all", "全部"],
-          ["ai", "AI"],
-          ["technology", "科技"],
-          ["economy", "经济"],
-          ["entertainment", "娱乐"],
-          ["world", "国际"]
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={`filter-chip${filter === value ? " is-active" : ""}`}
-            onClick={() => onFilterChange(value as NewsFilter)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+
+      {size === "max" && lead ? (
+        <Link to="/news" className="news-panel__lead">
+          <span>{lead.sources[0] ?? "AI HOT"}</span>
+          <strong>{lead.title}</strong>
+          <p>{lead.summary}</p>
+        </Link>
+      ) : null}
+
+      {showFilters ? (
+        <div className="filter-strip" role="tablist" aria-label="热点筛选">
+          {newsCategoryFilters.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`filter-chip${filter === value ? " is-active" : ""}`}
+              onClick={() => onFilterChange(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <div className="edge-panel__scroll">
         {filteredItems.length > 0 ? (
-          filteredItems.map((item) => (
+          filteredItems.slice(size === "max" && lead ? 1 : 0, visibleItemsBySize[size]).map((item) => (
             <Link key={item.id} to="/news" className="intel-item">
               <div className="intel-item__head">
-                <span className="intel-source">{item.sourceCount} 信源</span>
+                <span className="intel-source">{item.sources[0] ?? "AI HOT"}</span>
                 <span className="intel-time">{formatTime(item.updatedAt)}</span>
               </div>
               <h3>{item.title}</h3>
-              <ul>
-                <li>{item.summary}</li>
-                <li>{item.sources.slice(0, 3).join(" / ")}</li>
-              </ul>
+              {showSummary ? (
+                <ul>
+                  <li>{item.summary}</li>
+                  {showSources ? <li>{item.sources.slice(0, 3).join(" / ")}</li> : null}
+                </ul>
+              ) : null}
             </Link>
           ))
         ) : (
@@ -480,7 +516,7 @@ function NewsPanel({
         )}
       </div>
       <div className="ops-panel-footer">
-        <span>联动分析</span>
+        <span>{filteredItems.length} 条 AI HOT</span>
         <img src={homeImageAssets.iconMore} alt="" aria-hidden="true" />
       </div>
     </aside>
@@ -1108,18 +1144,21 @@ function renderHomeModuleContent({
   id,
   dashboard,
   newsFilter,
-  onNewsFilterChange
+  onNewsFilterChange,
+  size
 }: {
   id: HomeModuleId;
   dashboard: DashboardData;
   newsFilter: NewsFilter;
   onNewsFilterChange: (next: NewsFilter) => void;
+  size: HomeModuleSize;
 }) {
   if (id === "news") {
     return (
       <NewsPanel
         items={dashboard.news.items}
         updatedAt={dashboard.news.lastUpdatedAt}
+        size={size}
         filter={newsFilter}
         onFilterChange={onNewsFilterChange}
       />
@@ -1156,50 +1195,31 @@ function renderHomeModuleContent({
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;
 }
 
-function SortableManageItem({
+function ManageItem({
   preference,
   onVisibleChange,
-  onSizeChange,
-  onToggleCollapsed
+  onNavigationChange,
+  onSizeChange
 }: {
   preference: HomeModulePreference;
   onVisibleChange: (visible: boolean) => void;
+  onNavigationChange: (visible: boolean) => void;
   onSizeChange: (size: HomeModuleSize) => void;
-  onToggleCollapsed: () => void;
 }) {
   const definition = getModuleDefinition(preference.id);
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({
-    id: preference.id
-  });
-  const sortableStyle = {
-    transform: CSS.Transform.toString(transform),
-    transition
-  } as CSSProperties;
+  const supportsNavigation = canShowHomeModuleInNavigation(preference.id);
 
   return (
-    <article
-      ref={setNodeRef}
-      className={`manage-item${isDragging ? " is-dragging" : ""}`}
-      style={sortableStyle}
-      {...attributes}
-      {...listeners}
-    >
+    <article className="manage-item">
       <div className="manage-item__identity">
-        <span>拖拽</span>
+        <span>{String(preference.order + 1).padStart(2, "0")}</span>
         <div>
           <strong>{definition.label}</strong>
           <p>{definition.description}</p>
         </div>
       </div>
 
-      <label className="manage-switch" onPointerDown={(event) => event.stopPropagation()}>
+      <label className="manage-switch">
         <input
           type="checkbox"
           checked={preference.visible}
@@ -1208,7 +1228,17 @@ function SortableManageItem({
         <span>{preference.visible ? "展示" : "隐藏"}</span>
       </label>
 
-      <label className="manage-select" onPointerDown={(event) => event.stopPropagation()}>
+      <label className={`manage-switch${supportsNavigation ? "" : " is-disabled"}`}>
+        <input
+          type="checkbox"
+          checked={supportsNavigation && preference.showInNavigation}
+          disabled={!supportsNavigation}
+          onChange={(event) => onNavigationChange(event.target.checked)}
+        />
+        <span>{supportsNavigation ? (preference.showInNavigation ? "导航展示" : "不进导航") : "未接入导航"}</span>
+      </label>
+
+      <label className="manage-select">
         <span>大小</span>
         <select
           value={preference.size}
@@ -1221,15 +1251,6 @@ function SortableManageItem({
           ))}
         </select>
       </label>
-
-      <button
-        type="button"
-        className="manage-item__state"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={onToggleCollapsed}
-      >
-        {preference.collapsed ? "展开" : "收起"}
-      </button>
     </article>
   );
 }
@@ -1238,9 +1259,9 @@ export function HomeManagePage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
-  const { layout, updateModule, moveModule, resetLayout } = useHomeLayoutPreferences();
-  const { activeId, sensors, handleDragStart, handleDragEnd, handleDragCancel } = useSortableModuleDnd(moveModule);
+  const { layout, updateModule, resetLayout } = useHomeLayoutPreferences();
   const visibleCount = layout.filter((item) => item.visible).length;
+  const navigationCount = layout.filter((item) => item.showInNavigation).length;
 
   return (
     <main className="workspace workspace--ops">
@@ -1251,58 +1272,54 @@ export function HomeManagePage() {
         themeKey={themeKey}
         onThemeChange={setThemeKey}
         clockLine={clockLine}
+        navigationLayout={layout}
         rightMeta={[
           { label: "modules", value: String(layout.length) },
           { label: "visible", value: String(visibleCount) },
-          { label: "storage", value: "local" }
+          { label: "nav", value: String(navigationCount) }
         ]}
       />
 
       <section className="manage-shell">
         <div className="manage-shell__header">
           <div>
-            <p className="eyebrow">Home Modules</p>
+            <p className="eyebrow">Module Registry</p>
             <h1>首页模块管理</h1>
+            <p>配置首页展示、导航入口和模块尺寸。新模块会按注册顺序进入这里，默认不打扰现有导航。</p>
           </div>
           <button type="button" onClick={resetLayout}>
             恢复默认布局
           </button>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <SortableContext items={layout.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-            <div className="manage-list">
-              {layout.map((preference) => (
-                <SortableManageItem
-                  key={preference.id}
-                  preference={preference}
-                  onVisibleChange={(visible) => updateModule(preference.id, { visible })}
-                  onSizeChange={(size) => updateModule(preference.id, { size })}
-                  onToggleCollapsed={() => updateModule(preference.id, { collapsed: !preference.collapsed })}
-                />
-              ))}
-            </div>
-          </SortableContext>
-          <DragOverlay>
-            {activeId ? (
-              <div className="manage-item manage-item--drag-overlay">
-                <div className="manage-item__identity">
-                  <span>拖拽</span>
-                  <div>
-                    <strong>{getModuleDefinition(activeId).label}</strong>
-                    <p>{getModuleDefinition(activeId).description}</p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        <div className="manage-overview" aria-label="模块配置摘要">
+          <div>
+            <span>总模块</span>
+            <strong>{layout.length}</strong>
+          </div>
+          <div>
+            <span>首页展示</span>
+            <strong>{visibleCount}</strong>
+          </div>
+          <div>
+            <span>导航展示</span>
+            <strong>{navigationCount}</strong>
+          </div>
+        </div>
+
+        <div className="manage-list">
+          {layout.map((preference) => (
+            <ManageItem
+              key={preference.id}
+              preference={preference}
+              onVisibleChange={(visible) => updateModule(preference.id, { visible })}
+              onNavigationChange={(showInNavigation) =>
+                updateModule(preference.id, { showInNavigation })
+              }
+              onSizeChange={(size) => updateModule(preference.id, { size })}
+            />
+          ))}
+        </div>
       </section>
     </main>
   );
@@ -1345,6 +1362,7 @@ export function DashboardPage() {
         themeKey={themeKey}
         onThemeChange={setThemeKey}
         clockLine={clockLine}
+        navigationLayout={layout}
         rightMeta={[
           { label: "agents", value: String(dashboard.agents.length) },
           { label: "tasks", value: String(dashboard.recentTasks.length) },
@@ -1377,7 +1395,8 @@ export function DashboardPage() {
                     id: preference.id,
                     dashboard,
                     newsFilter,
-                    onNewsFilterChange: setNewsFilter
+                    onNewsFilterChange: setNewsFilter,
+                    size: preference.size
                   })}
                 </SortableHomeModuleShell>
               ))
@@ -1402,7 +1421,8 @@ export function DashboardPage() {
                 id: activePreference.id,
                 dashboard,
                 newsFilter,
-                onNewsFilterChange: setNewsFilter
+                onNewsFilterChange: setNewsFilter,
+                size: activePreference.size
               })}
             </HomeModuleShell>
           ) : null}

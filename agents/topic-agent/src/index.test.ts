@@ -88,7 +88,7 @@ describe("topic agent", () => {
                 id: "news-ai-agent",
                 title: "AI agents reshape personal workspaces",
                 summary: "多个信源显示，AI agents 正在进入个人桌面工作台。",
-                category: "ai",
+                category: "ai-products",
                 importance: "high",
                 sourceCount: 3,
                 sources: ["AI Daily", "Model Wire"],
@@ -144,7 +144,7 @@ describe("topic agent", () => {
                 title: "OpenAI GPT-5.1 improves coding agents for enterprise teams",
                 summary:
                   "GPT-5.1、Gemini 3 与 Claude Code 的更新都指向更强的代码审查、自动修复和企业知识库集成。",
-                category: "ai",
+                category: "ai-products",
                 importance: "high",
                 sourceCount: 4,
                 sources: ["OpenAI Blog", "AI Daily"],

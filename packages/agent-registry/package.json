@@ -2,5 +2,8 @@
   "name": "@agent-zy/agent-registry",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts"
+  "exports": {
+    ".": "./src/index.ts",
+    "./sub-agents": "./src/sub-agents.ts"
+  }
 }

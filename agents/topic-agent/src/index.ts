@@ -176,7 +176,14 @@ function scoreLabel(score: number): TopicScoreLabel {
 }
 
 function scoreNews(item: NewsItem): number {
-  const categoryScore = item.category === "ai" ? 28 : item.category === "technology" ? 16 : 6;
+  const categoryScore =
+    item.category === "ai-models" || item.category === "ai-products"
+      ? 28
+      : item.category === "paper"
+        ? 18
+        : item.category === "tip"
+          ? 16
+          : 10;
   const importanceScore = item.importance === "high" ? 24 : item.importance === "medium" ? 14 : 6;
   const sourceScore = Math.min(item.sourceCount, 4) * 7;
   const title = `${item.title} ${item.summary}`.toLowerCase();
@@ -214,7 +221,10 @@ function createNewsTopic(item: NewsItem, batchId: string, createdAt: string, ind
     title: `用「${item.title}」讲清 ${signalLabel} 能解决什么问题`,
     hook: `从“${item.summary}”切入，提炼一个观众能马上判断利弊的实际问题。`,
     summary: `适合做成 3-5 分钟短视频或图文：先讲热点新闻发生了什么，再讲相关技术、模型或产品如何解决“${problem}”。`,
-    audience: item.category === "ai" ? "AI 工具用户、知识博主、效率型创作者" : "关注科技趋势的泛 AI 受众",
+    audience:
+      item.category === "ai-models" || item.category === "ai-products"
+        ? "AI 工具用户、知识博主、效率型创作者"
+        : "关注科技趋势的泛 AI 受众",
     angle,
     contentDirection: `围绕 ${signalLabel}，解决“${problem}”这个实际问题；结构为热点新闻背景、技术或模型能力、可落地场景、避坑建议。`,
     whyNow: `${sourceLabel} 已集中出现 ${signalLabel} 相关信号，适合趁热把新闻转译成可执行判断。`,

@@ -1,12 +1,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 
-import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
-import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
-import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
-import { manifest as scheduleManifest } from "@agent-zy/schedule-agent/manifest";
-import { manifest as topicManifest } from "@agent-zy/topic-agent/manifest";
 import { createAgentRegistry } from "@agent-zy/agent-registry";
+import { SUB_AGENT_MANIFESTS } from "@agent-zy/agent-registry/sub-agents";
 import { createHeuristicRouterModel, createHybridRouter } from "@agent-zy/router-core";
 
 import { createAgentWorkerPool } from "./runtime/agent-pool";
@@ -22,13 +18,7 @@ export function createControlPlaneApp(options?: {
   const app = Fastify();
   const eventBus = createEventBus();
   const registry = createAgentRegistry();
-  registry.registerMany([
-    ledgerManifest,
-    scheduleManifest,
-    newsManifest,
-    topicManifest,
-    historyManifest
-  ]);
+  registry.registerMany(SUB_AGENT_MANIFESTS);
 
   const store = createControlPlaneStore(options?.dataDir ?? ".agent-zy-data");
   const router = createHybridRouter({
@@ -77,50 +67,10 @@ export function createControlPlaneApp(options?: {
     return orchestrator.generateTopics(body);
   });
 
-  app.post("/api/news/sources", async (request) => {
-    const body = request.body as {
-      name: string;
-      url: string;
-      category: "ai" | "technology" | "economy" | "entertainment" | "world";
-    };
-
-    return orchestrator.addNewsSource(body);
-  });
-
-  app.patch("/api/news/sources/:id", async (request) => {
-    const params = request.params as {
-      id: string;
-    };
-    const body = (request.body ?? {}) as Partial<{
-      name: string;
-      url: string;
-      category: "ai" | "technology" | "economy" | "entertainment" | "world";
-      enabled: boolean;
-    }>;
-
-    return orchestrator.updateNewsSource(params.id, body);
-  });
-
-  app.delete("/api/news/sources/:id", async (request) => {
-    const params = request.params as {
-      id: string;
-    };
-
-    return orchestrator.removeNewsSource(params.id);
-  });
-
   app.post("/api/news/refresh", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
 
     return orchestrator.refreshNews(body);
-  });
-
-  app.post("/api/news/items/:id/articles", async (request) => {
-    const params = request.params as {
-      id: string;
-    };
-
-    return orchestrator.fetchNewsItemArticles(params.id);
   });
 
   app.post("/api/news/items/:id/analyze", async (request) => {

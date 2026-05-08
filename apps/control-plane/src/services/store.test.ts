@@ -42,7 +42,7 @@ describe("control-plane store", () => {
               id: "news-1",
               title: "placeholder",
               summary: "placeholder",
-              category: "ai",
+              category: "ai-products",
               importance: "low",
               sourceCount: 1,
               sources: ["AI Daily"],
@@ -55,7 +55,7 @@ describe("control-plane store", () => {
               id: "raw-1",
               sourceId: "source-1",
               sourceName: "AI Daily",
-              category: "ai",
+              category: "ai-products",
               title: "placeholder",
               url: "https://news.example.com/story",
               publishedAt: "2026-04-23T10:00:00.000Z",
@@ -68,7 +68,7 @@ describe("control-plane store", () => {
               id: "source-1",
               name: "AI Daily",
               url: "data:application/rss+xml;charset=utf-8,placeholder",
-              category: "ai",
+              category: "ai-products",
               enabled: true,
               createdAt: "2026-04-23T08:00:00.000Z"
             }

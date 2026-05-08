@@ -83,11 +83,11 @@ export interface ScheduleState {
 }
 
 export type NewsCategory =
-  | "ai"
-  | "technology"
-  | "economy"
-  | "entertainment"
-  | "world";
+  | "ai-models"
+  | "ai-products"
+  | "industry"
+  | "paper"
+  | "tip";
 export type NewsImportance = "low" | "medium" | "high";
 
 export interface NewsSource {
@@ -156,7 +156,7 @@ export interface NewsState {
   lastUpdatedAt: string | null;
   lastSummarizedAt: string | null;
   lastSummaryInputItemIds: string[];
-  lastSummaryProvider: "llm" | "fallback" | "none";
+  lastSummaryProvider: "aihot" | "llm" | "fallback" | "none";
   lastSummaryError: string | null;
   status: "idle" | "refreshing";
 }

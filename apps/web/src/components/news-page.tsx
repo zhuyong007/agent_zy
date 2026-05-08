@@ -2,23 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type {
-  NewsCategory,
-  NewsItem,
-  NewsItemArticlesResponse,
-  NewsSource
-} from "@agent-zy/shared-types";
+import type { NewsCategory, NewsItem, NewsRawItem } from "@agent-zy/shared-types";
 
 import {
-  addNewsSource,
   analyzeNewsItem,
-  deleteNewsSource,
   fetchNews,
-  fetchNewsItemArticles,
   openDashboardStream,
-  refreshNews,
-  summarizeNews,
-  updateNewsSource
+  refreshNews
 } from "../api";
 import { CommandRail, useLiveClock, useThemePreference } from "./dashboard-page";
 
@@ -26,11 +16,11 @@ const categories: Array<{
   value: NewsCategory;
   label: string;
 }> = [
-  { value: "ai", label: "AI" },
-  { value: "technology", label: "科技" },
-  { value: "economy", label: "经济" },
-  { value: "entertainment", label: "娱乐" },
-  { value: "world", label: "国际" }
+  { value: "ai-models", label: "模型" },
+  { value: "ai-products", label: "产品" },
+  { value: "industry", label: "行业" },
+  { value: "paper", label: "论文" },
+  { value: "tip", label: "技巧" }
 ];
 
 const importanceLabels: Record<NewsItem["importance"], string> = {
@@ -39,19 +29,12 @@ const importanceLabels: Record<NewsItem["importance"], string> = {
   low: "低"
 };
 
-const summaryProviderLabels: Record<"llm" | "fallback" | "none", string> = {
-  llm: "LLM",
-  fallback: "本地降级",
-  none: "未触发"
+const summaryProviderLabels: Record<"aihot" | "llm" | "fallback" | "none", string> = {
+  aihot: "AI HOT",
+  llm: "旧版归纳",
+  fallback: "旧版归纳",
+  none: "未同步"
 };
-
-function createSourceDraft() {
-  return {
-    name: "",
-    url: "",
-    category: "ai" as NewsCategory
-  };
-}
 
 function formatDateTime(timestamp?: string | null) {
   if (!timestamp) {
@@ -78,124 +61,6 @@ function trimErrorLabel(error: string | null) {
   return error.length > 42 ? `${error.slice(0, 42)}...` : error;
 }
 
-function SourceRow(props: {
-  source: NewsSource;
-  editing: boolean;
-  draft: ReturnType<typeof createSourceDraft>;
-  busy: boolean;
-  deleting: boolean;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onDraftChange: (
-    field: keyof ReturnType<typeof createSourceDraft>,
-    value: string
-  ) => void;
-  onSaveEdit: () => void;
-  onToggleEnabled: () => void;
-  onDelete: () => void;
-}) {
-  const {
-    source,
-    editing,
-    draft,
-    busy,
-    deleting,
-    onStartEdit,
-    onCancelEdit,
-    onDraftChange,
-    onSaveEdit,
-    onToggleEnabled,
-    onDelete
-  } = props;
-
-  return (
-    <article className={`news-source-row${editing ? " is-editing" : ""}`}>
-      {editing ? (
-        <>
-          <div className="news-source-row__form">
-            <input
-              value={draft.name}
-              onChange={(event) => onDraftChange("name", event.target.value)}
-              placeholder="信源名称"
-            />
-            <input
-              value={draft.url}
-              onChange={(event) => onDraftChange("url", event.target.value)}
-              placeholder="https://..."
-            />
-            <select
-              value={draft.category}
-              onChange={(event) => onDraftChange("category", event.target.value)}
-            >
-              {categories.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="news-source-row__actions">
-            <button
-              type="button"
-              className="news-source-action news-source-action--primary"
-              onClick={onSaveEdit}
-              disabled={busy}
-            >
-              {busy ? "保存中" : "保存"}
-            </button>
-            <button type="button" className="news-source-action" onClick={onCancelEdit}>
-              取消
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="news-source-row__body">
-            <div className="news-source-row__title">
-              <strong>{source.name}</strong>
-              <span
-                className={`news-source-status${
-                  source.enabled ? " is-enabled" : " is-disabled"
-                }`}
-              >
-                {source.enabled ? "启用中" : "已停用"}
-              </span>
-            </div>
-            <a href={source.url} target="_blank" rel="noreferrer">
-              {source.url}
-            </a>
-            <div className="news-source-row__meta">
-              <small>{categoryLabel(source.category)}</small>
-              <small>最近抓取 {formatDateTime(source.lastFetchedAt)}</small>
-            </div>
-          </div>
-          <div className="news-source-row__actions">
-            <button type="button" className="news-source-action" onClick={onStartEdit}>
-              编辑
-            </button>
-            <button
-              type="button"
-              className="news-source-action"
-              onClick={onToggleEnabled}
-              disabled={busy}
-            >
-              {busy ? "处理中" : source.enabled ? "停用" : "启用"}
-            </button>
-            <button
-              type="button"
-              className="news-source-action news-source-action--danger"
-              onClick={onDelete}
-              disabled={deleting}
-            >
-              {deleting ? "删除中" : "删除"}
-            </button>
-          </div>
-        </>
-      )}
-    </article>
-  );
-}
-
 function NewsDigestItem({
   item,
   selected,
@@ -217,16 +82,44 @@ function NewsDigestItem({
       <div className="news-digest-item__body">
         <div className="news-digest-item__meta">
           <span>{categoryLabel(item.category)}</span>
-          <span>{item.sourceCount} 个信源</span>
+          <span>{item.sources[0] ?? "AI HOT"}</span>
           <time>{formatDateTime(item.updatedAt)}</time>
         </div>
         <h2>{item.title}</h2>
         <div className="news-digest-item__summary">
-          <span>概括</span>
+          <span>摘要</span>
           <p>{item.summary}</p>
         </div>
       </div>
     </button>
+  );
+}
+
+function SourceLinkList({
+  item,
+  rawItemsById
+}: {
+  item: NewsItem;
+  rawItemsById: Map<string, NewsRawItem>;
+}) {
+  const rawItems = item.rawItemIds
+    .map((rawItemId) => rawItemsById.get(rawItemId))
+    .filter((rawItem): rawItem is NewsRawItem => rawItem !== undefined);
+
+  if (rawItems.length === 0) {
+    return <div className="edge-empty">这条热点暂无原文链接。</div>;
+  }
+
+  return (
+    <div className="news-source-links">
+      {rawItems.map((rawItem) => (
+        <a key={rawItem.id} href={rawItem.url} target="_blank" rel="noreferrer">
+          <span>{rawItem.sourceName}</span>
+          <strong>{rawItem.title}</strong>
+          <small>{formatDateTime(rawItem.publishedAt)}</small>
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -237,17 +130,6 @@ export function NewsPage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [category, setCategory] = useState<NewsCategory | "all">("all");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [sourceDraft, setSourceDraft] = useState(createSourceDraft);
-  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [editingSourceDraft, setEditingSourceDraft] = useState(createSourceDraft);
-  const [updatingSourceId, setUpdatingSourceId] = useState<string | null>(null);
-  const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
-  const [expandedArticleItemId, setExpandedArticleItemId] = useState<string | null>(null);
-  const [articleLoadingItemId, setArticleLoadingItemId] = useState<string | null>(null);
-  const [articleCache, setArticleCache] = useState<
-    Record<string, NewsItemArticlesResponse>
-  >({});
-  const [articleErrors, setArticleErrors] = useState<Record<string, string>>({});
 
   const newsQuery = useQuery({
     queryKey: ["news"],
@@ -260,71 +142,8 @@ export function NewsPage() {
     });
   }, [queryClient]);
 
-  const addSourceMutation = useMutation({
-    mutationFn: addNewsSource,
-    onSuccess: async (news) => {
-      queryClient.setQueryData(["news"], news);
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard"]
-      });
-      setSourceDraft(createSourceDraft());
-    }
-  });
-
-  const updateSourceMutation = useMutation({
-    mutationFn: (input: {
-      sourceId: string;
-      patch: Partial<{
-        name: string;
-        url: string;
-        category: NewsCategory;
-        enabled: boolean;
-      }>;
-    }) => updateNewsSource(input.sourceId, input.patch),
-    onMutate: (input) => {
-      setUpdatingSourceId(input.sourceId);
-    },
-    onSuccess: async (news) => {
-      queryClient.setQueryData(["news"], news);
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard"]
-      });
-      setEditingSourceId(null);
-    },
-    onSettled: () => {
-      setUpdatingSourceId(null);
-    }
-  });
-
-  const deleteSourceMutation = useMutation({
-    mutationFn: deleteNewsSource,
-    onMutate: (sourceId) => {
-      setDeletingSourceId(sourceId);
-    },
-    onSuccess: async (news) => {
-      queryClient.setQueryData(["news"], news);
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard"]
-      });
-      setEditingSourceId(null);
-    },
-    onSettled: () => {
-      setDeletingSourceId(null);
-    }
-  });
-
   const refreshMutation = useMutation({
     mutationFn: () => refreshNews("manual"),
-    onSuccess: async (news) => {
-      queryClient.setQueryData(["news"], news);
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard"]
-      });
-    }
-  });
-
-  const summarizeMutation = useMutation({
-    mutationFn: summarizeNews,
     onSuccess: async (news) => {
       queryClient.setQueryData(["news"], news);
       await queryClient.invalidateQueries({
@@ -340,35 +159,11 @@ export function NewsPage() {
     }
   });
 
-  const fetchArticlesMutation = useMutation({
-    mutationFn: fetchNewsItemArticles,
-    onMutate: (itemId) => {
-      setArticleLoadingItemId(itemId);
-      setArticleErrors((current) => {
-        const next = { ...current };
-        delete next[itemId];
-        return next;
-      });
-    },
-    onSuccess: (response) => {
-      setArticleCache((current) => ({
-        ...current,
-        [response.itemId]: response
-      }));
-    },
-    onError: (error, itemId) => {
-      setArticleErrors((current) => ({
-        ...current,
-        [itemId]:
-          error instanceof Error ? error.message : "抓取新闻全文失败，请稍后重试。"
-      }));
-    },
-    onSettled: () => {
-      setArticleLoadingItemId(null);
-    }
-  });
-
   const news = newsQuery.data;
+  const rawItemsById = useMemo(
+    () => new Map((news?.rawItems ?? []).map((rawItem) => [rawItem.id, rawItem])),
+    [news?.rawItems]
+  );
   const items = useMemo(() => {
     const source = news?.items ?? [];
     return source.filter((item) => category === "all" || item.category === category);
@@ -379,11 +174,6 @@ export function NewsPage() {
     items[0] ??
     news?.items[0] ??
     null;
-  const selectedArticles = selectedItem ? articleCache[selectedItem.id]?.articles ?? [] : [];
-  const selectedArticleError =
-    selectedItem && articleErrors[selectedItem.id] ? articleErrors[selectedItem.id] : null;
-  const articlesExpanded = selectedItem ? expandedArticleItemId === selectedItem.id : false;
-  const articlesLoading = selectedItem ? articleLoadingItemId === selectedItem.id : false;
 
   useEffect(() => {
     if (!selectedItemId && selectedItem) {
@@ -391,31 +181,8 @@ export function NewsPage() {
     }
   }, [selectedItem, selectedItemId]);
 
-  useEffect(() => {
-    if (!news) {
-      return;
-    }
-
-    const validItemIds = new Set(news.items.map((item) => item.id));
-
-    setArticleCache((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([itemId]) => validItemIds.has(itemId))
-      )
-    );
-    setArticleErrors((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([itemId]) => validItemIds.has(itemId))
-      )
-    );
-
-    if (expandedArticleItemId && !validItemIds.has(expandedArticleItemId)) {
-      setExpandedArticleItemId(null);
-    }
-  }, [expandedArticleItemId, news]);
-
   if (newsQuery.isLoading || !news) {
-    return <div className="loading-shell">正在连接热点新闻工作台...</div>;
+    return <div className="loading-shell">正在连接 AI HOT 工作台...</div>;
   }
 
   return (
@@ -428,162 +195,32 @@ export function NewsPage() {
         onThemeChange={setThemeKey}
         clockLine={clockLine}
         rightMeta={[
-          { label: "sources", value: String(news.sources.length) },
+          { label: "source", value: "AI HOT" },
           { label: "stories", value: String(news.items.length) },
-          { label: "整理于", value: formatDateTime(news.lastSummarizedAt ?? news.lastUpdatedAt) }
+          { label: "同步于", value: formatDateTime(news.lastUpdatedAt) }
         ]}
       />
 
-      <section className="news-board">
-        <aside className="news-sources">
-          <div className="news-section-heading">
-            <p className="eyebrow">Source Control</p>
-            <h1>热点新闻</h1>
-          </div>
-
-          <form
-            className="news-source-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!sourceDraft.name.trim() || !sourceDraft.url.trim()) {
-                return;
-              }
-
-              addSourceMutation.mutate({
-                name: sourceDraft.name.trim(),
-                url: sourceDraft.url.trim(),
-                category: sourceDraft.category
-              });
-            }}
-          >
-            <input
-              value={sourceDraft.name}
-              onChange={(event) =>
-                setSourceDraft((value) => ({ ...value, name: event.target.value }))
-              }
-              placeholder="信源名称"
-            />
-            <input
-              value={sourceDraft.url}
-              onChange={(event) =>
-                setSourceDraft((value) => ({ ...value, url: event.target.value }))
-              }
-              placeholder="https://..."
-            />
-            <select
-              value={sourceDraft.category}
-              onChange={(event) =>
-                setSourceDraft((value) => ({
-                  ...value,
-                  category: event.target.value as NewsCategory
-                }))
-              }
-            >
-              {categories.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <button type="submit" disabled={addSourceMutation.isPending}>
-              {addSourceMutation.isPending ? "添加中" : "添加信源"}
-            </button>
-          </form>
-
-          <div className="news-source-list">
-            {news.sources.length > 0 ? (
-              news.sources.map((source) => (
-                <SourceRow
-                  key={source.id}
-                  source={source}
-                  editing={editingSourceId === source.id}
-                  draft={editingSourceDraft}
-                  busy={updatingSourceId === source.id}
-                  deleting={deletingSourceId === source.id}
-                  onStartEdit={() => {
-                    setEditingSourceId(source.id);
-                    setEditingSourceDraft({
-                      name: source.name,
-                      url: source.url,
-                      category: source.category
-                    });
-                  }}
-                  onCancelEdit={() => {
-                    setEditingSourceId(null);
-                    setEditingSourceDraft(createSourceDraft());
-                  }}
-                  onDraftChange={(field, value) =>
-                    setEditingSourceDraft((current) => ({
-                      ...current,
-                      [field]:
-                        field === "category" ? (value as NewsCategory) : value
-                    }))
-                  }
-                  onSaveEdit={() => {
-                    if (
-                      !editingSourceDraft.name.trim() ||
-                      !editingSourceDraft.url.trim()
-                    ) {
-                      return;
-                    }
-
-                    updateSourceMutation.mutate({
-                      sourceId: source.id,
-                      patch: {
-                        name: editingSourceDraft.name.trim(),
-                        url: editingSourceDraft.url.trim(),
-                        category: editingSourceDraft.category
-                      }
-                    });
-                  }}
-                  onToggleEnabled={() =>
-                    updateSourceMutation.mutate({
-                      sourceId: source.id,
-                      patch: {
-                        enabled: !source.enabled
-                      }
-                    })
-                  }
-                  onDelete={() => {
-                    const confirmed =
-                      typeof window === "undefined"
-                        ? true
-                        : window.confirm(`删除信源“${source.name}”并清空关联历史？`);
-
-                    if (confirmed) {
-                      deleteSourceMutation.mutate(source.id);
-                    }
-                  }}
-                />
-              ))
-            ) : (
-              <div className="edge-empty">还没有信源，添加后再刷新。</div>
-            )}
-          </div>
-
-          <div className="news-source-footer">
+      <section className="news-board news-board--aihot">
+        <section className="news-digest news-digest--aihot">
+          <div className="news-aihot-hero">
+            <div>
+              <p className="eyebrow">AI HOT Feed</p>
+              <h1>AI 热点</h1>
+              <p>精选 AI 动态按时间同步，摘要来自 aihot.virxact.com。</p>
+            </div>
             <button
               type="button"
               className="news-refresh-button"
               onClick={() => refreshMutation.mutate()}
               disabled={refreshMutation.isPending}
             >
-              {refreshMutation.isPending ? "刷新中..." : "立即增量刷新"}
-            </button>
-            <button
-              type="button"
-              className="news-refresh-button"
-              onClick={() => summarizeMutation.mutate()}
-              disabled={summarizeMutation.isPending || news.rawItems.length === 0}
-            >
-              {summarizeMutation.isPending ? "整理中..." : "重新整理"}
+              {refreshMutation.isPending ? "同步中..." : "同步 AI HOT"}
             </button>
           </div>
-        </aside>
 
-        <section className="news-digest">
           <div className="news-digest__toolbar">
-            <div className="news-category-tabs" role="tablist" aria-label="新闻分类">
+            <div className="news-category-tabs" role="tablist" aria-label="AI HOT 分类">
               <button
                 type="button"
                 className={category === "all" ? "is-active" : ""}
@@ -603,17 +240,16 @@ export function NewsPage() {
               ))}
             </div>
             <div className="news-digest__status">
-              <span>30m 自动 + 手动触发</span>
-              <span>{news.lastSummaryInputItemIds.length} 条进入本轮归纳</span>
-              <span>归纳来源 {summaryProviderLabels[news.lastSummaryProvider]}</span>
+              <span>来源 {summaryProviderLabels[news.lastSummaryProvider]}</span>
+              <span>{news.lastSummaryInputItemIds.length} 条本轮同步</span>
               <span>
                 {news.lastSummarizedAt
-                  ? `最近整理 ${formatDateTime(news.lastSummarizedAt)}`
-                  : "最近整理 --"}
+                  ? `最近同步 ${formatDateTime(news.lastSummarizedAt)}`
+                  : "最近同步 --"}
               </span>
               {trimErrorLabel(news.lastSummaryError) ? (
                 <span title={news.lastSummaryError ?? undefined}>
-                  降级原因 {trimErrorLabel(news.lastSummaryError)}
+                  错误 {trimErrorLabel(news.lastSummaryError)}
                 </span>
               ) : null}
             </div>
@@ -630,12 +266,12 @@ export function NewsPage() {
                 />
               ))
             ) : (
-              <div className="edge-empty">当前分类还没有归纳后的热点，点击刷新获取最新内容。</div>
+              <div className="edge-empty">当前分类还没有 AI HOT 条目，点击同步获取最新内容。</div>
             )}
           </div>
         </section>
 
-        <aside className="news-inspector">
+        <aside className="news-inspector news-inspector--aihot">
           {selectedItem ? (
             <>
               <div className="news-section-heading">
@@ -644,114 +280,32 @@ export function NewsPage() {
               </div>
               <div className="news-inspector__metrics">
                 <div>
-                  <span>重要程度</span>
-                  <strong>{importanceLabels[selectedItem.importance]}</strong>
+                  <span>分类</span>
+                  <strong>{categoryLabel(selectedItem.category)}</strong>
                 </div>
                 <div>
-                  <span>信源覆盖</span>
-                  <strong>{selectedItem.sourceCount}</strong>
+                  <span>重要程度</span>
+                  <strong>{importanceLabels[selectedItem.importance]}</strong>
                 </div>
                 <div>
                   <span>更新时间</span>
                   <strong>{formatDateTime(selectedItem.updatedAt)}</strong>
                 </div>
               </div>
-              <div className="news-inspector__sources">
-                {selectedItem.sources.map((source) => (
-                  <span key={source}>{source}</span>
-                ))}
-              </div>
               <p className="news-inspector__summary">{selectedItem.summary}</p>
-
-              <div className="news-inspector__actions">
-                <button
-                  type="button"
-                  className="news-analyze-button"
-                  disabled={analyzeMutation.isPending}
-                  onClick={() => analyzeMutation.mutate(selectedItem.id)}
-                >
-                  {selectedItem.analysis
-                    ? "重新分析"
-                    : analyzeMutation.isPending
-                      ? "分析中..."
-                      : "分析这条新闻"}
-                </button>
-                <button
-                  type="button"
-                  className="news-analyze-button"
-                  disabled={articlesLoading}
-                  onClick={() => {
-                    if (articlesExpanded) {
-                      setExpandedArticleItemId(null);
-                      return;
-                    }
-
-                    setExpandedArticleItemId(selectedItem.id);
-
-                    const cached = articleCache[selectedItem.id];
-                    const needsFetch =
-                      !cached ||
-                      cached.articles.length === 0 ||
-                      cached.articles.every((article) => article.status === "failed");
-
-                    if (needsFetch) {
-                      fetchArticlesMutation.mutate(selectedItem.id);
-                    }
-                  }}
-                >
-                  {articlesLoading
-                    ? "抓取原文中..."
-                    : articlesExpanded
-                      ? "收起原文"
-                      : "查看全部原文"}
-                </button>
-              </div>
-
-              {articlesExpanded ? (
-                <div className="news-articles">
-                  <div className="news-articles__header">
-                    <span>原文缓存</span>
-                    <strong>{selectedArticles.length} 篇</strong>
-                  </div>
-
-                  {selectedArticleError ? (
-                    <div className="news-inline-error">{selectedArticleError}</div>
-                  ) : null}
-
-                  {selectedArticles.length > 0 ? (
-                    selectedArticles.map((article) => (
-                      <article className="news-article-card" key={article.rawItemId}>
-                        <div className="news-article-card__head">
-                          <div>
-                            <strong>{article.sourceName}</strong>
-                            <small>{article.status === "ready" ? "已缓存全文" : "抓取失败"}</small>
-                          </div>
-                          <a href={article.url} target="_blank" rel="noreferrer">
-                            打开链接
-                          </a>
-                        </div>
-                        {article.status === "ready" ? (
-                          <>
-                            <p className="news-article-card__excerpt">{article.excerpt}</p>
-                            <pre className="news-article-card__content">
-                              {article.content}
-                            </pre>
-                          </>
-                        ) : (
-                          <p className="news-article-card__error">
-                            {article.error ?? "正文抓取失败"}
-                          </p>
-                        )}
-                      </article>
-                    ))
-                  ) : articlesLoading ? (
-                    <div className="edge-empty">正在抓取该热点的全文内容...</div>
-                  ) : (
-                    <div className="edge-empty">点击按钮后抓取并缓存相关新闻全文。</div>
-                  )}
-                </div>
-              ) : null}
-
+              <SourceLinkList item={selectedItem} rawItemsById={rawItemsById} />
+              <button
+                type="button"
+                className="news-analyze-button"
+                disabled={analyzeMutation.isPending}
+                onClick={() => analyzeMutation.mutate(selectedItem.id)}
+              >
+                {selectedItem.analysis
+                  ? "重新分析"
+                  : analyzeMutation.isPending
+                    ? "分析中..."
+                    : "分析这条热点"}
+              </button>
               {selectedItem.analysis ? (
                 <div className="news-analysis">
                   <div>
@@ -775,7 +329,7 @@ export function NewsPage() {
               ) : null}
             </>
           ) : (
-            <div className="edge-empty">选择一条热点查看信源覆盖、全文和按需分析。</div>
+            <div className="edge-empty">选择一条 AI HOT 条目查看摘要、原文和按需分析。</div>
           )}
           <Link to="/" className="panel-link">
             返回首页工作台
