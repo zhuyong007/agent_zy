@@ -7,19 +7,11 @@ export type ThemeOption = {
 };
 
 export const THEME_STORAGE_KEY = "agent-zy-theme";
-export const DEFAULT_THEME_KEY = "harbor-frame";
+export const DEFAULT_THEME_KEY = "night";
 
 export const themeOptions = [
-  { key: "ice", label: "冰蓝", kind: "color" },
-  { key: "mint", label: "薄荷", kind: "color" },
-  { key: "amber", label: "琥珀", kind: "color" },
-  { key: "rose", label: "玫瑰", kind: "color" },
-  { key: "violet", label: "紫罗兰", kind: "color" },
-  { key: "harbor-frame", label: "港蓝", kind: "color" },
-  { key: "midnight-agent", label: "夜航", kind: "color" },
-  { key: "quiet-forest", label: "暮林", kind: "image" },
-  { key: "silent-coast", label: "静海", kind: "image" },
-  { key: "warm-studio", label: "晨室", kind: "image" }
+  { key: "day", label: "日间", kind: "color" },
+  { key: "night", label: "夜间", kind: "color" }
 ] as const satisfies readonly ThemeOption[];
 
 export type ThemeKey = (typeof themeOptions)[number]["key"];

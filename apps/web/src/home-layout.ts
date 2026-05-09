@@ -33,6 +33,14 @@ export interface HomeModulePreviewSize {
   height: number;
 }
 
+export interface HomeModulePlacement {
+  id: HomeModuleId;
+  columnStart: number;
+  rowStart: number;
+  columns: number;
+  rows: number;
+}
+
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const COLLAPSED_HOME_MODULE_ROWS = 1;
 const HOME_GRID_UNIT = 88;
@@ -98,6 +106,124 @@ export function getHomeModulePreviewSize(size: HomeModuleSize, collapsed: boolea
     width: geometry.columns * HOME_GRID_UNIT + Math.max(geometry.columns - 1, 0) * HOME_GRID_GAP,
     height: geometry.rows * HOME_GRID_UNIT + Math.max(geometry.rows - 1, 0) * HOME_GRID_GAP
   };
+}
+
+function rangesOverlap(
+  firstStart: number,
+  firstSpan: number,
+  secondStart: number,
+  secondSpan: number
+) {
+  return firstStart < secondStart + secondSpan && secondStart < firstStart + firstSpan;
+}
+
+function canPlaceModule(
+  occupiedCells: Set<string>,
+  columnStart: number,
+  rowStart: number,
+  columns: number,
+  rows: number,
+  maxColumns: number
+) {
+  if (columnStart + columns - 1 > maxColumns) {
+    return false;
+  }
+
+  for (let row = rowStart; row < rowStart + rows; row += 1) {
+    for (let column = columnStart; column < columnStart + columns; column += 1) {
+      if (occupiedCells.has(`${row}:${column}`)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function occupyModuleCells(
+  occupiedCells: Set<string>,
+  columnStart: number,
+  rowStart: number,
+  columns: number,
+  rows: number
+) {
+  for (let row = rowStart; row < rowStart + rows; row += 1) {
+    for (let column = columnStart; column < columnStart + columns; column += 1) {
+      occupiedCells.add(`${row}:${column}`);
+    }
+  }
+}
+
+export function getHomeModulePlacements(
+  layout: readonly HomeModulePreference[],
+  maxColumns: number
+): HomeModulePlacement[] {
+  const visibleLayout = normalizeOrder([...layout]).filter((item) => item.visible);
+  const safeMaxColumns = Math.max(1, maxColumns);
+  const occupiedCells = new Set<string>();
+  const baselinePlacements = visibleLayout.map((item) => {
+    const expandedGeometry = getHomeModuleGeometry(item.size, false);
+    const columns = Math.min(expandedGeometry.columns, safeMaxColumns);
+    let rowStart = 1;
+    let columnStart = 1;
+
+    while (true) {
+      const nextColumn = Array.from({ length: safeMaxColumns - columns + 1 }, (_, index) => index + 1).find(
+        (candidateColumn) =>
+          canPlaceModule(occupiedCells, candidateColumn, rowStart, columns, expandedGeometry.rows, safeMaxColumns)
+      );
+
+      if (nextColumn) {
+        columnStart = nextColumn;
+        break;
+      }
+
+      rowStart += 1;
+    }
+
+    occupyModuleCells(occupiedCells, columnStart, rowStart, columns, expandedGeometry.rows);
+
+    return {
+      id: item.id,
+      columnStart,
+      rowStart,
+      columns,
+      rows: getHomeModuleGeometry(item.size, item.collapsed).rows,
+      expandedRows: expandedGeometry.rows,
+      collapsed: item.collapsed
+    };
+  });
+
+  return baselinePlacements.map((placement) => {
+    const upwardOffset = baselinePlacements.reduce((offset, candidate) => {
+      if (!candidate.collapsed || candidate.id === placement.id) {
+        return offset;
+      }
+
+      const collapsedRows = getHomeModuleGeometry(
+        visibleLayout.find((item) => item.id === candidate.id)?.size ?? "smaller",
+        true
+      ).rows;
+      const rowDelta = candidate.expandedRows - collapsedRows;
+      const isDirectlyBelow = placement.rowStart === candidate.rowStart + candidate.expandedRows;
+      const isBelowSameStack = rangesOverlap(
+        placement.columnStart,
+        placement.columns,
+        candidate.columnStart,
+        candidate.columns
+      );
+
+      return isDirectlyBelow && isBelowSameStack ? offset + rowDelta : offset;
+    }, 0);
+
+    return {
+      id: placement.id,
+      columnStart: placement.columnStart,
+      rowStart: Math.max(1, placement.rowStart - upwardOffset),
+      columns: placement.columns,
+      rows: placement.rows
+    };
+  });
 }
 
 function getBrowserStorage(): StorageLike | null {

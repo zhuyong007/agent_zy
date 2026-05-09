@@ -3,7 +3,6 @@ import type {
   HistoryPostPayload,
   HistoryPushState,
   LedgerState,
-  NewsArticleBody,
   NewsState,
   NotificationKind,
   ScheduleState,
@@ -68,7 +67,6 @@ export interface AgentExecutionResult {
     ledger?: LedgerState;
     schedule?: ScheduleState;
     news?: NewsState;
-    newsBodies?: NewsArticleBody[];
     topics?: TopicState;
     historyPush?: HistoryPushState;
   };

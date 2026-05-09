@@ -20,15 +20,17 @@ function createTopicState(topics?: Partial<TopicState>): TopicState {
 
 function createNewsState(news?: Partial<NewsState>): NewsState {
   return {
-    items: [],
-    rawItems: [],
-    sources: [],
+    feed: {
+      count: 0,
+      hasNext: false,
+      nextCursor: null,
+      items: []
+    },
+    daily: null,
+    dailyArchive: [],
     lastFetchedAt: null,
     lastUpdatedAt: null,
-    lastSummarizedAt: null,
-    lastSummaryInputItemIds: [],
-    lastSummaryProvider: "none",
-    lastSummaryError: null,
+    lastError: null,
     status: "idle",
     ...news
   };
@@ -51,7 +53,6 @@ function createState(state?: {
       pendingReview: null
     },
     news: createNewsState(state?.news),
-    newsBodies: [],
     topics: createTopicState(state?.topics),
     historyPush: {
       lastTriggeredDate: null
@@ -83,19 +84,23 @@ describe("topic agent", () => {
       createRequest(
         createState({
           news: {
-            items: [
+            feed: {
+              count: 1,
+              hasNext: false,
+              nextCursor: null,
+              items: [
               {
                 id: "news-ai-agent",
                 title: "AI agents reshape personal workspaces",
+                titleEn: null,
                 summary: "多个信源显示，AI agents 正在进入个人桌面工作台。",
                 category: "ai-products",
-                importance: "high",
-                sourceCount: 3,
-                sources: ["AI Daily", "Model Wire"],
-                rawItemIds: ["raw-ai-agent"],
-                updatedAt: "2026-05-06T05:30:00.000Z"
+                source: "AI Daily",
+                url: "https://example.com/ai-agent",
+                publishedAt: "2026-05-06T05:30:00.000Z"
               }
-            ]
+              ]
+            }
           }
         })
       )
@@ -138,20 +143,24 @@ describe("topic agent", () => {
       createRequest(
         createState({
           news: {
-            items: [
+            feed: {
+              count: 1,
+              hasNext: false,
+              nextCursor: null,
+              items: [
               {
                 id: "news-gpt51-coding",
                 title: "OpenAI GPT-5.1 improves coding agents for enterprise teams",
+                titleEn: null,
                 summary:
                   "GPT-5.1、Gemini 3 与 Claude Code 的更新都指向更强的代码审查、自动修复和企业知识库集成。",
                 category: "ai-products",
-                importance: "high",
-                sourceCount: 4,
-                sources: ["OpenAI Blog", "AI Daily"],
-                rawItemIds: ["raw-gpt51-coding"],
-                updatedAt: "2026-05-06T05:30:00.000Z"
+                source: "OpenAI Blog",
+                url: "https://example.com/gpt51",
+                publishedAt: "2026-05-06T05:30:00.000Z"
               }
-            ]
+              ]
+            }
           }
         })
       )

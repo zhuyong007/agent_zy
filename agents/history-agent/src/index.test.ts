@@ -19,18 +19,19 @@ function createState(): AppState {
       pendingReview: null
     },
     news: {
-      items: [],
-      rawItems: [],
-      sources: [],
+      feed: {
+        count: 0,
+        hasNext: false,
+        nextCursor: null,
+        items: []
+      },
+      daily: null,
+      dailyArchive: [],
       lastFetchedAt: null,
       lastUpdatedAt: null,
-      lastSummarizedAt: null,
-      lastSummaryInputItemIds: [],
-      lastSummaryProvider: "none",
-      lastSummaryError: null,
+      lastError: null,
       status: "idle"
     },
-    newsBodies: [],
     topics: {
       current: [],
       history: [],

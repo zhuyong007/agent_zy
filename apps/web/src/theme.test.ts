@@ -35,12 +35,18 @@ class MemoryStorage implements Storage {
 }
 
 describe("theme", () => {
-  test("defines color and image themes for the switcher", () => {
-    expect(themeOptions.filter((theme) => theme.kind === "color")).toHaveLength(7);
-    expect(themeOptions.filter((theme) => theme.kind === "image")).toHaveLength(3);
+  test("defines day and night themes for the icon switcher", () => {
+    expect(themeOptions).toHaveLength(2);
+    expect(themeOptions.filter((theme) => theme.kind === "color")).toHaveLength(2);
+    expect(themeOptions.map((theme) => theme.key)).toEqual(["day", "night"]);
     expect(themeOptions).toContainEqual({
-      key: "harbor-frame",
-      label: "港蓝",
+      key: "day",
+      label: "日间",
+      kind: "color"
+    });
+    expect(themeOptions).toContainEqual({
+      key: "night",
+      label: "夜间",
       kind: "color"
     });
   });
@@ -50,7 +56,7 @@ describe("theme", () => {
 
     storage.setItem("agent-zy-theme", "unknown-theme");
 
-    expect(getInitialThemeKey(storage)).toBe("harbor-frame");
+    expect(getInitialThemeKey(storage)).toBe("night");
     expect(isThemeKey("unknown-theme")).toBe(false);
   });
 
@@ -58,10 +64,10 @@ describe("theme", () => {
     const storage = new MemoryStorage();
     const target: { dataset: { theme?: string } } = { dataset: {} };
 
-    persistTheme("quiet-forest", storage);
-    applyTheme("quiet-forest", target);
+    persistTheme("day", storage);
+    applyTheme("day", target);
 
-    expect(getInitialThemeKey(storage)).toBe("quiet-forest");
-    expect(target.dataset.theme).toBe("quiet-forest");
+    expect(getInitialThemeKey(storage)).toBe("day");
+    expect(target.dataset.theme).toBe("day");
   });
 });

@@ -1,6 +1,6 @@
 import { defineAgent } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
-import type { NewsItem, TopicIdea, TopicScoreLabel, TopicState } from "@agent-zy/shared-types";
+import type { NewsFeedItem, TopicIdea, TopicScoreLabel, TopicState } from "@agent-zy/shared-types";
 
 const TOPIC_INTERVAL_MS = 3 * 60 * 60 * 1000;
 const CURRENT_TOPIC_LIMIT = 5;
@@ -141,7 +141,7 @@ function describeSignal(models: string[], technologies: string[]): string {
   return signals.length > 0 ? signals.join(" / ") : "当前 AI 热点";
 }
 
-function describeProblem(technologies: string[], item: NewsItem): string {
+function describeProblem(technologies: string[], item: NewsFeedItem): string {
   const text = `${item.title} ${item.summary}`;
 
   if (technologies.some((signal) => ["代码审查", "自动修复", "coding agents"].includes(signal))) {
@@ -175,7 +175,7 @@ function scoreLabel(score: number): TopicScoreLabel {
   return "low";
 }
 
-function scoreNews(item: NewsItem): number {
+function scoreNews(item: NewsFeedItem, index = 0): number {
   const categoryScore =
     item.category === "ai-models" || item.category === "ai-products"
       ? 28
@@ -184,8 +184,8 @@ function scoreNews(item: NewsItem): number {
         : item.category === "tip"
           ? 16
           : 10;
-  const importanceScore = item.importance === "high" ? 24 : item.importance === "medium" ? 14 : 6;
-  const sourceScore = Math.min(item.sourceCount, 4) * 7;
+  const recencyScore = index < 3 ? 24 : index < 10 ? 14 : 6;
+  const sourceScore = item.source ? 7 : 0;
   const title = `${item.title} ${item.summary}`.toLowerCase();
   const keywordScore = [
     "ai",
@@ -200,18 +200,18 @@ function scoreNews(item: NewsItem): number {
     ? 16
     : 4;
 
-  return Math.min(98, 24 + categoryScore + importanceScore + sourceScore + keywordScore);
+  return Math.min(98, 24 + categoryScore + recencyScore + sourceScore + keywordScore);
 }
 
-function createNewsTopic(item: NewsItem, batchId: string, createdAt: string, index: number): TopicIdea {
-  const score = scoreNews(item);
-  const sourceLabel = item.sources.slice(0, 3).join(" / ") || "现有热点";
+function createNewsTopic(item: NewsFeedItem, batchId: string, createdAt: string, index: number): TopicIdea {
+  const score = scoreNews(item, index);
+  const sourceLabel = item.source || "现有热点";
   const signalText = `${item.title} ${item.summary}`;
   const models = extractModelSignals(signalText);
   const technologies = extractTechnologySignals(signalText);
   const signalLabel = describeSignal(models, technologies);
   const problem = describeProblem(technologies, item);
-  const angle = item.importance === "high"
+  const angle = index < 3
     ? "用“为什么现在突然重要”开场，再拆成事实、影响、行动建议三段。"
     : "用一个具体使用场景开场，再补充趋势解释和避坑提醒。";
 
@@ -267,7 +267,7 @@ function createEvergreenTopic(
 function generateTopics(request: AgentExecutionRequest): TopicState {
   const requestedAt = request.requestedAt;
   const batchId = `topic-batch-${requestedAt}`;
-  const newsItems = [...request.state.news.items]
+  const newsItems = [...request.state.news.feed.items]
     .sort((left, right) => scoreNews(right) - scoreNews(left))
     .slice(0, CURRENT_TOPIC_LIMIT);
   const generated: TopicIdea[] = newsItems.map((item, index) =>

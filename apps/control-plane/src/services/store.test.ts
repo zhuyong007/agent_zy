@@ -18,7 +18,7 @@ describe("control-plane store", () => {
     }
   });
 
-  it("removes legacy placeholder news data during load", () => {
+  it("normalizes legacy news data to the AI HOT state shape during load", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);
 
@@ -81,19 +81,7 @@ describe("control-plane store", () => {
           lastSummaryError: null,
           status: "idle"
         },
-        newsBodies: [
-          {
-            rawItemId: "raw-1",
-            sourceId: "source-1",
-            sourceName: "AI Daily",
-            title: "placeholder",
-            url: "https://news.example.com/story",
-            content: "placeholder body",
-            excerpt: "placeholder body",
-            fetchedAt: "2026-04-23T10:06:00.000Z",
-            status: "ready"
-          }
-        ],
+        newsBodies: [],
         nightlyReview: {
           lastTriggeredDate: null
         }
@@ -104,10 +92,16 @@ describe("control-plane store", () => {
     const store = createControlPlaneStore(dataDir);
     const state = store.getState() as any;
 
-    expect(state.news.sources).toHaveLength(0);
-    expect(state.news.rawItems).toHaveLength(0);
-    expect(state.news.items).toHaveLength(0);
-    expect(state.newsBodies).toHaveLength(0);
+    expect(state.news).toMatchObject({
+      feed: {
+        items: []
+      },
+      daily: null,
+      dailyArchive: [],
+      lastError: null,
+      status: "idle"
+    });
+    expect("newsBodies" in state).toBe(false);
   });
 
   it("keeps persistent notifications until they are explicitly cancelled", () => {

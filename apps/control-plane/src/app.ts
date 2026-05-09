@@ -73,14 +73,6 @@ export function createControlPlaneApp(options?: {
     return orchestrator.refreshNews(body);
   });
 
-  app.post("/api/news/items/:id/analyze", async (request) => {
-    const params = request.params as {
-      id: string;
-    };
-
-    return orchestrator.analyzeNewsItem(params.id);
-  });
-
   app.post("/api/chat", async (request) => {
     const body = request.body as {
       message: string;

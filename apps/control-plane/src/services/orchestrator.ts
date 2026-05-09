@@ -55,7 +55,6 @@ export interface ControlPlaneOrchestrator {
   handleChat(message: string): Promise<ChatResponse>;
   getNews(): NewsState;
   refreshNews(meta?: Record<string, unknown>): Promise<NewsState>;
-  analyzeNewsItem(itemId: string): Promise<NewsState>;
   getTopics(): TopicState;
   generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
   cancelNotification(notificationId: string): ReturnType<ControlPlaneStore["getDashboard"]>;
@@ -235,19 +234,6 @@ export function createControlPlaneOrchestrator(options: {
         meta: {
           ...meta,
           action: "refresh"
-        }
-      });
-
-      return options.store.getState().news;
-    },
-    async analyzeNewsItem(itemId) {
-      await this.runSystemTask({
-        agentId: "news-agent",
-        trigger: "user",
-        summary: "分析热点新闻",
-        meta: {
-          action: "analyze",
-          itemId
         }
       });
 

@@ -6,7 +6,6 @@ import type {
   ChatMessage,
   DashboardData,
   LedgerEntry,
-  NewsArticleBody,
   HistoryPushState,
   NotificationRecord,
   NewsState,
@@ -70,18 +69,19 @@ function createInitialState(): AppState {
       pendingReview: null
     },
     news: {
-      items: [],
-      rawItems: [],
-      sources: [],
+      feed: {
+        count: 0,
+        hasNext: false,
+        nextCursor: null,
+        items: []
+      },
+      daily: null,
+      dailyArchive: [],
       lastFetchedAt: null,
       lastUpdatedAt: null,
-      lastSummarizedAt: null,
-      lastSummaryInputItemIds: [],
-      lastSummaryProvider: "none",
-      lastSummaryError: null,
+      lastError: null,
       status: "idle"
     },
-    newsBodies: [],
     topics: {
       current: [],
       history: [],
@@ -100,146 +100,21 @@ function createInitialState(): AppState {
   };
 }
 
-function isLegacyPlaceholderSourceUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "example.com" || host.endsWith(".example.com");
-  } catch {
-    return false;
-  }
-}
-
-function migrateLegacyNewsState(news: NewsState): NewsState {
-  const rawItemsBySourceId = new Map<string, NewsState["rawItems"]>();
-
-  for (const rawItem of news.rawItems) {
-    rawItemsBySourceId.set(rawItem.sourceId, [
-      ...(rawItemsBySourceId.get(rawItem.sourceId) ?? []),
-      rawItem
-    ]);
-  }
-
-  const legacySourceIds = new Set(
-    news.sources
-      .filter((source) => {
-        if (isLegacyPlaceholderSourceUrl(source.url)) {
-          return true;
-        }
-
-        const rawItems = rawItemsBySourceId.get(source.id) ?? [];
-        const isSyntheticFeed = /^data:/i.test(source.url);
-
-        return (
-          isSyntheticFeed &&
-          rawItems.length > 0 &&
-          rawItems.every((rawItem) => isLegacyPlaceholderSourceUrl(rawItem.url))
-        );
-      })
-      .map((source) => source.id)
-  );
-
-  if (legacySourceIds.size === 0) {
-    return news;
-  }
-
-  const sources = news.sources.filter((source) => !legacySourceIds.has(source.id));
-  const rawItems = news.rawItems.filter((rawItem) => !legacySourceIds.has(rawItem.sourceId));
-  const rawById = new Map(rawItems.map((rawItem) => [rawItem.id, rawItem]));
-  const items = news.items
-    .map((item) => {
-      const matchedRawItems = item.rawItemIds
-        .map((rawItemId) => rawById.get(rawItemId))
-        .filter((rawItem): rawItem is NewsState["rawItems"][number] => rawItem !== undefined);
-
-      if (matchedRawItems.length === 0) {
-        return null;
-      }
-
-      const sourceNames = [...new Set(matchedRawItems.map((rawItem) => rawItem.sourceName))];
-
-      return {
-        ...item,
-        rawItemIds: matchedRawItems.map((rawItem) => rawItem.id),
-        sources: sourceNames,
-        sourceCount: sourceNames.length
-      };
-    })
-    .filter((item): item is NewsState["items"][number] => item !== null);
-  const lastSummaryInputItemIds = news.lastSummaryInputItemIds.filter((rawItemId) =>
-    rawById.has(rawItemId)
-  );
-
-  return {
-    ...news,
-    items,
-    rawItems,
-    sources,
-    lastSummarizedAt: items.length > 0 ? news.lastSummarizedAt : null,
-    lastSummaryInputItemIds,
-    lastSummaryProvider:
-      lastSummaryInputItemIds.length > 0 ? news.lastSummaryProvider : "none",
-    lastSummaryError: lastSummaryInputItemIds.length > 0 ? news.lastSummaryError : null
-  };
-}
-
 function normalizeNewsState(news: Partial<NewsState> | undefined): NewsState {
-  const normalized: NewsState = {
-    items: news?.items ?? [],
-    rawItems: news?.rawItems ?? [],
-    sources: news?.sources ?? [],
+  return {
+    feed: news?.feed ?? {
+      count: 0,
+      hasNext: false,
+      nextCursor: null,
+      items: []
+    },
+    daily: news?.daily ?? null,
+    dailyArchive: news?.dailyArchive ?? [],
     lastFetchedAt: news?.lastFetchedAt ?? news?.lastUpdatedAt ?? null,
     lastUpdatedAt: news?.lastUpdatedAt ?? null,
-    lastSummarizedAt: news?.lastSummarizedAt ?? null,
-    lastSummaryInputItemIds: news?.lastSummaryInputItemIds ?? [],
-    lastSummaryProvider: news?.lastSummaryProvider ?? (news?.lastSummarizedAt ? "fallback" : "none"),
-    lastSummaryError: news?.lastSummaryError ?? null,
+    lastError: news?.lastError ?? null,
     status: news?.status ?? "idle"
   };
-
-  const resetEmptySummaryState =
-    normalized.items.length === 0 && normalized.rawItems.length === 0
-      ? {
-          ...normalized,
-          lastSummarizedAt: null,
-          lastSummaryInputItemIds: [],
-          lastSummaryProvider: "none" as const,
-          lastSummaryError: null
-        }
-      : normalized;
-
-  return migrateLegacyNewsState(resetEmptySummaryState);
-}
-
-function normalizeNewsBodies(
-  newsBodies: NewsArticleBody[] | undefined,
-  news: NewsState
-): NewsArticleBody[] {
-  const rawItemsById = new Map(news.rawItems.map((rawItem) => [rawItem.id, rawItem]));
-  const sourcesById = new Map(news.sources.map((source) => [source.id, source]));
-  const deduped = new Map<string, NewsArticleBody>();
-
-  for (const body of newsBodies ?? []) {
-    const rawItem = rawItemsById.get(body.rawItemId);
-    const source = sourcesById.get(body.sourceId);
-
-    if (!rawItem || !source || rawItem.sourceId !== source.id) {
-      continue;
-    }
-
-    deduped.set(body.rawItemId, {
-      ...body,
-      sourceName: source.name,
-      title: rawItem.title,
-      url: rawItem.url,
-      excerpt: body.excerpt ?? "",
-      fetchedAt: body.fetchedAt ?? rawItem.fetchedAt,
-      status: body.status ?? "failed"
-    });
-  }
-
-  return [...deduped.values()].sort((left, right) =>
-    right.fetchedAt.localeCompare(left.fetchedAt)
-  );
 }
 
 function normalizeTopicIdea(topic: TopicIdea): TopicIdea {
@@ -271,11 +146,13 @@ function normalizeHistoryPushState(
 
 function normalizeAppState(state: AppState): AppState {
   const news = normalizeNewsState(state.news);
+  const { newsBodies: _newsBodies, ...stateWithoutLegacyNewsBodies } = state as AppState & {
+    newsBodies?: unknown;
+  };
 
   return {
-    ...state,
+    ...stateWithoutLegacyNewsBodies,
     news,
-    newsBodies: normalizeNewsBodies(state.newsBodies, news),
     topics: normalizeTopicState(state.topics),
     historyPush: normalizeHistoryPushState(state.historyPush)
   };
@@ -368,12 +245,6 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       if (result.domainUpdates?.news) {
         state.news = result.domainUpdates.news;
-      }
-
-      if (result.domainUpdates?.newsBodies) {
-        state.newsBodies = result.domainUpdates.newsBodies;
-      } else if (result.domainUpdates?.news) {
-        state.newsBodies = normalizeNewsBodies(state.newsBodies, state.news);
       }
 
       if (result.domainUpdates?.topics) {

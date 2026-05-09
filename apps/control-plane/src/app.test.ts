@@ -54,7 +54,7 @@ describe("control-plane app", () => {
     });
   });
 
-  it("syncs AI HOT items and analyzes an item on demand", async () => {
+  it("syncs AI HOT all items and daily reports", async () => {
     process.env.AIHOT_ITEMS_FIXTURE_JSON = JSON.stringify({
       count: 1,
       hasNext: false,
@@ -71,42 +71,86 @@ describe("control-plane app", () => {
         }
       ]
     });
+    process.env.AIHOT_DAILY_FIXTURE_JSON = JSON.stringify({
+      date: "2026-05-08",
+      generatedAt: "2026-05-08T11:00:00.000Z",
+      windowStart: "2026-05-07T00:00:00.000Z",
+      windowEnd: "2026-05-08T00:00:00.000Z",
+      lead: {
+        title: "今日 AI 摘要",
+        summary: "AI 产品和模型更新密集。"
+      },
+      sections: [],
+      flashes: []
+    });
+    process.env.AIHOT_DAILIES_FIXTURE_JSON = JSON.stringify({
+      count: 1,
+      items: [
+        {
+          date: "2026-05-08",
+          generatedAt: "2026-05-08T11:00:00.000Z",
+          leadTitle: "今日 AI 摘要"
+        }
+      ]
+    });
 
     const refreshResponse = await app.inject({
       method: "POST",
       url: "/api/news/refresh",
       payload: {
-        reason: "test"
+        reason: "test",
+        view: "all"
       }
     });
 
     expect(refreshResponse.statusCode).toBe(200);
     const refreshedNews = refreshResponse.json();
     expect(refreshedNews).toMatchObject({
-      lastSummaryProvider: "aihot",
-      sources: [],
-      items: [
-        expect.objectContaining({
-          title: "Claude v2.1.133 版本更新",
-          category: "ai-products",
-          sources: ["Claude Code：GitHub Releases（RSS）"]
-        })
+      feed: {
+        items: [
+          expect.objectContaining({
+            title: "Claude v2.1.133 版本更新",
+            category: "ai-products",
+            source: "Claude Code：GitHub Releases（RSS）"
+          })
+        ]
+      },
+      lastError: null
+    });
+
+    const dailyResponse = await app.inject({
+      method: "POST",
+      url: "/api/news/refresh",
+      payload: {
+        reason: "test",
+        view: "daily"
+      }
+    });
+
+    expect(dailyResponse.statusCode).toBe(200);
+    expect(dailyResponse.json()).toMatchObject({
+      daily: {
+        date: "2026-05-08",
+        lead: {
+          title: "今日 AI 摘要"
+        }
+      },
+      dailyArchive: [
+        {
+          date: "2026-05-08",
+          leadTitle: "今日 AI 摘要"
+        }
       ]
     });
+  });
 
-    const itemId = refreshedNews.items[0].id;
-
-    const analysisResponse = await app.inject({
+  it("does not expose the removed news analysis endpoint", async () => {
+    const response = await app.inject({
       method: "POST",
-      url: `/api/news/items/${itemId}/analyze`
+      url: "/api/news/items/missing/analyze"
     });
 
-    expect(analysisResponse.statusCode).toBe(200);
-    expect(analysisResponse.json().items[0].analysis).toMatchObject({
-      personalImpact: expect.any(String),
-      possibleChanges: expect.any(String),
-      relationToMe: expect.any(String)
-    });
+    expect(response.statusCode).toBe(404);
   });
 
   it("returns the current news state", async () => {
@@ -118,8 +162,10 @@ describe("control-plane app", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       status: "idle",
-      sources: expect.any(Array),
-      items: expect.any(Array)
+      feed: {
+        items: expect.any(Array)
+      },
+      dailyArchive: expect.any(Array)
     });
   });
 

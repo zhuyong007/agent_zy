@@ -27,7 +27,7 @@ import type {
   DashboardData,
   NotificationRecord,
   NewsCategory,
-  NewsItem,
+  NewsFeedItem,
   ScheduleItem,
   TopicIdea
 } from "@agent-zy/shared-types";
@@ -86,12 +86,9 @@ const railItems: Array<{
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-const colorThemes = themeOptions.filter((theme) => theme.kind === "color");
-const imageThemes = themeOptions.filter((theme) => theme.kind === "image");
 const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
   HOME_MODULE_DEFINITIONS.map((definition) => [definition.id, definition])
 );
-const moduleSizeLabels = new Map(HOME_MODULE_SIZE_OPTIONS.map((item) => [item.value, item.label]));
 const newsCategoryFilters: Array<[NewsFilter, string]> = [
   ["all", "全部"],
   ["ai-models", "模型"],
@@ -100,14 +97,6 @@ const newsCategoryFilters: Array<[NewsFilter, string]> = [
   ["paper", "论文"],
   ["tip", "技巧"]
 ];
-
-const moduleFramesBySize: Record<HomeModuleSize, string> = {
-  max: homeImageAssets.newsPanelFrame,
-  large: homeImageAssets.newsPanelFrame,
-  medium: homeImageAssets.todoPanelFrame,
-  smaller: homeImageAssets.topicPanelFrame,
-  small: homeImageAssets.routeFrame
-};
 
 export function useThemePreference() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(() => getInitialThemeKey());
@@ -217,16 +206,11 @@ function getModuleDefinition(id: HomeModuleId) {
   };
 }
 
-function getModuleSizeLabel(size: HomeModuleSize) {
-  return moduleSizeLabels.get(size) ?? size;
-}
-
 function getModuleFrameStyle(size: HomeModuleSize, collapsed: boolean) {
   const geometry = getHomeModuleGeometry(size, collapsed);
   const previewSize = getHomeModulePreviewSize(size, collapsed);
 
   return {
-    "--home-module-frame": `url("${moduleFramesBySize[size]}")`,
     "--home-module-columns": String(geometry.columns),
     "--home-module-rows": String(geometry.rows),
     "--home-module-preview-width": `${previewSize.width}px`,
@@ -236,7 +220,7 @@ function getModuleFrameStyle(size: HomeModuleSize, collapsed: boolean) {
 
 function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
   if (id === "news") {
-    return `${formatShortCount(dashboard.news.items.length)} 条热点`;
+    return `${formatShortCount(dashboard.news.feed.items.length)} 条热点`;
   }
 
   if (id === "chat") {
@@ -353,9 +337,6 @@ export function CommandRail({
   showNavigation?: boolean;
   navigationLayout?: readonly HomeModulePreference[];
 }) {
-  const railStyle = {
-    "--route-frame": `url("${homeImageAssets.routeFrame}")`
-  } as CSSProperties;
   const [dateTimePart, weekdayPart] = clockLine.split(" · ");
   const timeLabel = dateTimePart?.slice(11, 16) ?? clockLine;
   const dateLabel = [dateTimePart?.slice(5, 10), weekdayPart].filter(Boolean).join(" ");
@@ -366,10 +347,7 @@ export function CommandRail({
   const visibleRailItems = railItems.filter((item) => !item.moduleId || shownNavigationIds.has(item.moduleId));
 
   return (
-    <header
-      className={`command-rail${showNavigation ? "" : " command-rail--compact"}${expanded ? " is-expanded" : ""}`}
-      style={railStyle}
-    >
+    <header className={`command-rail${showNavigation ? "" : " command-rail--compact"}${expanded ? " is-expanded" : ""}`}>
       {showNavigation ? (
         <nav className="command-rail__nav" aria-label="主导航">
           {visibleRailItems.map((item) => {
@@ -401,33 +379,26 @@ export function CommandRail({
           <strong>{timeLabel}</strong>
           <span>{dateLabel}</span>
         </div>
-        <label className="theme-switcher theme-switcher--inline">
-          <span>theme</span>
-          <select
-            value={themeKey}
-            aria-label="切换主题"
-            onChange={(event) => {
-              if (isThemeKey(event.target.value)) {
-                onThemeChange(event.target.value);
-              }
-            }}
-          >
-            <optgroup label="主要颜色">
-              {colorThemes.map((theme) => (
-                <option key={theme.key} value={theme.key}>
-                  {theme.label}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="背景图">
-              {imageThemes.map((theme) => (
-                <option key={theme.key} value={theme.key}>
-                  {theme.label}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </label>
+        <div className="theme-switcher theme-switcher--inline" role="group" aria-label="切换主题">
+          {themeOptions.map((theme) => (
+            <button
+              key={theme.key}
+              type="button"
+              className={`theme-switcher__button theme-switcher__button--${theme.key}${
+                themeKey === theme.key ? " is-active" : ""
+              }`}
+              aria-label={theme.label}
+              aria-pressed={themeKey === theme.key}
+              onClick={() => {
+                if (isThemeKey(theme.key)) {
+                  onThemeChange(theme.key);
+                }
+              }}
+            >
+              <span aria-hidden="true" />
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );
@@ -440,24 +411,31 @@ function NewsPanel({
   filter,
   onFilterChange
 }: {
-  items: NewsItem[];
+  items: NewsFeedItem[];
   updatedAt: string | null;
   size: HomeModuleSize;
   filter: NewsFilter;
   onFilterChange: (next: NewsFilter) => void;
 }) {
   const filteredItems = items.filter((item) => filter === "all" || item.category === filter);
-  const lead = filteredItems[0];
   const visibleItemsBySize: Record<HomeModuleSize, number> = {
-    max: 8,
+    max: 7,
     large: 5,
-    medium: 3,
+    medium: 4,
     smaller: 3,
     small: 2
   };
   const showFilters = size === "max" || size === "large" || size === "medium";
   const showSummary = size === "max" || size === "large" || size === "smaller";
-  const showSources = size === "max" || size === "large";
+  const showTags = size === "max" || size === "large";
+  const showDate = size === "max" || size === "large";
+  const timelineItems = filteredItems.slice(0, visibleItemsBySize[size]);
+  const dateLabel = timelineItems[0]
+    ? new Date(timelineItems[0].publishedAt).toLocaleDateString("zh-CN", {
+        month: "long",
+        day: "numeric"
+      })
+    : "等待刷新";
 
   return (
     <aside className={`edge-panel edge-panel--news edge-panel--ops news-panel news-panel--${size}`}>
@@ -470,14 +448,6 @@ function NewsPanel({
           <span className="panel-stamp">{updatedAt ? `刷新 ${formatTime(updatedAt)}` : "等待刷新"}</span>
         </div>
       </div>
-
-      {size === "max" && lead ? (
-        <Link to="/news" className="news-panel__lead">
-          <span>{lead.sources[0] ?? "AI HOT"}</span>
-          <strong>{lead.title}</strong>
-          <p>{lead.summary}</p>
-        </Link>
-      ) : null}
 
       {showFilters ? (
         <div className="filter-strip" role="tablist" aria-label="热点筛选">
@@ -495,22 +465,29 @@ function NewsPanel({
       ) : null}
 
       <div className="edge-panel__scroll">
-        {filteredItems.length > 0 ? (
-          filteredItems.slice(size === "max" && lead ? 1 : 0, visibleItemsBySize[size]).map((item) => (
-            <Link key={item.id} to="/news" className="intel-item">
-              <div className="intel-item__head">
-                <span className="intel-source">{item.sources[0] ?? "AI HOT"}</span>
-                <span className="intel-time">{formatTime(item.updatedAt)}</span>
-              </div>
-              <h3>{item.title}</h3>
-              {showSummary ? (
-                <ul>
-                  <li>{item.summary}</li>
-                  {showSources ? <li>{item.sources.slice(0, 3).join(" / ")}</li> : null}
-                </ul>
-              ) : null}
-            </Link>
-          ))
+        {timelineItems.length > 0 ? (
+          <div className={`news-mini-timeline news-mini-timeline--${size}`}>
+            {showDate ? <div className="news-mini-timeline__date">{dateLabel}</div> : null}
+            {timelineItems.map((item) => (
+              <Link key={item.id} to="/news" className="news-mini-timeline__item">
+                <time>{formatTime(item.publishedAt)}</time>
+                <span className="news-mini-timeline__dot" aria-hidden="true" />
+                <div className="news-mini-timeline__card">
+                  <div className="intel-item__head">
+                    <span className="intel-source">{item.source}</span>
+                    <span className="intel-time">{formatTime(item.publishedAt)}</span>
+                  </div>
+                  <h3>{item.title}</h3>
+                  {showSummary ? <p>{item.summary}</p> : null}
+                  {showTags ? (
+                    <div className="news-mini-timeline__tags">
+                      <span>{newsCategoryFilters.find(([value]) => value === item.category)?.[1] ?? item.category}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </Link>
+            ))}
+          </div>
         ) : (
           <div className="edge-empty">当前筛选下没有热点摘要。</div>
         )}
@@ -1067,7 +1044,6 @@ function HomeModuleShell({
       {...(dragListeners ?? {})}
     >
       <div className="home-module__meta" aria-hidden="true">
-        <span>{getModuleSizeLabel(preference.size)}</span>
         <strong>{definition.label}</strong>
       </div>
       <div className="home-module__body">
@@ -1156,7 +1132,7 @@ function renderHomeModuleContent({
   if (id === "news") {
     return (
       <NewsPanel
-        items={dashboard.news.items}
+        items={dashboard.news.feed.items}
         updatedAt={dashboard.news.lastUpdatedAt}
         size={size}
         filter={newsFilter}

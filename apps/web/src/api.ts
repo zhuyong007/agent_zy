@@ -67,31 +67,31 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
   return response.json();
 }
 
-export async function refreshNews(reason = "manual"): Promise<NewsState> {
+export type NewsRefreshInput = {
+  reason?: string;
+  view?: "all" | "daily";
+  category?: string;
+  q?: string;
+  since?: string;
+  take?: number;
+  cursor?: string;
+  date?: string;
+};
+
+export async function refreshNews(input: NewsRefreshInput = {}): Promise<NewsState> {
   const response = await fetch(`${API_BASE}/api/news/refresh`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      reason
+      reason: "manual",
+      ...input
     })
   });
 
   if (!response.ok) {
     throw new Error("Failed to refresh news");
-  }
-
-  return response.json();
-}
-
-export async function analyzeNewsItem(itemId: string): Promise<NewsState> {
-  const response = await fetch(`${API_BASE}/api/news/items/${itemId}/analyze`, {
-    method: "POST"
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to analyze news item");
   }
 
   return response.json();

@@ -5,6 +5,7 @@ import {
   HOME_MODULE_SIZE_GEOMETRY,
   getDefaultHomeLayout,
   getHomeModuleGeometry,
+  getHomeModulePlacements,
   getHomeModulePreviewSize,
   loadHomeLayout,
   moveHomeModule,
@@ -102,6 +103,33 @@ describe("home-layout", () => {
     expect(getHomeModulePreviewSize("large", false)).toEqual({ width: 394, height: 598 });
     expect(getHomeModulePreviewSize("max", false)).toEqual({ width: 802, height: 1210 });
     expect(getHomeModulePreviewSize("medium", true)).toEqual({ width: 802, height: 88 });
+  });
+
+  test("collapsing a module only moves modules directly below its baseline position", () => {
+    const layout = [
+      { id: "news", visible: true, showInNavigation: true, size: "large", collapsed: true, order: 0 },
+      { id: "chat", visible: true, showInNavigation: false, size: "max", collapsed: false, order: 1 },
+      { id: "todo", visible: true, showInNavigation: true, size: "small", collapsed: false, order: 2 },
+      { id: "ledger", visible: true, showInNavigation: true, size: "small", collapsed: false, order: 3 }
+    ] as const;
+
+    const placements = getHomeModulePlacements(layout, 12);
+
+    expect(placements.find((item) => item.id === "news")).toMatchObject({
+      columnStart: 1,
+      rowStart: 1,
+      rows: 1
+    });
+    expect(placements.find((item) => item.id === "todo")).toMatchObject({
+      rowStart: 2
+    });
+    expect(placements.find((item) => item.id === "chat")).toMatchObject({
+      columnStart: 5,
+      rowStart: 1
+    });
+    expect(placements.find((item) => item.id === "ledger")).toMatchObject({
+      rowStart: 9
+    });
   });
 
   test("persists layout preferences and reloads them from local storage", () => {

@@ -88,82 +88,66 @@ export type NewsCategory =
   | "industry"
   | "paper"
   | "tip";
-export type NewsImportance = "low" | "medium" | "high";
 
-export interface NewsSource {
+export interface NewsFeedItem {
   id: string;
-  name: string;
-  url: string;
-  category: NewsCategory;
-  enabled: boolean;
-  createdAt: string;
-  lastFetchedAt?: string;
-}
-
-export interface NewsRawItem {
-  id: string;
-  sourceId: string;
-  sourceName: string;
-  category: NewsCategory;
   title: string;
+  titleEn: string | null;
   url: string;
+  source: string;
   publishedAt: string;
-  fetchedAt: string;
-  fingerprint: string;
-}
-
-export type NewsArticleBodyStatus = "ready" | "failed";
-
-export interface NewsArticleBody {
-  rawItemId: string;
-  sourceId: string;
-  sourceName: string;
-  title: string;
-  url: string;
-  content: string;
-  excerpt: string;
-  fetchedAt: string;
-  status: NewsArticleBodyStatus;
-  error?: string;
-}
-
-export interface NewsAnalysis {
-  generatedAt: string;
-  perspectives: string[];
-  personalImpact: string;
-  possibleChanges: string;
-  relationToMe: string;
-}
-
-export interface NewsItem {
-  id: string;
-  title: string;
   summary: string;
   category: NewsCategory;
-  importance: NewsImportance;
-  sourceCount: number;
-  sources: string[];
-  rawItemIds: string[];
-  updatedAt: string;
-  analysis?: NewsAnalysis;
+}
+
+export interface NewsFeedResponse {
+  count: number;
+  hasNext: boolean;
+  nextCursor: string | null;
+  items: NewsFeedItem[];
+}
+
+export interface NewsDailyLead {
+  title: string;
+  summary: string;
+}
+
+export interface NewsDailySectionItem {
+  title: string;
+  summary: string;
+  sourceUrl: string | null;
+  sourceName: string;
+}
+
+export interface NewsDailySection {
+  label: string;
+  items: NewsDailySectionItem[];
+}
+
+export interface NewsDailyReport {
+  date: string;
+  generatedAt: string;
+  windowStart: string | null;
+  windowEnd: string | null;
+  lead: NewsDailyLead;
+  sections: NewsDailySection[];
+  flashes: string[];
+}
+
+export interface NewsDailyArchiveItem {
+  date: string;
+  generatedAt: string;
+  leadTitle: string;
 }
 
 export interface NewsState {
-  items: NewsItem[];
-  rawItems: NewsRawItem[];
-  sources: NewsSource[];
+  feed: NewsFeedResponse;
+  daily: NewsDailyReport | null;
+  dailyArchive: NewsDailyArchiveItem[];
   lastFetchedAt: string | null;
   lastUpdatedAt: string | null;
-  lastSummarizedAt: string | null;
-  lastSummaryInputItemIds: string[];
-  lastSummaryProvider: "aihot" | "llm" | "fallback" | "none";
-  lastSummaryError: string | null;
+  lastError: string | null;
   status: "idle" | "refreshing";
-}
-
-export interface NewsItemArticlesResponse {
-  itemId: string;
-  articles: NewsArticleBody[];
 }
 
 export type TopicScoreLabel = "low" | "medium" | "high";
@@ -246,7 +230,6 @@ export interface AppState {
   ledger: LedgerState;
   schedule: ScheduleState;
   news: NewsState;
-  newsBodies: NewsArticleBody[];
   topics: TopicState;
   historyPush: HistoryPushState;
   nightlyReview: NightlyReviewState;
