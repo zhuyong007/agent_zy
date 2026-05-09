@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import type {
   ChatMessage,
   ChatResponse,
+  DashboardData,
   NewsState,
   NotificationRecord,
   TopicState,
@@ -57,6 +58,7 @@ export interface ControlPlaneOrchestrator {
   refreshNews(meta?: Record<string, unknown>): Promise<NewsState>;
   getTopics(): TopicState;
   generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
+  generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
   cancelNotification(notificationId: string): ReturnType<ControlPlaneStore["getDashboard"]>;
   runSystemTask(input: {
     agentId: string;
@@ -254,6 +256,19 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return options.store.getState().topics;
+    },
+    async generateHistory(meta = {}) {
+      await this.runSystemTask({
+        agentId: "history-agent",
+        trigger: "system",
+        summary: "生成历史知识内容",
+        meta: {
+          ...meta,
+          action: "generate"
+        }
+      });
+
+      return this.getDashboard();
     },
     cancelNotification(notificationId) {
       options.store.cancelNotification(notificationId);

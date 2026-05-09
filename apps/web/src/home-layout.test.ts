@@ -1,4 +1,5 @@
 import {
+  canShowHomeModuleInNavigation,
   DEFAULT_HOME_LAYOUT,
   HOME_LAYOUT_STORAGE_KEY,
   HOME_MODULE_DEFINITIONS,
@@ -77,6 +78,14 @@ describe("home-layout", () => {
       false
     ]);
     expect(DEFAULT_HOME_LAYOUT.every((item) => !item.collapsed)).toBe(true);
+  });
+
+  test("allows history module to opt into top navigation from manage page", () => {
+    expect(canShowHomeModuleInNavigation("history")).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "history")).toMatchObject({
+      visible: false,
+      showInNavigation: false
+    });
   });
 
   test("defines fixed homepage size geometry for the approved layout shapes", () => {

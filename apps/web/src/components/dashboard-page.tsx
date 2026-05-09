@@ -32,7 +32,7 @@ import type {
   TopicIdea
 } from "@agent-zy/shared-types";
 
-import { cancelNotification, fetchDashboard, openDashboardStream, sendChat } from "../api";
+import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, sendChat } from "../api";
 import {
   addSession,
   applyChatSuccess,
@@ -66,8 +66,13 @@ import {
   type HomeModulePreference,
   type HomeModuleSize
 } from "../home-layout";
+import {
+  buildCaptionExcerpt,
+  getHistoryHomePreviewRule,
+  getHistoryNotifications
+} from "../history-view";
 
-export type RailSection = "home" | "manage" | "news" | "topics" | "ledger" | "todo";
+export type RailSection = "home" | "manage" | "news" | "topics" | "history" | "ledger" | "todo";
 type NewsFilter = "all" | NewsCategory;
 
 const railItems: Array<{
@@ -81,8 +86,9 @@ const railItems: Array<{
   { key: "manage", label: "管理", stamp: "01", to: "/manage" },
   { key: "news", label: "热点情报", stamp: "02", to: "/news", moduleId: "news" },
   { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
-  { key: "ledger", label: "记账", stamp: "04", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "05", to: "/todo", moduleId: "todo" }
+  { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
+  { key: "ledger", label: "记账", stamp: "05", to: "/ledger", moduleId: "ledger" },
+  { key: "todo", label: "待办", stamp: "06", to: "/todo", moduleId: "todo" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -238,6 +244,11 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
 
   if (id === "topics") {
     return `${formatShortCount(dashboard.topics.current.length)} 个选题`;
+  }
+
+  if (id === "history") {
+    const historyCount = dashboard.notifications.filter((item) => item.kind === "history-post" && item.payload).length;
+    return `${formatShortCount(historyCount)} 条知识卡`;
   }
 
   return "待接入";
@@ -617,6 +628,106 @@ function TopicPanel({
         ))}
       </div>
     </Link>
+  );
+}
+
+function HistoryPanel({
+  notifications,
+  size
+}: {
+  notifications: NotificationRecord[];
+  size: HomeModuleSize;
+}) {
+  const queryClient = useQueryClient();
+  const historyNotifications = getHistoryNotifications(notifications);
+  const latestNotification = historyNotifications[0];
+  const latestPayload = latestNotification?.payload;
+  const rule = getHistoryHomePreviewRule(size);
+  const cards = latestPayload?.cards.slice(0, rule.visibleCards) ?? [];
+  const countLabel = latestPayload ? `${latestPayload.cardCount} 张图文` : "等待推送";
+  const archiveCount = historyNotifications.length;
+  const canGenerateInline = size === "max" || size === "large" || size === "medium";
+  const historyGenerateMutation = useMutation({
+    mutationFn: () => generateHistory("manual"),
+    onSuccess: (dashboard) => {
+      queryClient.setQueryData(["dashboard"], dashboard);
+    }
+  });
+
+  return (
+    <article className={`history-panel history-panel--${size}`}>
+      <div className="history-panel__header">
+        <div>
+          <p className="eyebrow">History Daily</p>
+          <h2>历史知识</h2>
+        </div>
+        <div className="history-panel__actions">
+          <span>{latestPayload ? `更新 ${formatTime(latestPayload.generatedAt)}` : "等待推送"}</span>
+          {canGenerateInline ? (
+            <button
+              type="button"
+              className="history-panel__generate"
+              onClick={() => historyGenerateMutation.mutate()}
+              disabled={historyGenerateMutation.isPending}
+            >
+              {historyGenerateMutation.isPending ? "生成中..." : "主动生成"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <Link to="/history" className="history-panel__body-link">
+        {latestNotification && latestPayload ? (
+          <>
+            <div className="history-panel__lead">
+              <strong>{latestPayload.topic}</strong>
+              {rule.showMetaLine ? (
+                <p className="history-panel__meta">
+                  <span>{countLabel}</span>
+                  <span>{archiveCount} 条存档</span>
+                </p>
+              ) : null}
+              {rule.showSummary ? <p>{latestPayload.summary}</p> : null}
+            </div>
+            {rule.showStats ? (
+              <div className="history-panel__stats">
+                <div>
+                  <span>主题库</span>
+                  <strong>{archiveCount}</strong>
+                </div>
+                <div>
+                  <span>拆卡数</span>
+                  <strong>{latestPayload.cardCount}</strong>
+                </div>
+                <div>
+                  <span>正文态</span>
+                  <strong>已生成</strong>
+                </div>
+              </div>
+            ) : null}
+            <div className="history-panel__list">
+              {cards.map((card, index) => (
+                <div key={`${latestNotification.id}-${card.title}`} className="history-panel__item">
+                  <span>{index + 1}</span>
+                  <div>
+                    <strong>{card.title}</strong>
+                    {size !== "small" ? <p>{card.imageText}</p> : null}
+                    {rule.showPrompts ? <small>{card.prompt}</small> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {rule.showCaption ? (
+              <div className="history-panel__caption">
+                <span>正文预览</span>
+                <p>{buildCaptionExcerpt(latestPayload.xiaohongshuCaption, size === "max" ? 140 : 96)}</p>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="edge-empty">还没有历史知识推送。</div>
+        )}
+      </Link>
+    </article>
   );
 }
 
@@ -1166,6 +1277,10 @@ function renderHomeModuleContent({
         generatedAt={dashboard.topics.lastGeneratedAt}
       />
     );
+  }
+
+  if (id === "history") {
+    return <HistoryPanel notifications={dashboard.notifications} size={size} />;
   }
 
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;

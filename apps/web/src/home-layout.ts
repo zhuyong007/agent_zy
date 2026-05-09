@@ -80,7 +80,7 @@ export const HOME_MODULE_DEFINITIONS = [
 ] as const satisfies readonly HomeModuleDefinition[];
 
 const sizeValues = new Set<HomeModuleSize>(HOME_MODULE_SIZE_OPTIONS.map((item) => item.value));
-const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>(["news", "topics", "ledger", "todo"]);
+const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>(["news", "topics", "ledger", "todo", "history"]);
 
 export function canShowHomeModuleInNavigation(id: HomeModuleId) {
   return HOME_MODULE_NAVIGATION_ROUTES.has(id);

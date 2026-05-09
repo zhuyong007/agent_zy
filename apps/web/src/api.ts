@@ -67,6 +67,24 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
   return response.json();
 }
 
+export async function generateHistory(reason = "manual"): Promise<DashboardData> {
+  const response = await fetch(`${API_BASE}/api/history/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reason
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to generate history");
+  }
+
+  return response.json();
+}
+
 export type NewsRefreshInput = {
   reason?: string;
   view?: "all" | "daily";

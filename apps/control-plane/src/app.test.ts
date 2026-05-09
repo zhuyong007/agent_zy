@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneApp } from "./app";
 import {
@@ -24,6 +24,13 @@ describe("control-plane app", () => {
   afterEach(() => {
     delete process.env.AIHOT_BASE_URL;
     delete process.env.AIHOT_ITEMS_FIXTURE_JSON;
+    delete process.env.AIHOT_DAILY_FIXTURE_JSON;
+    delete process.env.AIHOT_DAILIES_FIXTURE_JSON;
+    delete process.env.MODELSCOPE_API_KEY;
+    delete process.env.MODELSCOPE_BASE_URL;
+    delete process.env.MODELSCOPE_MODEL;
+    delete process.env.HISTORY_POST_FIXTURE_JSON;
+    vi.unstubAllGlobals();
   });
 
   afterAll(async () => {
@@ -193,6 +200,45 @@ describe("control-plane app", () => {
 
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.json().current).toHaveLength(5);
+  });
+
+  it("generates a history post from the manual generation endpoint", async () => {
+    process.env.HISTORY_POST_FIXTURE_JSON = JSON.stringify({
+      topic: "张骞出使西域如何改变丝绸之路",
+      summary: "一次外交行动，重塑了贸易、地理认知和文化交流。",
+      cardCount: 2,
+      cards: [
+        {
+          title: "先讲出发背景",
+          imageText: "汉朝为什么一定要向西走？",
+          prompt: "中国古代使者，丝路地图，知识卡片风格"
+        },
+        {
+          title: "再讲长期影响",
+          imageText: "打开的不是一条路，而是一整套交流网络",
+          prompt: "丝绸之路商队，地图与文明交流，竖版海报"
+        }
+      ],
+      xiaohongshuCaption: "今天用两张图讲清张骞出使西域为什么是历史转折点。"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/history/generate",
+      payload: {
+        reason: "test"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      notifications: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "history-post",
+          title: "每日历史知识点：张骞出使西域如何改变丝绸之路"
+        })
+      ])
+    });
   });
 
   it("exposes a notification cancellation endpoint", async () => {

@@ -67,6 +67,12 @@ export function createControlPlaneApp(options?: {
     return orchestrator.generateTopics(body);
   });
 
+  app.post("/api/history/generate", async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    return orchestrator.generateHistory(body);
+  });
+
   app.post("/api/news/refresh", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
 

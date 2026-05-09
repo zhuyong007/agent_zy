@@ -129,6 +129,12 @@ function extractModelContent(value: unknown): string | null {
 }
 
 async function generateWithModelScope(topic: string, requestedAt: string): Promise<HistoryPostPayload> {
+  const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
+
+  if (fixture) {
+    return validatePayload(parseJson(fixture), requestedAt);
+  }
+
   const apiKey = process.env.MODELSCOPE_API_KEY;
 
   if (!apiKey) {

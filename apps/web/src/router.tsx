@@ -8,6 +8,7 @@ import {
 import { QueryClient } from "@tanstack/react-query";
 
 import { DashboardPage, DetailPlaceholderPage, HomeManagePage } from "./components/dashboard-page";
+import { HistoryPage } from "./components/history-page";
 import { NewsPage } from "./components/news-page";
 import { TopicPage } from "./components/topic-page";
 
@@ -37,6 +38,12 @@ const topicsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/topics",
   component: TopicPage
+});
+
+const historyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/history",
+  component: HistoryPage
 });
 
 const manageRoute = createRoute({
@@ -74,6 +81,7 @@ const routeTree = rootRoute.addChildren([
   manageRoute,
   newsRoute,
   topicsRoute,
+  historyRoute,
   ledgerRoute,
   todoRoute
 ]);
