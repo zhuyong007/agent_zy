@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useState } from "react";
+import type { CSSProperties, ChangeEvent, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -42,10 +42,18 @@ import {
   type ChatProgressStep
 } from "../chat-workspace";
 import {
+  applyBackgroundSelection,
   applyTheme,
+  deleteBackgroundImage,
+  getActiveBackgroundId,
+  getBackgroundGallery,
   getInitialThemeKey,
   isThemeKey,
+  persistActiveBackgroundId,
+  persistBackgroundGallery,
   persistTheme,
+  resolveActiveBackground,
+  type BackgroundImageRecord,
   type ThemeKey,
   themeOptions
 } from "../theme";
@@ -110,9 +118,31 @@ export function useThemePreference() {
   useEffect(() => {
     applyTheme(themeKey);
     persistTheme(themeKey);
+    applyBackgroundSelection(resolveActiveBackground());
   }, [themeKey]);
 
   return [themeKey, setThemeKey] as const;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("图片读取失败"));
+    };
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("图片读取失败"));
+    };
+
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatTime(timestamp?: string | null) {
@@ -286,6 +316,48 @@ function useHomeLayoutPreferences() {
   };
 }
 
+function useBackgroundGalleryPreferences() {
+  const [gallery, setGallery] = useState<BackgroundImageRecord[]>(() => getBackgroundGallery());
+  const [activeBackgroundId, setActiveBackgroundId] = useState<string | null>(() => getActiveBackgroundId());
+  const activeBackground = gallery.find((item) => item.id === activeBackgroundId) ?? null;
+
+  useEffect(() => {
+    applyBackgroundSelection(activeBackground);
+  }, [activeBackground]);
+
+  function updateGallery(nextGallery: BackgroundImageRecord[]) {
+    setGallery(nextGallery);
+    persistBackgroundGallery(nextGallery);
+  }
+
+  return {
+    gallery,
+    activeBackground,
+    activeBackgroundId,
+    setActiveBackground: (backgroundId: string | null) => {
+      setActiveBackgroundId(backgroundId);
+      persistActiveBackgroundId(backgroundId);
+    },
+    addBackground: (background: BackgroundImageRecord) => {
+      const deduped = gallery.filter((item) => item.dataUrl !== background.dataUrl);
+      const nextGallery = [background, ...deduped];
+
+      updateGallery(nextGallery);
+      setActiveBackgroundId(background.id);
+      persistActiveBackgroundId(background.id);
+    },
+    removeBackground: (backgroundId: string) => {
+      const nextGallery = deleteBackgroundImage(backgroundId);
+
+      updateGallery(nextGallery);
+
+      if (activeBackgroundId === backgroundId) {
+        setActiveBackgroundId(null);
+      }
+    }
+  };
+}
+
 function useSortableModuleDnd(onMove: (sourceId: HomeModuleId, targetId: HomeModuleId) => void) {
   const [activeId, setActiveId] = useState<HomeModuleId | null>(null);
   const sensors = useSensors(
@@ -406,7 +478,7 @@ export function CommandRail({
                 }
               }}
             >
-              <span aria-hidden="true" />
+              <span className="theme-switcher__icon" aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -1303,7 +1375,7 @@ function renderHomeModuleContent({
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;
 }
 
-function ManageItem({
+function ManageModuleCard({
   preference,
   onVisibleChange,
   onNavigationChange,
@@ -1318,47 +1390,60 @@ function ManageItem({
   const supportsNavigation = canShowHomeModuleInNavigation(preference.id);
 
   return (
-    <article className="manage-item">
-      <div className="manage-item__identity">
-        <span>{String(preference.order + 1).padStart(2, "0")}</span>
+    <article className="manage-card manage-card--module">
+      <div className="manage-card__header">
+        <span className="manage-card__index">{String(preference.order + 1).padStart(2, "0")}</span>
         <div>
-          <strong>{definition.label}</strong>
+          <h3>{definition.label}</h3>
           <p>{definition.description}</p>
         </div>
       </div>
 
-      <label className="manage-switch">
-        <input
-          type="checkbox"
-          checked={preference.visible}
-          onChange={(event) => onVisibleChange(event.target.checked)}
-        />
-        <span>{preference.visible ? "展示" : "隐藏"}</span>
-      </label>
+      <div className="manage-card__controls">
+        <label className="manage-field manage-field--toggle">
+          <span>首页展示</span>
+          <input
+            type="checkbox"
+            checked={preference.visible}
+            onChange={(event) => onVisibleChange(event.target.checked)}
+          />
+        </label>
 
-      <label className={`manage-switch${supportsNavigation ? "" : " is-disabled"}`}>
-        <input
-          type="checkbox"
-          checked={supportsNavigation && preference.showInNavigation}
-          disabled={!supportsNavigation}
-          onChange={(event) => onNavigationChange(event.target.checked)}
-        />
-        <span>{supportsNavigation ? (preference.showInNavigation ? "导航展示" : "不进导航") : "未接入导航"}</span>
-      </label>
+        <label className={`manage-field manage-field--toggle${supportsNavigation ? "" : " is-disabled"}`}>
+          <span>顶部导航</span>
+          <input
+            type="checkbox"
+            checked={supportsNavigation && preference.showInNavigation}
+            disabled={!supportsNavigation}
+            onChange={(event) => onNavigationChange(event.target.checked)}
+          />
+        </label>
 
-      <label className="manage-select">
-        <span>大小</span>
-        <select
-          value={preference.size}
-          onChange={(event) => onSizeChange(event.target.value as HomeModuleSize)}
-        >
-          {HOME_MODULE_SIZE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+        <label className="manage-field">
+          <span>模块尺寸</span>
+          <select
+            value={preference.size}
+            onChange={(event) => onSizeChange(event.target.value as HomeModuleSize)}
+          >
+            {HOME_MODULE_SIZE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="manage-card__meta">
+        <span>{preference.visible ? "已启用" : "已隐藏"}</span>
+        <span>
+          {supportsNavigation
+            ? preference.showInNavigation
+              ? "导航可见"
+              : "仅首页可见"
+            : "导航未接入"}
+        </span>
+      </div>
     </article>
   );
 }
@@ -1368,8 +1453,37 @@ export function HomeManagePage() {
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
   const { layout, updateModule, resetLayout } = useHomeLayoutPreferences();
+  const {
+    gallery,
+    activeBackground,
+    activeBackgroundId,
+    setActiveBackground,
+    addBackground,
+    removeBackground
+  } = useBackgroundGalleryPreferences();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const visibleCount = layout.filter((item) => item.visible).length;
   const navigationCount = layout.filter((item) => item.showInNavigation).length;
+  const backgroundCount = gallery.length;
+
+  async function handleBackgroundUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+
+    addBackground({
+      id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : String(Date.now()),
+      name: file.name,
+      dataUrl,
+      createdAt: new Date().toISOString()
+    });
+
+    event.target.value = "";
+  }
 
   return (
     <main className="workspace workspace--ops">
@@ -1384,20 +1498,34 @@ export function HomeManagePage() {
         rightMeta={[
           { label: "modules", value: String(layout.length) },
           { label: "visible", value: String(visibleCount) },
-          { label: "nav", value: String(navigationCount) }
+          { label: "nav", value: String(navigationCount) },
+          { label: "bg", value: String(backgroundCount) }
         ]}
       />
 
       <section className="manage-shell">
         <div className="manage-shell__header">
           <div>
-            <p className="eyebrow">Module Registry</p>
-            <h1>首页模块管理</h1>
-            <p>配置首页展示、导航入口和模块尺寸。新模块会按注册顺序进入这里，默认不打扰现有导航。</p>
+            <p className="eyebrow">Control Center</p>
+            <h1>管理配置中心</h1>
+            <p>按模块拆分首页编排与视觉背景，便于继续增加新的配置项，同时保持信息清晰和操作直接。</p>
           </div>
-          <button type="button" onClick={resetLayout}>
-            恢复默认布局
-          </button>
+          <div className="manage-shell__actions">
+            <button type="button" onClick={resetLayout}>
+              重置首页布局
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveBackground(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = "";
+                }
+              }}
+            >
+              清空背景图
+            </button>
+          </div>
         </div>
 
         <div className="manage-overview" aria-label="模块配置摘要">
@@ -1413,20 +1541,172 @@ export function HomeManagePage() {
             <span>导航展示</span>
             <strong>{navigationCount}</strong>
           </div>
+          <div>
+            <span>背景历史</span>
+            <strong>{backgroundCount}</strong>
+          </div>
         </div>
 
-        <div className="manage-list">
-          {layout.map((preference) => (
-            <ManageItem
-              key={preference.id}
-              preference={preference}
-              onVisibleChange={(visible) => updateModule(preference.id, { visible })}
-              onNavigationChange={(showInNavigation) =>
-                updateModule(preference.id, { showInNavigation })
-              }
-              onSizeChange={(size) => updateModule(preference.id, { size })}
-            />
-          ))}
+        <div className="manage-groups">
+          <section className="manage-group" aria-labelledby="manage-home-layout-heading">
+            <div className="manage-group__header">
+              <div>
+                <p className="eyebrow">Home Layout</p>
+                <h2 id="manage-home-layout-heading">首页编排</h2>
+                <p>每个模块独立成卡片，统一处理显示、导航和尺寸，后续新增模块也会自然接入这里。</p>
+              </div>
+            </div>
+
+            <div className="manage-card-grid manage-card-grid--modules">
+              {layout.map((preference) => (
+                <ManageModuleCard
+                  key={preference.id}
+                  preference={preference}
+                  onVisibleChange={(visible) => updateModule(preference.id, { visible })}
+                  onNavigationChange={(showInNavigation) =>
+                    updateModule(preference.id, { showInNavigation })
+                  }
+                  onSizeChange={(size) => updateModule(preference.id, { size })}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="manage-group" aria-labelledby="manage-visual-heading">
+            <div className="manage-group__header">
+              <div>
+                <p className="eyebrow">Visual Backgrounds</p>
+                <h2 id="manage-visual-heading">视觉背景</h2>
+                <p>背景图只保存在当前浏览器本地。上传后会立即应用到项目背景，也可以从历史中重新切换或删除。</p>
+              </div>
+            </div>
+
+            <div className="manage-card-grid manage-card-grid--visual">
+              <article className="manage-card manage-card--theme">
+                <div className="manage-card__header">
+                  <div>
+                    <h3>主题基底</h3>
+                    <p>颜色主题与背景图分层控制，保留当前 `day / night` 两套基底。</p>
+                  </div>
+                </div>
+
+                <div className="theme-switcher" role="group" aria-label="切换主题">
+                  {themeOptions.map((theme) => (
+                    <button
+                      key={theme.key}
+                      type="button"
+                      className={`theme-switcher__button theme-switcher__button--${theme.key}${
+                        themeKey === theme.key ? " is-active" : ""
+                      }`}
+                      aria-label={theme.label}
+                      aria-pressed={themeKey === theme.key}
+                      onClick={() => {
+                        if (isThemeKey(theme.key)) {
+                          setThemeKey(theme.key);
+                        }
+                      }}
+                    >
+                      <span className="theme-switcher__icon" />
+                      <span className="theme-switcher__label">{theme.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="manage-card__meta">
+                  <span>当前主题：{themeOptions.find((item) => item.key === themeKey)?.label ?? themeKey}</span>
+                  <span>{activeBackground ? "背景图已覆盖" : "使用系统默认背景"}</span>
+                </div>
+              </article>
+
+              <article className="manage-card manage-card--background">
+                <div className="manage-card__header">
+                  <div>
+                    <h3>当前背景</h3>
+                    <p>上传图片后立即生效，可反复替换；历史会自动保留在本地。</p>
+                  </div>
+                </div>
+
+                <div
+                  className={`background-stage${activeBackground ? " has-image" : ""}`}
+                  style={
+                    activeBackground
+                      ? { backgroundImage: `url("${activeBackground.dataUrl}")` }
+                      : undefined
+                  }
+                >
+                  <div>
+                    <strong>{activeBackground ? activeBackground.name : "未设置自定义背景"}</strong>
+                    <p>
+                      {activeBackground
+                        ? `最近启用：${formatDateTime(activeBackground.createdAt)}`
+                        : "上传一张背景图后会立即覆盖当前项目背景。"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="manage-upload">
+                  <input
+                    ref={fileInputRef}
+                    className="manage-upload__input"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      void handleBackgroundUpload(event);
+                    }}
+                  />
+                  <button type="button" onClick={() => fileInputRef.current?.click()}>
+                    上传背景图
+                  </button>
+                  <span>仅保存当前浏览器本地</span>
+                </div>
+              </article>
+
+              <article className="manage-card manage-card--history">
+                <div className="manage-card__header">
+                  <div>
+                    <h3>背景历史</h3>
+                    <p>保留最近上传过的背景图，支持重新设为当前或直接删除。</p>
+                  </div>
+                </div>
+
+                {gallery.length === 0 ? (
+                  <div className="manage-empty-state">还没有背景历史，先上传一张图片。</div>
+                ) : (
+                  <div className="background-history">
+                    {gallery.map((background) => (
+                      <article
+                        key={background.id}
+                        className={`background-history__item${
+                          activeBackgroundId === background.id ? " is-active" : ""
+                        }`}
+                      >
+                        <div
+                          className="background-history__thumb"
+                          style={{ backgroundImage: `url("${background.dataUrl}")` }}
+                        />
+                        <div className="background-history__body">
+                          <strong>{background.name}</strong>
+                          <p>{formatDateTime(background.createdAt)}</p>
+                        </div>
+                        <div className="background-history__actions">
+                          <button
+                            type="button"
+                            disabled={activeBackgroundId === background.id}
+                            onClick={() => setActiveBackground(background.id)}
+                          >
+                            {activeBackgroundId === background.id ? "当前背景" : "设为当前"}
+                          </button>
+                          <button type="button" onClick={() => removeBackground(background.id)}>
+                            删除
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </div>
+          </section>
         </div>
       </section>
     </main>
