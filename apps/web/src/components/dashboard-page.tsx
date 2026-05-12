@@ -650,7 +650,13 @@ function HistoryPanel({
   const historyGenerateMutation = useMutation({
     mutationFn: () => generateHistory("manual"),
     onSuccess: (dashboard) => {
+      console.info("[history-panel] generate:onSuccess", {
+        notifications: dashboard.notifications.length
+      });
       queryClient.setQueryData(["dashboard"], dashboard);
+    },
+    onError: (error) => {
+      console.error("[history-panel] generate:onError", error);
     }
   });
 
@@ -667,7 +673,10 @@ function HistoryPanel({
             <button
               type="button"
               className="history-panel__generate"
-              onClick={() => historyGenerateMutation.mutate()}
+              onClick={() => {
+                console.info("[history-panel] generate:click");
+                historyGenerateMutation.mutate();
+              }}
               disabled={historyGenerateMutation.isPending}
             >
               {historyGenerateMutation.isPending ? "生成中..." : "主动生成"}
@@ -727,6 +736,14 @@ function HistoryPanel({
           <div className="edge-empty">还没有历史知识推送。</div>
         )}
       </Link>
+      {historyGenerateMutation.isError ? (
+        <div className="news-error">
+          错误：
+          {historyGenerateMutation.error instanceof Error
+            ? historyGenerateMutation.error.message
+            : "历史知识生成失败，请稍后重试。"}
+        </div>
+      ) : null}
     </article>
   );
 }

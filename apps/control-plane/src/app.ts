@@ -70,6 +70,9 @@ export function createControlPlaneApp(options?: {
   app.post("/api/history/generate", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
 
+    console.info("[history-generate] route:start", {
+      body
+    });
     return orchestrator.generateHistory(body);
   });
 

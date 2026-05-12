@@ -33,10 +33,16 @@ export function HistoryPage() {
   const historyGenerateMutation = useMutation({
     mutationFn: () => generateHistory("manual"),
     onSuccess: (nextDashboard) => {
+      console.info("[history-page] generate:onSuccess", {
+        notifications: nextDashboard.notifications.length
+      });
       queryClient.setQueryData(["dashboard"], nextDashboard);
 
       const nextNotifications = getHistoryNotifications(nextDashboard.notifications);
       setSelectedId(nextNotifications[0]?.id ?? null);
+    },
+    onError: (error) => {
+      console.error("[history-page] generate:onError", error);
     }
   });
 
@@ -103,7 +109,10 @@ export function HistoryPage() {
               <button
                 type="button"
                 className="history-generate-button"
-                onClick={() => historyGenerateMutation.mutate()}
+                onClick={() => {
+                  console.info("[history-page] generate:click");
+                  historyGenerateMutation.mutate();
+                }}
                 disabled={historyGenerateMutation.isPending}
               >
                 {historyGenerateMutation.isPending ? "生成中..." : "立即生成"}
@@ -158,6 +167,14 @@ export function HistoryPage() {
           ) : (
             <div className="edge-empty">还没有历史知识推送，等下一次定时生成后这里会出现内容。</div>
           )}
+          {historyGenerateMutation.isError ? (
+            <div className="news-error">
+              错误：
+              {historyGenerateMutation.error instanceof Error
+                ? historyGenerateMutation.error.message
+                : "历史知识生成失败，请稍后重试。"}
+            </div>
+          ) : null}
         </section>
 
         <aside className="history-archive">

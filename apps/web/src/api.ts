@@ -68,6 +68,11 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
 }
 
 export async function generateHistory(reason = "manual"): Promise<DashboardData> {
+  console.info("[history-generate] request:start", {
+    endpoint: `${API_BASE}/api/history/generate`,
+    reason
+  });
+
   const response = await fetch(`${API_BASE}/api/history/generate`, {
     method: "POST",
     headers: {
@@ -78,11 +83,46 @@ export async function generateHistory(reason = "manual"): Promise<DashboardData>
     })
   });
 
+  console.info("[history-generate] request:response", {
+    status: response.status,
+    ok: response.ok
+  });
+
+  if (response.status === 404) {
+    console.warn("[history-generate] dedicated endpoint missing; falling back to chat route");
+    const chatResponse = await sendChat("请生成今天的历史知识点小红书推文策划");
+
+    console.info("[history-generate] fallback:chat-response", {
+      agentId: chatResponse.route.agentId,
+      taskStatus: chatResponse.task.status,
+      taskSummary: chatResponse.task.resultSummary
+    });
+
+    if (chatResponse.task.status !== "completed") {
+      throw new Error(chatResponse.message.content || "Failed to generate history");
+    }
+
+    return fetchDashboard();
+  }
+
   if (!response.ok) {
     throw new Error("Failed to generate history");
   }
 
-  return response.json();
+  const dashboard = (await response.json()) as DashboardData;
+  const latestHistoryTask = dashboard.recentTasks.find((task) => task.agentId === "history-agent");
+
+  console.info("[history-generate] dashboard:latest-history-task", {
+    taskId: latestHistoryTask?.id,
+    status: latestHistoryTask?.status,
+    resultSummary: latestHistoryTask?.resultSummary
+  });
+
+  if (latestHistoryTask && latestHistoryTask.status === "failed") {
+    throw new Error(latestHistoryTask.resultSummary ?? "历史知识生成失败");
+  }
+
+  return dashboard;
 }
 
 export type NewsRefreshInput = {

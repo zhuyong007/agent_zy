@@ -61,6 +61,12 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function hasPayloadShape(value: unknown): boolean {
+  const record = asRecord(value);
+
+  return Boolean(record?.topic || record?.summary || record?.cards || record?.xiaohongshuCaption);
+}
+
 function validateCard(value: unknown): HistoryPostCard | null {
   const record = asRecord(value);
 
@@ -119,13 +125,87 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
   };
 }
 
-function extractModelContent(value: unknown): string | null {
+function extractTextContent(value: unknown): string | null {
+  const direct = asString(value);
+
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((item) => {
+        const record = asRecord(item);
+        return asString(record?.text) ?? asString(record?.content);
+      })
+      .filter((item): item is string => Boolean(item))
+      .join("\n");
+
+    return joined || null;
+  }
+
+  const record = asRecord(value);
+
+  return asString(record?.text) ?? asString(record?.content);
+}
+
+function extractModelContent(value: unknown): unknown {
   const record = asRecord(value);
   const choices = Array.isArray(record?.choices) ? record.choices : [];
   const firstChoice = asRecord(choices[0]);
   const message = asRecord(firstChoice?.message);
 
-  return asString(message?.content) ?? asString(firstChoice?.text);
+  return message?.content ?? firstChoice?.text ?? null;
+}
+
+function getModelScopeErrorMessage(responseText: string): string {
+  const parsed = asRecord(parseJson(responseText));
+  const error = asRecord(parsed?.error);
+  const detail =
+    asString(error?.message) ??
+    asString(parsed?.message) ??
+    asString(parsed?.error) ??
+    responseText.trim();
+
+  return detail ? detail.slice(0, 500) : "响应体为空";
+}
+
+function normalizePayloadInput(value: unknown): unknown {
+  if (hasPayloadShape(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = parseJson(value);
+
+    return parsed ?? value;
+  }
+
+  if (Array.isArray(value)) {
+    const payloadCandidate = value.find(hasPayloadShape);
+
+    if (payloadCandidate) {
+      return payloadCandidate;
+    }
+
+    const text = extractTextContent(value);
+
+    if (text) {
+      const parsed = parseJson(text);
+
+      return parsed ?? text;
+    }
+  }
+
+  const text = extractTextContent(value);
+
+  if (text) {
+    const parsed = parseJson(text);
+
+    return parsed ?? text;
+  }
+
+  return value;
 }
 
 async function generateWithModelScope(topic: string, requestedAt: string): Promise<HistoryPostPayload> {
@@ -142,8 +222,12 @@ async function generateWithModelScope(topic: string, requestedAt: string): Promi
   }
 
   const baseUrl = process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1";
-  const model = process.env.MODELSCOPE_MODEL ?? "MiniMax/MiniMax-M2.7";
+  const model = process.env.MODELSCOPE_MODEL ?? "Qwen/Qwen3-235B-A22B";
   const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+  console.info("[history-agent] modelscope:request", {
+    endpoint,
+    model
+  });
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -168,16 +252,27 @@ async function generateWithModelScope(topic: string, requestedAt: string): Promi
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`ModelScope 请求失败：HTTP ${response.status}`);
+    throw new Error(`ModelScope 请求失败：HTTP ${response.status}，${getModelScopeErrorMessage(responseText)}`);
   }
 
-  const content = extractModelContent(parseJson(responseText));
+  const modelResponse = parseJson(responseText);
+  const rawContent = extractModelContent(modelResponse);
+  const normalizedPayloadInput = normalizePayloadInput(rawContent);
 
-  if (!content) {
+  console.info("[history-agent] modelscope:response-shape", {
+    rawContentType: Array.isArray(rawContent) ? "array" : typeof rawContent,
+    normalizedType: Array.isArray(normalizedPayloadInput) ? "array" : typeof normalizedPayloadInput,
+    preview:
+      typeof rawContent === "string"
+        ? rawContent.slice(0, 200)
+        : JSON.stringify(normalizedPayloadInput)?.slice(0, 200) ?? null
+  });
+
+  if (!rawContent) {
     throw new Error("ModelScope 返回内容为空");
   }
 
-  return validatePayload(parseJson(content), requestedAt);
+  return validatePayload(normalizedPayloadInput, requestedAt);
 }
 
 export const agent = defineAgent({
@@ -185,8 +280,23 @@ export const agent = defineAgent({
     const localDate = asString(input.meta?.localDate) ?? input.requestedAt.slice(0, 10);
     const topic = asString(input.meta?.topic) ?? selectTopic(localDate);
 
+    console.info("[history-agent] execute:start", {
+      taskId: input.taskId,
+      trigger: input.trigger,
+      localDate,
+      topic,
+      hasModelScopeApiKey: Boolean(process.env.MODELSCOPE_API_KEY),
+      hasFixture: Boolean(process.env.HISTORY_POST_FIXTURE_JSON)
+    });
+
     try {
       const payload = await generateWithModelScope(topic, input.requestedAt);
+
+      console.info("[history-agent] execute:success", {
+        taskId: input.taskId,
+        topic: payload.topic,
+        cardCount: payload.cardCount
+      });
 
       return {
         status: "completed",
@@ -208,6 +318,11 @@ export const agent = defineAgent({
         }
       };
     } catch (error) {
+      console.error("[history-agent] execute:failed", {
+        taskId: input.taskId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
       return {
         status: "failed",
         summary: error instanceof Error ? error.message : "历史知识点生成失败",

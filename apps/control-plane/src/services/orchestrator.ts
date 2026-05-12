@@ -258,7 +258,11 @@ export function createControlPlaneOrchestrator(options: {
       return options.store.getState().topics;
     },
     async generateHistory(meta = {}) {
-      await this.runSystemTask({
+      console.info("[history-generate] orchestrator:start", {
+        meta
+      });
+
+      const task = await this.runSystemTask({
         agentId: "history-agent",
         trigger: "system",
         summary: "生成历史知识内容",
@@ -266,6 +270,12 @@ export function createControlPlaneOrchestrator(options: {
           ...meta,
           action: "generate"
         }
+      });
+
+      console.info("[history-generate] orchestrator:done", {
+        taskId: task.id,
+        status: task.status,
+        resultSummary: task.resultSummary
       });
 
       return this.getDashboard();

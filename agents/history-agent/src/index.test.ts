@@ -87,6 +87,31 @@ function mockModelResponse(content: unknown) {
   );
 }
 
+function mockStructuredModelResponse(content: unknown) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: {
+        get() {
+          return "application/json";
+        }
+      },
+      text: async () =>
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content
+              }
+            }
+          ]
+        })
+    }))
+  );
+}
+
 describe("history agent", () => {
   afterEach(() => {
     delete process.env.MODELSCOPE_API_KEY;
@@ -168,5 +193,62 @@ describe("history agent", () => {
     expect(result.status).toBe("failed");
     expect(result.notifications).toBeUndefined();
     expect(result.summary).toContain("5");
+  });
+
+  it("accepts content-block array responses that contain JSON text", async () => {
+    process.env.MODELSCOPE_API_KEY = "test-token";
+    mockStructuredModelResponse([
+      {
+        type: "text",
+        text: JSON.stringify({
+          topic: "郑和下西洋真正留下了什么",
+          summary: "不只是一场航海壮举，也是一套关于交流、秩序和影响力的实践。",
+          cardCount: 1,
+          cards: [
+            {
+              title: "先讲留下了什么",
+              imageText: "郑和下西洋，留下的不只是船队规模",
+              prompt: "明代宝船，海上航线，知识卡片"
+            }
+          ],
+          xiaohongshuCaption: "今天用一张图讲清郑和下西洋真正留下了什么。"
+        })
+      }
+    ]);
+
+    const result = await agent.execute(createRequest());
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]).toMatchObject({
+      kind: "history-post",
+      title: "每日历史知识点：郑和下西洋真正留下了什么"
+    });
+  });
+
+  it("accepts single-item JSON array payloads", async () => {
+    process.env.MODELSCOPE_API_KEY = "test-token";
+    mockModelResponse([
+      {
+        topic: "玛雅历法为什么如此精密",
+        summary: "历法背后是长期观测与系统化知识的累积。",
+        cardCount: 1,
+        cards: [
+          {
+            title: "先讲为什么精密",
+            imageText: "精密历法来自长期观测，而不是神秘传说",
+            prompt: "玛雅文明，天文观测，知识海报"
+          }
+        ],
+        xiaohongshuCaption: "今天讲清玛雅历法为什么会精密到令人惊讶。"
+      }
+    ]);
+
+    const result = await agent.execute(createRequest());
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]).toMatchObject({
+      kind: "history-post",
+      title: "每日历史知识点：玛雅历法为什么如此精密"
+    });
   });
 });

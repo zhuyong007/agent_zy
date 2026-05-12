@@ -68,6 +68,14 @@ export function createAgentWorkerPool(options: {
     workers.set(manifest.id, record);
     emitRuntimeUpdate();
 
+    child.stdout?.on("data", (chunk) => {
+      process.stdout.write(`[agent-worker:${manifest.id}:stdout] ${chunk.toString()}`);
+    });
+
+    child.stderr?.on("data", (chunk) => {
+      process.stderr.write(`[agent-worker:${manifest.id}:stderr] ${chunk.toString()}`);
+    });
+
     child.on("exit", () => {
       workers.delete(manifest.id);
       emitRuntimeUpdate();
