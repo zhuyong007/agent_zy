@@ -9,14 +9,29 @@ export type ThemeOption = {
 export type BackgroundImageRecord = {
   id: string;
   name: string;
-  dataUrl: string;
   createdAt: string;
+};
+
+export type StoredBackgroundImageRecord = BackgroundImageRecord & {
+  blob: Blob;
+};
+
+export type BackgroundImageViewRecord = BackgroundImageRecord & {
+  src: string;
+};
+
+type LegacyBackgroundImageRecord = BackgroundImageRecord & {
+  dataUrl: string;
 };
 
 export const THEME_STORAGE_KEY = "agent-zy-theme";
 export const BACKGROUND_GALLERY_STORAGE_KEY = "agent-zy-background-gallery-v1";
 export const ACTIVE_BACKGROUND_STORAGE_KEY = "agent-zy-active-background-v1";
 export const DEFAULT_THEME_KEY = "night";
+
+const BACKGROUND_DATABASE_NAME = "agent-zy-background-gallery";
+const BACKGROUND_DATABASE_VERSION = 1;
+const BACKGROUND_OBJECT_STORE = "backgrounds";
 
 export const themeOptions = [
   { key: "day", label: "日间", kind: "color" },
@@ -45,6 +60,14 @@ function getBrowserStorage(): StorageLike | null {
   }
 
   return window.localStorage;
+}
+
+function getBrowserIndexedDb(): IDBFactory | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.indexedDB;
 }
 
 export function isThemeKey(value: string): value is ThemeKey {
@@ -86,14 +109,139 @@ function isBackgroundImageRecord(value: unknown): value is BackgroundImageRecord
     isRecord(value) &&
     typeof value.id === "string" &&
     typeof value.name === "string" &&
-    typeof value.dataUrl === "string" &&
     typeof value.createdAt === "string"
   );
 }
 
-export function getBackgroundGallery(
+function isLegacyBackgroundImageRecord(value: unknown): value is LegacyBackgroundImageRecord {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.createdAt === "string" &&
+    typeof value.dataUrl === "string"
+  );
+}
+
+function isStoredBackgroundImageRecord(value: unknown): value is StoredBackgroundImageRecord {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.createdAt === "string" &&
+    typeof Blob !== "undefined" &&
+    value.blob instanceof Blob
+  );
+}
+
+function sortBackgroundGallery(gallery: readonly StoredBackgroundImageRecord[]) {
+  return [...gallery].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+function openBackgroundDatabase(indexedDb: IDBFactory | null = getBrowserIndexedDb()) {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    if (!indexedDb) {
+      reject(new Error("当前环境不支持本地背景图库"));
+      return;
+    }
+
+    const request = indexedDb.open(BACKGROUND_DATABASE_NAME, BACKGROUND_DATABASE_VERSION);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+
+      if (!database.objectStoreNames.contains(BACKGROUND_OBJECT_STORE)) {
+        database.createObjectStore(BACKGROUND_OBJECT_STORE, {
+          keyPath: "id"
+        });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("背景图库打开失败"));
+  });
+}
+
+function closeBackgroundDatabase(database: IDBDatabase) {
+  database.close();
+}
+
+export async function listBackgroundGallery(indexedDb: IDBFactory | null = getBrowserIndexedDb()) {
+  const database = await openBackgroundDatabase(indexedDb);
+
+  try {
+    return await new Promise<StoredBackgroundImageRecord[]>((resolve, reject) => {
+      const transaction = database.transaction(BACKGROUND_OBJECT_STORE, "readonly");
+      const store = transaction.objectStore(BACKGROUND_OBJECT_STORE);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const records = Array.isArray(request.result)
+          ? request.result.filter(isStoredBackgroundImageRecord)
+          : [];
+
+        resolve(sortBackgroundGallery(records));
+      };
+      request.onerror = () => reject(request.error ?? new Error("背景图库读取失败"));
+    });
+  } finally {
+    closeBackgroundDatabase(database);
+  }
+}
+
+export async function saveBackgroundImage(
+  background: StoredBackgroundImageRecord,
+  indexedDb: IDBFactory | null = getBrowserIndexedDb()
+) {
+  const database = await openBackgroundDatabase(indexedDb);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(BACKGROUND_OBJECT_STORE, "readwrite");
+      const store = transaction.objectStore(BACKGROUND_OBJECT_STORE);
+      const request = store.put(background);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error ?? new Error("背景图保存失败"));
+    });
+  } finally {
+    closeBackgroundDatabase(database);
+  }
+}
+
+export async function deleteBackgroundImage(
+  backgroundId: string,
+  indexedDb: IDBFactory | null = getBrowserIndexedDb()
+) {
+  const database = await openBackgroundDatabase(indexedDb);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(BACKGROUND_OBJECT_STORE, "readwrite");
+      const store = transaction.objectStore(BACKGROUND_OBJECT_STORE);
+      const request = store.delete(backgroundId);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error ?? new Error("背景图删除失败"));
+    });
+  } finally {
+    closeBackgroundDatabase(database);
+  }
+}
+
+export async function dataUrlToBlob(dataUrl: string) {
+  const response = await fetch(dataUrl);
+
+  if (!response.ok) {
+    throw new Error("旧背景图迁移失败");
+  }
+
+  return response.blob();
+}
+
+export function getLegacyBackgroundGallery(
   storage: StorageLike | null = getBrowserStorage()
-): BackgroundImageRecord[] {
+): LegacyBackgroundImageRecord[] {
   try {
     const raw = storage?.getItem(BACKGROUND_GALLERY_STORAGE_KEY);
 
@@ -103,21 +251,52 @@ export function getBackgroundGallery(
 
     const parsed = JSON.parse(raw);
 
-    return Array.isArray(parsed) ? parsed.filter(isBackgroundImageRecord) : [];
+    return Array.isArray(parsed) ? parsed.filter(isLegacyBackgroundImageRecord) : [];
   } catch {
     return [];
   }
 }
 
-export function persistBackgroundGallery(
-  gallery: readonly BackgroundImageRecord[],
-  storage: StorageLike | null = getBrowserStorage()
-) {
+export function clearLegacyBackgroundGallery(storage: StorageLike | null = getBrowserStorage()) {
   try {
-    storage?.setItem(BACKGROUND_GALLERY_STORAGE_KEY, JSON.stringify(gallery));
+    storage?.setItem(BACKGROUND_GALLERY_STORAGE_KEY, "[]");
   } catch {
-    // Background persistence should fail silently so page theming still works.
+    // Legacy background cache is best-effort cleanup only.
   }
+}
+
+export async function migrateLegacyBackgroundGallery(
+  storage: StorageLike | null = getBrowserStorage(),
+  indexedDb: IDBFactory | null = getBrowserIndexedDb()
+) {
+  const existingGallery = await listBackgroundGallery(indexedDb);
+
+  if (existingGallery.length > 0) {
+    return existingGallery;
+  }
+
+  const legacyGallery = getLegacyBackgroundGallery(storage);
+
+  if (legacyGallery.length === 0) {
+    return [];
+  }
+
+  const migratedGallery = await Promise.all(
+    legacyGallery.map(async (background) => ({
+      id: background.id,
+      name: background.name,
+      createdAt: background.createdAt,
+      blob: await dataUrlToBlob(background.dataUrl)
+    }))
+  );
+
+  for (const background of migratedGallery) {
+    await saveBackgroundImage(background, indexedDb);
+  }
+
+  clearLegacyBackgroundGallery(storage);
+
+  return sortBackgroundGallery(migratedGallery);
 }
 
 export function getActiveBackgroundId(storage: StorageLike | null = getBrowserStorage()) {
@@ -146,40 +325,13 @@ export function persistActiveBackgroundId(
   }
 }
 
-export function resolveActiveBackground(
-  storage: StorageLike | null = getBrowserStorage()
-): BackgroundImageRecord | null {
-  const activeId = getActiveBackgroundId(storage);
-
-  if (!activeId) {
-    return null;
-  }
-
-  return getBackgroundGallery(storage).find((item) => item.id === activeId) ?? null;
-}
-
-export function deleteBackgroundImage(
-  backgroundId: string,
-  storage: StorageLike | null = getBrowserStorage()
-) {
-  const nextGallery = getBackgroundGallery(storage).filter((item) => item.id !== backgroundId);
-
-  persistBackgroundGallery(nextGallery, storage);
-
-  if (getActiveBackgroundId(storage) === backgroundId) {
-    persistActiveBackgroundId(null, storage);
-  }
-
-  return nextGallery;
-}
-
 export function applyBackgroundSelection(
-  background: BackgroundImageRecord | null,
+  background: BackgroundImageViewRecord | null,
   target: ThemeTarget = document.body
 ) {
   if (background) {
     target.dataset.backgroundMode = "custom";
-    target.style?.setProperty("--custom-scene-backdrop", `url("${background.dataUrl}")`);
+    target.style?.setProperty("--custom-scene-backdrop", `url("${background.src}")`);
     return;
   }
 

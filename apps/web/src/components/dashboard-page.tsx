@@ -46,14 +46,15 @@ import {
   applyTheme,
   deleteBackgroundImage,
   getActiveBackgroundId,
-  getBackgroundGallery,
   getInitialThemeKey,
   isThemeKey,
+  listBackgroundGallery,
+  migrateLegacyBackgroundGallery,
   persistActiveBackgroundId,
-  persistBackgroundGallery,
   persistTheme,
-  resolveActiveBackground,
-  type BackgroundImageRecord,
+  saveBackgroundImage,
+  type BackgroundImageViewRecord,
+  type StoredBackgroundImageRecord,
   type ThemeKey,
   themeOptions
 } from "../theme";
@@ -118,31 +119,9 @@ export function useThemePreference() {
   useEffect(() => {
     applyTheme(themeKey);
     persistTheme(themeKey);
-    applyBackgroundSelection(resolveActiveBackground());
   }, [themeKey]);
 
   return [themeKey, setThemeKey] as const;
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-
-      reject(new Error("图片读取失败"));
-    };
-
-    reader.onerror = () => {
-      reject(reader.error ?? new Error("图片读取失败"));
-    };
-
-    reader.readAsDataURL(file);
-  });
 }
 
 function formatTime(timestamp?: string | null) {
@@ -317,42 +296,112 @@ function useHomeLayoutPreferences() {
 }
 
 function useBackgroundGalleryPreferences() {
-  const [gallery, setGallery] = useState<BackgroundImageRecord[]>(() => getBackgroundGallery());
+  const [gallery, setGallery] = useState<StoredBackgroundImageRecord[]>([]);
+  const [galleryView, setGalleryView] = useState<BackgroundImageViewRecord[]>([]);
   const [activeBackgroundId, setActiveBackgroundId] = useState<string | null>(() => getActiveBackgroundId());
-  const activeBackground = gallery.find((item) => item.id === activeBackgroundId) ?? null;
+  const objectUrlsRef = useRef(new Map<string, string>());
+  const activeBackground = galleryView.find((item) => item.id === activeBackgroundId) ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadGallery() {
+      try {
+        const storedGallery = await migrateLegacyBackgroundGallery();
+
+        if (cancelled) {
+          return;
+        }
+
+        setGallery(storedGallery);
+
+        if (activeBackgroundId && !storedGallery.some((item) => item.id === activeBackgroundId)) {
+          setActiveBackgroundId(null);
+          persistActiveBackgroundId(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setGallery([]);
+        }
+      }
+    }
+
+    void loadGallery();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextObjectUrls = new Map<string, string>();
+
+    gallery.forEach((item) => {
+      nextObjectUrls.set(item.id, objectUrlsRef.current.get(item.id) ?? URL.createObjectURL(item.blob));
+    });
+
+    objectUrlsRef.current.forEach((url, id) => {
+      if (!nextObjectUrls.has(id)) {
+        URL.revokeObjectURL(url);
+      }
+    });
+
+    objectUrlsRef.current = nextObjectUrls;
+    setGalleryView(
+      gallery.map((item) => ({
+        id: item.id,
+        name: item.name,
+        createdAt: item.createdAt,
+        src: nextObjectUrls.get(item.id) ?? ""
+      }))
+    );
+  }, [gallery]);
+
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+      objectUrlsRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     applyBackgroundSelection(activeBackground);
   }, [activeBackground]);
 
-  function updateGallery(nextGallery: BackgroundImageRecord[]) {
-    setGallery(nextGallery);
-    persistBackgroundGallery(nextGallery);
+  async function refreshGallery() {
+    const storedGallery = await listBackgroundGallery();
+
+    setGallery(storedGallery);
+
+    if (activeBackgroundId && !storedGallery.some((item) => item.id === activeBackgroundId)) {
+      setActiveBackgroundId(null);
+      persistActiveBackgroundId(null);
+    }
   }
 
   return {
-    gallery,
+    gallery: galleryView,
     activeBackground,
     activeBackgroundId,
     setActiveBackground: (backgroundId: string | null) => {
       setActiveBackgroundId(backgroundId);
       persistActiveBackgroundId(backgroundId);
     },
-    addBackground: (background: BackgroundImageRecord) => {
-      const deduped = gallery.filter((item) => item.dataUrl !== background.dataUrl);
-      const nextGallery = [background, ...deduped];
-
-      updateGallery(nextGallery);
+    addBackground: async (background: StoredBackgroundImageRecord) => {
+      await saveBackgroundImage(background);
+      await refreshGallery();
       setActiveBackgroundId(background.id);
       persistActiveBackgroundId(background.id);
     },
-    removeBackground: (backgroundId: string) => {
-      const nextGallery = deleteBackgroundImage(backgroundId);
-
-      updateGallery(nextGallery);
+    removeBackground: async (backgroundId: string) => {
+      await deleteBackgroundImage(backgroundId);
+      await refreshGallery();
 
       if (activeBackgroundId === backgroundId) {
         setActiveBackgroundId(null);
+        persistActiveBackgroundId(null);
       }
     }
   };
@@ -1462,6 +1511,7 @@ export function HomeManagePage() {
     removeBackground
   } = useBackgroundGalleryPreferences();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
   const visibleCount = layout.filter((item) => item.visible).length;
   const navigationCount = layout.filter((item) => item.showInNavigation).length;
   const backgroundCount = gallery.length;
@@ -1473,14 +1523,22 @@ export function HomeManagePage() {
       return;
     }
 
-    const dataUrl = await readFileAsDataUrl(file);
+    setBackgroundUploadError(null);
 
-    addBackground({
-      id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : String(Date.now()),
-      name: file.name,
-      dataUrl,
-      createdAt: new Date().toISOString()
-    });
+    try {
+      await addBackground({
+        id:
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : String(Date.now()),
+        name: file.name,
+        blob: file,
+        createdAt: new Date().toISOString()
+      });
+      setBackgroundUploadError(null);
+    } catch (error) {
+      setBackgroundUploadError(error instanceof Error ? error.message : "背景图上传失败");
+    }
 
     event.target.value = "";
   }
@@ -1630,7 +1688,7 @@ export function HomeManagePage() {
                   className={`background-stage${activeBackground ? " has-image" : ""}`}
                   style={
                     activeBackground
-                      ? { backgroundImage: `url("${activeBackground.dataUrl}")` }
+                      ? { backgroundImage: `url("${activeBackground.src}")` }
                       : undefined
                   }
                 >
@@ -1659,6 +1717,7 @@ export function HomeManagePage() {
                   </button>
                   <span>仅保存当前浏览器本地</span>
                 </div>
+                {backgroundUploadError ? <p className="manage-upload__error">{backgroundUploadError}</p> : null}
               </article>
 
               <article className="manage-card manage-card--history">
@@ -1682,7 +1741,7 @@ export function HomeManagePage() {
                       >
                         <div
                           className="background-history__thumb"
-                          style={{ backgroundImage: `url("${background.dataUrl}")` }}
+                          style={{ backgroundImage: `url("${background.src}")` }}
                         />
                         <div className="background-history__body">
                           <strong>{background.name}</strong>
@@ -1696,7 +1755,12 @@ export function HomeManagePage() {
                           >
                             {activeBackgroundId === background.id ? "当前背景" : "设为当前"}
                           </button>
-                          <button type="button" onClick={() => removeBackground(background.id)}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void removeBackground(background.id);
+                            }}
+                          >
                             删除
                           </button>
                         </div>

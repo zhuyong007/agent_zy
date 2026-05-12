@@ -1,15 +1,14 @@
 import {
   applyBackgroundSelection,
   applyTheme,
-  deleteBackgroundImage,
+  clearLegacyBackgroundGallery,
+  dataUrlToBlob,
   getActiveBackgroundId,
-  getBackgroundGallery,
   getInitialThemeKey,
+  getLegacyBackgroundGallery,
   isThemeKey,
   persistActiveBackgroundId,
-  persistBackgroundGallery,
   persistTheme,
-  resolveActiveBackground,
   themeOptions
 } from "./theme";
 
@@ -78,34 +77,19 @@ describe("theme", () => {
     expect(target.dataset.theme).toBe("day");
   });
 
-  test("persists custom background gallery and resolves the active background", () => {
+  test("persists and clears the active background id", () => {
     const storage = new MemoryStorage();
-    const gallery = [
-      {
-        id: "bg-1",
-        name: "studio.png",
-        dataUrl: "data:image/png;base64,AAA",
-        createdAt: "2026-05-12T08:00:00.000Z"
-      },
-      {
-        id: "bg-2",
-        name: "forest.jpg",
-        dataUrl: "data:image/jpeg;base64,BBB",
-        createdAt: "2026-05-12T09:00:00.000Z"
-      }
-    ];
 
-    persistBackgroundGallery(gallery, storage);
     persistActiveBackgroundId("bg-2", storage);
-
-    expect(getBackgroundGallery(storage)).toEqual(gallery);
     expect(getActiveBackgroundId(storage)).toBe("bg-2");
-    expect(resolveActiveBackground(storage)).toEqual(gallery[1]);
+
+    persistActiveBackgroundId(null, storage);
+    expect(getActiveBackgroundId(storage)).toBeNull();
   });
 
-  test("deleting the active background clears the selection and keeps the remaining history", () => {
+  test("reads and clears legacy background gallery metadata from local storage", () => {
     const storage = new MemoryStorage();
-    const gallery = [
+    const legacyGallery = [
       {
         id: "bg-1",
         name: "studio.png",
@@ -120,15 +104,22 @@ describe("theme", () => {
       }
     ];
 
-    persistBackgroundGallery(gallery, storage);
-    persistActiveBackgroundId("bg-2", storage);
+    storage.setItem("agent-zy-background-gallery-v1", JSON.stringify(legacyGallery));
 
-    const nextGallery = deleteBackgroundImage("bg-2", storage);
+    expect(getLegacyBackgroundGallery(storage)).toEqual(legacyGallery);
 
-    expect(nextGallery).toEqual([gallery[0]]);
-    expect(getBackgroundGallery(storage)).toEqual([gallery[0]]);
-    expect(getActiveBackgroundId(storage)).toBeNull();
-    expect(resolveActiveBackground(storage)).toBeNull();
+    clearLegacyBackgroundGallery(storage);
+
+    expect(getLegacyBackgroundGallery(storage)).toEqual([]);
+  });
+
+  test("converts legacy data url images into blobs without changing bytes", async () => {
+    const text = "agent-zy";
+    const source = `data:text/plain;base64,${Buffer.from(text).toString("base64")}`;
+    const blob = await dataUrlToBlob(source);
+
+    expect(blob.size).toBe(text.length);
+    expect(await blob.text()).toBe(text);
   });
 
   test("applying a selected custom background updates body data and css variables", () => {
@@ -161,16 +152,14 @@ describe("theme", () => {
       {
         id: "bg-2",
         name: "forest.jpg",
-        dataUrl: "data:image/jpeg;base64,BBB",
+        src: "blob:forest",
         createdAt: "2026-05-12T09:00:00.000Z"
       },
       target
     );
 
     expect(target.dataset.backgroundMode).toBe("custom");
-    expect(target.style.getPropertyValue("--custom-scene-backdrop")).toContain(
-      "data:image/jpeg;base64,BBB"
-    );
+    expect(target.style.getPropertyValue("--custom-scene-backdrop")).toContain("blob:forest");
 
     applyBackgroundSelection(null, target);
 
