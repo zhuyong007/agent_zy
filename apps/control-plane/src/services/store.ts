@@ -1,14 +1,20 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { SUB_AGENT_HOME_MODULE_DEFINITIONS } from "@agent-zy/agent-registry/sub-agents";
 import type {
   AppState,
   ChatMessage,
   DashboardData,
+  HomeModuleId,
+  HomeModulePreference,
+  HomeModuleSize,
   LedgerEntry,
   HistoryPushState,
   NotificationRecord,
   NewsState,
+  TopicDimensionBucket,
+  TopicDimensionDefinition,
   TopicIdea,
   TopicState,
   ScheduleItem,
@@ -55,11 +61,100 @@ function seedScheduleItems(): ScheduleItem[] {
   ];
 }
 
+const CORE_HOME_MODULE_DEFINITIONS = [
+  {
+    id: "chat",
+    defaultSize: "max",
+    defaultVisible: true
+  }
+] as const satisfies ReadonlyArray<{
+  id: HomeModuleId;
+  defaultSize: HomeModuleSize;
+  defaultVisible: boolean;
+}>;
+
+const HOME_MODULE_DEFINITIONS = [
+  ...SUB_AGENT_HOME_MODULE_DEFINITIONS.slice(0, 1),
+  ...CORE_HOME_MODULE_DEFINITIONS,
+  ...SUB_AGENT_HOME_MODULE_DEFINITIONS.slice(1)
+] as const;
+
+const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
+  "news",
+  "topics",
+  "ledger",
+  "todo",
+  "history"
+]);
+
+function canShowHomeModuleInNavigation(id: HomeModuleId) {
+  return HOME_MODULE_NAVIGATION_ROUTES.has(id);
+}
+
+function getDefaultHomeLayout(): HomeModulePreference[] {
+  return HOME_MODULE_DEFINITIONS.map((definition, index) => ({
+    id: definition.id,
+    visible: definition.defaultVisible,
+    showInNavigation: canShowHomeModuleInNavigation(definition.id) && definition.defaultVisible,
+    size: definition.defaultSize,
+    collapsed: false,
+    order: index
+  }));
+}
+
+function normalizeOrder(layout: HomeModulePreference[]) {
+  return [...layout]
+    .sort((first, second) => first.order - second.order)
+    .map((item, index) => ({
+      ...item,
+      order: index
+    }));
+}
+
+function normalizeHomeLayout(layout: HomeModulePreference[] | undefined): HomeModulePreference[] {
+  if (!layout || layout.length === 0) {
+    return getDefaultHomeLayout();
+  }
+
+  const defaults = getDefaultHomeLayout();
+  const storedById = new Map((layout ?? []).map((item) => [item.id, item]));
+  const fallbackOrderOffset =
+    (layout ?? []).reduce((maxOrder, item) => Math.max(maxOrder, item.order), -1) + 1;
+
+  return normalizeOrder(
+    defaults.map((definition, index) => {
+      const stored = storedById.get(definition.id);
+
+      if (!stored) {
+        return {
+          ...definition,
+          visible: false,
+          showInNavigation: false,
+          order: fallbackOrderOffset + index
+        };
+      }
+
+      return {
+        id: definition.id,
+        visible: stored.visible,
+        showInNavigation: canShowHomeModuleInNavigation(definition.id) && stored.showInNavigation,
+        size: stored.size,
+        collapsed: stored.collapsed,
+        order: stored.order,
+        ...(Object.prototype.hasOwnProperty.call(stored, "customName")
+          ? { customName: stored.customName }
+          : {})
+      };
+    })
+  );
+}
+
 function createInitialState(): AppState {
   return {
     tasks: [],
     messages: [],
     notifications: [],
+    homeLayout: getDefaultHomeLayout(),
     ledger: {
       entries: [],
       modules: ["工作", "游戏", "生活"]
@@ -83,12 +178,13 @@ function createInitialState(): AppState {
       status: "idle"
     },
     topics: {
+      dimensions: [],
       current: [],
+      currentByDimension: [],
       history: [],
       lastGeneratedAt: null,
-      nextRunAt: null,
       status: "idle",
-      strategy: "news-to-content",
+      strategy: "manual-curation",
       lastError: null
     },
     historyPush: {
@@ -124,14 +220,45 @@ function normalizeTopicIdea(topic: TopicIdea): TopicIdea {
   };
 }
 
+function normalizeTopicDimensions(
+  dimensions: TopicDimensionDefinition[] | undefined
+): TopicDimensionDefinition[] {
+  return (dimensions ?? []).map((dimension) => ({
+    id: dimension.id,
+    label: dimension.label,
+    description: dimension.description
+  }));
+}
+
+function normalizeTopicBuckets(
+  buckets: TopicDimensionBucket[] | undefined,
+  dimensions: TopicDimensionDefinition[]
+): TopicDimensionBucket[] {
+  const dimensionMap = new Map(dimensions.map((dimension) => [dimension.id, dimension]));
+
+  return (buckets ?? []).map((bucket) => {
+    const matchedDimension = dimensionMap.get(bucket.dimensionId);
+
+    return {
+      dimensionId: bucket.dimensionId,
+      label: matchedDimension?.label ?? bucket.label,
+      description: matchedDimension?.description ?? bucket.description,
+      items: (bucket.items ?? []).map(normalizeTopicIdea)
+    };
+  });
+}
+
 function normalizeTopicState(topics: Partial<TopicState> | undefined): TopicState {
+  const dimensions = normalizeTopicDimensions(topics?.dimensions);
+
   return {
+    dimensions,
     current: (topics?.current ?? []).map(normalizeTopicIdea),
+    currentByDimension: normalizeTopicBuckets(topics?.currentByDimension, dimensions),
     history: (topics?.history ?? []).map(normalizeTopicIdea),
     lastGeneratedAt: topics?.lastGeneratedAt ?? null,
-    nextRunAt: topics?.nextRunAt ?? null,
     status: topics?.status ?? "idle",
-    strategy: "news-to-content",
+    strategy: "manual-curation",
     lastError: topics?.lastError ?? null
   };
 }
@@ -152,6 +279,7 @@ function normalizeAppState(state: AppState): AppState {
 
   return {
     ...stateWithoutLegacyNewsBodies,
+    homeLayout: normalizeHomeLayout(state.homeLayout),
     news,
     topics: normalizeTopicState(state.topics),
     historyPush: normalizeHistoryPushState(state.historyPush)
@@ -161,6 +289,7 @@ function normalizeAppState(state: AppState): AppState {
 export interface ControlPlaneStore {
   getState(): AppState;
   replaceState(state: AppState): void;
+  setHomeLayout(layout: HomeModulePreference[]): void;
   upsertTask(task: TaskRecord): void;
   addMessage(message: ChatMessage): void;
   addNotifications(notifications: NotificationRecord[]): void;
@@ -189,6 +318,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
     },
     replaceState(nextState) {
       state = normalizeAppState(structuredClone(nextState));
+      persist();
+    },
+    setHomeLayout(layout) {
+      state.homeLayout = normalizeHomeLayout(structuredClone(layout));
       persist();
     },
     upsertTask(task) {
@@ -306,6 +439,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
             right.createdAt.localeCompare(left.createdAt)
           );
         })(),
+        homeLayout: state.homeLayout,
         ledger: {
           ...state.ledger,
           summary

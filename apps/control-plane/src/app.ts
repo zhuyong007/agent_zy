@@ -49,6 +49,16 @@ export function createControlPlaneApp(options?: {
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
 
+  app.get("/api/home-layout", async () => orchestrator.getHomeLayout());
+
+  app.put("/api/home-layout", async (request) => {
+    const body = (request.body ?? {}) as {
+      layout?: unknown;
+    };
+
+    return orchestrator.saveHomeLayout(Array.isArray(body.layout) ? (body.layout as any) : []);
+  });
+
   app.delete("/api/notifications/:id", async (request) => {
     const params = request.params as {
       id: string;

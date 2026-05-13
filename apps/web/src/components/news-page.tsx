@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NewsCategory, NewsDailyReport, NewsFeedItem } from "@agent-zy/shared-types";
 
 import { fetchNews, openDashboardStream, refreshNews } from "../api";
-import { CommandRail, useLiveClock, useThemePreference } from "./dashboard-page";
+import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
 const categories: Array<{
   value: NewsCategory;
@@ -166,6 +166,7 @@ export function NewsPage() {
   const [view, setView] = useState<NewsView>("all");
   const [category, setCategory] = useState<NewsCategory | "all">("all");
   const [query, setQuery] = useState("");
+  const { layout } = useHomeLayoutPreferences();
 
   const newsQuery = useQuery({
     queryKey: ["news"],
@@ -174,6 +175,7 @@ export function NewsPage() {
 
   useEffect(() => {
     return openDashboardStream((data) => {
+      queryClient.setQueryData(["home-layout"], data.homeLayout);
       queryClient.setQueryData(["news"], data.news);
     });
   }, [queryClient]);
@@ -230,6 +232,7 @@ export function NewsPage() {
         themeKey={themeKey}
         onThemeChange={setThemeKey}
         clockLine={clockLine}
+        navigationLayout={layout}
         rightMeta={[
           { label: "source", value: "AI HOT" },
           { label: "stories", value: String(news.feed.items.length) },

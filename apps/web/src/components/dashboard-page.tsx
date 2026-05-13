@@ -25,14 +25,22 @@ import { CSS } from "@dnd-kit/utilities";
 
 import type {
   DashboardData,
+  HomeModulePreference,
   NotificationRecord,
   NewsCategory,
   NewsFeedItem,
-  ScheduleItem,
-  TopicIdea
+  ScheduleItem
 } from "@agent-zy/shared-types";
 
-import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, sendChat } from "../api";
+import {
+  cancelNotification,
+  fetchDashboard,
+  fetchHomeLayout,
+  generateHistory,
+  openDashboardStream,
+  saveHomeLayout,
+  sendChat
+} from "../api";
 import {
   addSession,
   applyChatSuccess,
@@ -63,6 +71,7 @@ import {
   HOME_MODULE_DEFINITIONS,
   HOME_MODULE_SIZE_OPTIONS,
   canShowHomeModuleInNavigation,
+  getDefaultHomeLayout,
   getHomeModuleGeometry,
   getHomeModulePreviewSize,
   loadHomeLayout,
@@ -72,7 +81,6 @@ import {
   resetHomeLayout,
   updateHomeModulePreference,
   type HomeModuleId,
-  type HomeModulePreference,
   type HomeModuleSize
 } from "../home-layout";
 import {
@@ -112,6 +120,23 @@ const newsCategoryFilters: Array<[NewsFilter, string]> = [
   ["paper", "论文"],
   ["tip", "技巧"]
 ];
+
+function syncStoredHomeLayout(layout: readonly HomeModulePreference[]) {
+  persistHomeLayout(layout);
+}
+
+function getModuleDisplayName(
+  id: HomeModuleId,
+  layout: readonly HomeModulePreference[]
+) {
+  const preference = layout.find((item) => item.id === id);
+
+  if (preference && Object.prototype.hasOwnProperty.call(preference, "customName")) {
+    return preference.customName ?? "";
+  }
+
+  return getModuleDefinition(id).label;
+}
 
 export function useThemePreference() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(() => getInitialThemeKey());
@@ -263,22 +288,59 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
   return "待接入";
 }
 
-function useHomeLayoutPreferences() {
-  const [layout, setLayout] = useState<HomeModulePreference[]>(() => loadHomeLayout());
+export function useHomeLayoutPreferences() {
+  const queryClient = useQueryClient();
+  const layoutQuery = useQuery({
+    queryKey: ["home-layout"],
+    queryFn: fetchHomeLayout,
+    initialData: () => loadHomeLayout()
+  });
+  const saveMutation = useMutation({
+    mutationFn: saveHomeLayout,
+    onSuccess: (nextLayout) => {
+      syncStoredHomeLayout(nextLayout);
+      queryClient.setQueryData(["home-layout"], nextLayout);
+      queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
+        current
+          ? {
+              ...current,
+              homeLayout: nextLayout
+            }
+          : current
+      );
+    }
+  });
+  const layout = layoutQuery.data ?? getDefaultHomeLayout();
+
+  useEffect(() => {
+    syncStoredHomeLayout(layout);
+  }, [layout]);
+
+  function commitLayout(nextLayout: HomeModulePreference[]) {
+    syncStoredHomeLayout(nextLayout);
+    queryClient.setQueryData(["home-layout"], nextLayout);
+    queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
+      current
+        ? {
+            ...current,
+            homeLayout: nextLayout
+          }
+        : current
+    );
+    saveMutation.mutate(nextLayout);
+  }
 
   function applyLayoutUpdate(updater: (current: HomeModulePreference[]) => HomeModulePreference[]) {
-    setLayout((current) => {
-      const next = updater(current);
-      persistHomeLayout(next);
-      return next;
-    });
+    commitLayout(updater(layout));
   }
 
   return {
     layout,
     updateModule: (
       id: HomeModuleId,
-      patch: Partial<Pick<HomeModulePreference, "visible" | "showInNavigation" | "size" | "collapsed">>
+      patch: Partial<
+        Pick<HomeModulePreference, "visible" | "showInNavigation" | "size" | "collapsed" | "customName">
+      >
     ) => {
       applyLayoutUpdate((current) => updateHomeModulePreference(current, id, patch));
     },
@@ -290,7 +352,7 @@ function useHomeLayoutPreferences() {
     },
     resetLayout: () => {
       const next = resetHomeLayout();
-      setLayout(next);
+      commitLayout(next);
     }
   };
 }
@@ -484,6 +546,7 @@ export function CommandRail({
         <nav className="command-rail__nav" aria-label="主导航">
           {visibleRailItems.map((item) => {
             const active = activeSection === item.key;
+            const label = item.moduleId ? getModuleDisplayName(item.moduleId, navigationPreferences) : item.label;
 
             return (
               <Link
@@ -491,7 +554,7 @@ export function CommandRail({
                 className={`command-link${active ? " is-active" : ""}${expanded || active ? "" : " is-hidden"}`}
                 to={item.to}
               >
-                <strong>{item.label}</strong>
+                <strong>{label}</strong>
               </Link>
             );
           })}
@@ -715,37 +778,74 @@ function LedgerPanel({
 }
 
 function TopicPanel({
-  items,
-  generatedAt
+  buckets,
+  generatedAt,
+  size
 }: {
-  items: TopicIdea[];
+  buckets: DashboardData["topics"]["currentByDimension"];
   generatedAt: string | null;
+  size: HomeModuleSize;
 }) {
-  const lead = items[0];
+  const safeBuckets = buckets ?? [];
+  const leadBucket = safeBuckets[0];
+  const lead = leadBucket?.items[0] ?? null;
+  const compact = size === "small";
+  const narrow = size === "small" || size === "smaller";
+  const showSummary = size !== "small";
+  const visibleBuckets =
+    size === "max"
+      ? safeBuckets.slice(0, 3)
+      : size === "large"
+        ? safeBuckets.slice(0, 2)
+        : size === "medium"
+          ? safeBuckets.slice(0, 2)
+          : safeBuckets.slice(0, 1);
 
   return (
-    <Link to="/topics" className="topic-panel">
-      <div className="topic-panel__header">
+    <Link to="/topics" className={`topic-module topic-module--${size}`}>
+      <div className="topic-module__header">
         <div>
-          <p className="eyebrow">AI Media Topics</p>
-          <h2>AI 自媒体选题</h2>
+          <p className="eyebrow">Topic Direction</p>
+          <h2>选题</h2>
         </div>
-        <span>{generatedAt ? `更新 ${formatTime(generatedAt)}` : "等待推送"}</span>
+        <span>{generatedAt ? `手动生成 ${formatTime(generatedAt)}` : "等待生成"}</span>
       </div>
       {lead ? (
-        <div className="topic-panel__lead">
-          <strong>{lead.title}</strong>
-          <p>{lead.hook}</p>
+        <div className="topic-module__hero">
+          <div className="topic-module__hero-copy">
+            <span>{leadBucket?.label ?? "技术"}</span>
+            <strong>{lead.title}</strong>
+            {showSummary ? <p>{lead.hook}</p> : null}
+          </div>
+          {!narrow ? (
+            <div className="topic-module__hero-meta">
+              <small>{safeBuckets.length} 个方向</small>
+              <b>{lead.score}</b>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="edge-empty">还没有选题推送。</div>
       )}
-      <div className="topic-panel__list">
-        {items.slice(0, 3).map((item) => (
-          <div key={item.id} className="topic-panel__item">
-            <span>{item.score}</span>
-            <p>{item.contentDirection}</p>
-          </div>
+      <div className="topic-module__bands">
+        {visibleBuckets.map((bucket) => (
+          <section key={bucket.dimensionId} className="topic-module__band">
+            <div className="topic-module__band-head">
+              <strong>{bucket.label}</strong>
+              {!compact ? <span>{bucket.description}</span> : null}
+            </div>
+            <div className="topic-module__band-list">
+              {bucket.items.slice(0, 1).map((item) => (
+                <article key={item.id} className="topic-module__band-item">
+                  <em>{item.score}</em>
+                  <div>
+                    <h3>{item.title}</h3>
+                    {!compact ? <p>{item.contentDirection}</p> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </Link>
@@ -1231,6 +1331,7 @@ export function DetailPlaceholderPage({
   const [railExpanded, setRailExpanded] = useState(true);
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
+  const { layout } = useHomeLayoutPreferences();
 
   return (
     <main className="workspace">
@@ -1241,6 +1342,7 @@ export function DetailPlaceholderPage({
         themeKey={themeKey}
         onThemeChange={setThemeKey}
         clockLine={clockLine}
+        navigationLayout={layout}
         rightMeta={[
           { label: "view", value: title },
           { label: "status", value: "reserved" },
@@ -1263,6 +1365,7 @@ export function DetailPlaceholderPage({
 
 function HomeModuleShell({
   preference,
+  title,
   summary,
   children,
   onToggleCollapsed,
@@ -1274,6 +1377,7 @@ function HomeModuleShell({
   isDragging = false
 }: {
   preference: HomeModulePreference;
+  title: string;
   summary: string;
   children: ReactNode;
   onToggleCollapsed: () => void;
@@ -1284,7 +1388,6 @@ function HomeModuleShell({
   preview?: boolean;
   isDragging?: boolean;
 }) {
-  const definition = getModuleDefinition(preference.id);
   const moduleStyle = {
     ...getModuleFrameStyle(preference.size, preference.collapsed),
     ...sortableStyle
@@ -1301,13 +1404,13 @@ function HomeModuleShell({
       {...(dragListeners ?? {})}
     >
       <div className="home-module__meta" aria-hidden="true">
-        <strong>{definition.label}</strong>
+        <strong>{title}</strong>
       </div>
       <div className="home-module__body">
         {preference.collapsed ? (
           <div className="home-module__collapsed-content">
             <div>
-              <strong>{definition.label}</strong>
+              <strong>{title}</strong>
               <span>{summary}</span>
             </div>
             <span>已收起</span>
@@ -1333,11 +1436,13 @@ function HomeModuleShell({
 
 function SortableHomeModuleShell({
   preference,
+  title,
   summary,
   children,
   onToggleCollapsed
 }: {
   preference: HomeModulePreference;
+  title: string;
   summary: string;
   children: ReactNode;
   onToggleCollapsed: () => void;
@@ -1360,6 +1465,7 @@ function SortableHomeModuleShell({
   return (
     <HomeModuleShell
       preference={preference}
+      title={title}
       summary={summary}
       onToggleCollapsed={onToggleCollapsed}
       setNodeRef={setNodeRef}
@@ -1419,8 +1525,9 @@ function renderHomeModuleContent({
   if (id === "topics") {
     return (
       <TopicPanel
-        items={dashboard.topics.current}
+        buckets={dashboard.topics.currentByDimension}
         generatedAt={dashboard.topics.lastGeneratedAt}
+        size={size}
       />
     );
   }
@@ -1434,14 +1541,18 @@ function renderHomeModuleContent({
 
 function ManageModuleCard({
   preference,
+  displayName,
   onVisibleChange,
   onNavigationChange,
-  onSizeChange
+  onSizeChange,
+  onNameChange
 }: {
   preference: HomeModulePreference;
+  displayName: string;
   onVisibleChange: (visible: boolean) => void;
   onNavigationChange: (visible: boolean) => void;
   onSizeChange: (size: HomeModuleSize) => void;
+  onNameChange: (name: string) => void;
 }) {
   const definition = getModuleDefinition(preference.id);
   const supportsNavigation = canShowHomeModuleInNavigation(preference.id);
@@ -1451,7 +1562,7 @@ function ManageModuleCard({
       <div className="manage-card__header">
         <span className="manage-card__index">{String(preference.order + 1).padStart(2, "0")}</span>
         <div>
-          <h3>{definition.label}</h3>
+          <h3>{displayName}</h3>
           <p>{definition.description}</p>
         </div>
       </div>
@@ -1473,6 +1584,15 @@ function ManageModuleCard({
             checked={supportsNavigation && preference.showInNavigation}
             disabled={!supportsNavigation}
             onChange={(event) => onNavigationChange(event.target.checked)}
+          />
+        </label>
+
+        <label className="manage-field">
+          <span>模块名称</span>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => onNameChange(event.target.value)}
           />
         </label>
 
@@ -1628,11 +1748,13 @@ export function HomeManagePage() {
                 <ManageModuleCard
                   key={preference.id}
                   preference={preference}
+                  displayName={getModuleDisplayName(preference.id, layout)}
                   onVisibleChange={(visible) => updateModule(preference.id, { visible })}
                   onNavigationChange={(showInNavigation) =>
                     updateModule(preference.id, { showInNavigation })
                   }
                   onSizeChange={(size) => updateModule(preference.id, { size })}
+                  onNameChange={(customName) => updateModule(preference.id, { customName })}
                 />
               ))}
             </div>
@@ -1818,6 +1940,8 @@ export function DashboardPage() {
 
   useEffect(() => {
     return openDashboardStream((data) => {
+      syncStoredHomeLayout(data.homeLayout);
+      queryClient.setQueryData(["home-layout"], data.homeLayout);
       queryClient.setQueryData(["dashboard"], data);
     });
   }, [queryClient]);
@@ -1861,6 +1985,7 @@ export function DashboardPage() {
                 <SortableHomeModuleShell
                   key={preference.id}
                   preference={preference}
+                  title={getModuleDisplayName(preference.id, layout)}
                   summary={getModuleSummary(preference.id, dashboard)}
                   onToggleCollapsed={() =>
                     updateModule(preference.id, {
@@ -1890,6 +2015,7 @@ export function DashboardPage() {
           {activePreference ? (
             <HomeModuleShell
               preference={activePreference}
+              title={getModuleDisplayName(activePreference.id, layout)}
               summary={getModuleSummary(activePreference.id, dashboard)}
               onToggleCollapsed={() => undefined}
               preview

@@ -1,10 +1,14 @@
 import { SUB_AGENT_HOME_MODULE_DEFINITIONS } from "@agent-zy/agent-registry/sub-agents";
+import type {
+  HomeModuleId,
+  HomeModulePreference,
+  HomeModuleSize
+} from "@agent-zy/shared-types";
 
 export const HOME_LAYOUT_STORAGE_KEY = "agent-zy-home-layout-v1";
 
 export type BuiltInHomeModuleId = "news" | "chat" | "todo" | "ledger" | "topics" | "history";
-export type HomeModuleId = BuiltInHomeModuleId | (string & {});
-export type HomeModuleSize = "max" | "large" | "medium" | "smaller" | "small";
+export type { HomeModuleId, HomeModulePreference, HomeModuleSize };
 
 export interface HomeModuleDefinition {
   id: HomeModuleId;
@@ -12,15 +16,6 @@ export interface HomeModuleDefinition {
   description: string;
   defaultSize: HomeModuleSize;
   defaultVisible: boolean;
-}
-
-export interface HomeModulePreference {
-  id: HomeModuleId;
-  visible: boolean;
-  showInNavigation: boolean;
-  size: HomeModuleSize;
-  collapsed: boolean;
-  order: number;
 }
 
 export interface HomeModuleGeometry {
@@ -301,7 +296,10 @@ function parseStoredPreference(
         ? value.size
         : "smaller",
     collapsed: typeof value.collapsed === "boolean" ? value.collapsed : false,
-    order: typeof value.order === "number" && Number.isFinite(value.order) ? value.order : fallbackOrder
+    order: typeof value.order === "number" && Number.isFinite(value.order) ? value.order : fallbackOrder,
+    ...(Object.prototype.hasOwnProperty.call(value, "customName") && typeof value.customName === "string"
+      ? { customName: value.customName }
+      : {})
   };
 }
 
@@ -360,7 +358,10 @@ export function mergeHomeLayoutPreferences(
           showInNavigation: canShowHomeModuleInNavigation(definition.id) && stored.showInNavigation,
           size: stored.size,
           collapsed: stored.collapsed,
-          order: stored.order
+          order: stored.order,
+          ...(Object.prototype.hasOwnProperty.call(stored, "customName")
+            ? { customName: stored.customName }
+            : {})
         };
       }
 
@@ -429,7 +430,7 @@ export function resetHomeLayout(
 export function updateHomeModulePreference(
   layout: readonly HomeModulePreference[],
   id: HomeModuleId,
-  patch: Partial<Pick<HomeModulePreference, "visible" | "showInNavigation" | "size" | "collapsed">>
+  patch: Partial<Pick<HomeModulePreference, "visible" | "showInNavigation" | "size" | "collapsed" | "customName">>
 ) {
   return normalizeOrder(
     layout.map((item) =>

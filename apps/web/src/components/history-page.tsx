@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { fetchDashboard, generateHistory, openDashboardStream } from "../api";
 import { getHistoryNotifications } from "../history-view";
-import { CommandRail, useLiveClock, useThemePreference } from "./dashboard-page";
+import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
 function formatDateTime(timestamp?: string | null) {
   if (!timestamp) {
@@ -25,6 +25,7 @@ export function HistoryPage() {
   const [themeKey, setThemeKey] = useThemePreference();
   const [railExpanded, setRailExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { layout } = useHomeLayoutPreferences();
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard"],
@@ -36,6 +37,7 @@ export function HistoryPage() {
       console.info("[history-page] generate:onSuccess", {
         notifications: nextDashboard.notifications.length
       });
+      queryClient.setQueryData(["home-layout"], nextDashboard.homeLayout);
       queryClient.setQueryData(["dashboard"], nextDashboard);
 
       const nextNotifications = getHistoryNotifications(nextDashboard.notifications);
@@ -48,6 +50,7 @@ export function HistoryPage() {
 
   useEffect(() => {
     return openDashboardStream((data) => {
+      queryClient.setQueryData(["home-layout"], data.homeLayout);
       queryClient.setQueryData(["dashboard"], data);
     });
   }, [queryClient]);
@@ -85,6 +88,7 @@ export function HistoryPage() {
         themeKey={themeKey}
         onThemeChange={setThemeKey}
         clockLine={clockLine}
+        navigationLayout={layout}
         rightMeta={[
           { label: "themes", value: String(historyNotifications.length) },
           { label: "cards", value: String(totalCards) },

@@ -13,6 +13,7 @@ function createState(): AppState {
     tasks: [],
     messages: [],
     notifications: [],
+    homeLayout: [],
     ledger: {
       entries: [],
       modules: []
@@ -36,12 +37,13 @@ function createState(): AppState {
       status: "idle"
     },
     topics: {
+      dimensions: [],
       current: [],
+      currentByDimension: [],
       history: [],
       lastGeneratedAt: null,
-      nextRunAt: null,
       status: "idle",
-      strategy: "news-to-content",
+      strategy: "manual-curation",
       lastError: null
     },
     nightlyReview: {

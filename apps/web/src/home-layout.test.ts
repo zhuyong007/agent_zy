@@ -147,7 +147,8 @@ describe("home-layout", () => {
       visible: false,
       showInNavigation: false,
       size: "medium",
-      collapsed: true
+      collapsed: true,
+      customName: "专题池"
     });
 
     persistHomeLayout(changed, storage);
@@ -156,7 +157,23 @@ describe("home-layout", () => {
       visible: false,
       showInNavigation: false,
       size: "medium",
-      collapsed: true
+      collapsed: true,
+      customName: "专题池"
+    });
+  });
+
+  test("preserves an empty custom module name instead of falling back to the default label", () => {
+    const storage = new MemoryStorage();
+
+    persistHomeLayout(
+      updateHomeModulePreference(DEFAULT_HOME_LAYOUT, "history", {
+        customName: ""
+      }),
+      storage
+    );
+
+    expect(loadHomeLayout(storage).find((item) => item.id === "history")).toMatchObject({
+      customName: ""
     });
   });
 

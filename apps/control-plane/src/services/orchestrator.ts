@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ChatResponse,
   DashboardData,
+  HomeModulePreference,
   NewsState,
   NotificationRecord,
   TopicState,
@@ -54,6 +55,8 @@ function createNotifications(
 
 export interface ControlPlaneOrchestrator {
   handleChat(message: string): Promise<ChatResponse>;
+  getHomeLayout(): HomeModulePreference[];
+  saveHomeLayout(layout: HomeModulePreference[]): HomeModulePreference[];
   getNews(): NewsState;
   refreshNews(meta?: Record<string, unknown>): Promise<NewsState>;
   getTopics(): TopicState;
@@ -224,6 +227,15 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return executed.task;
+    },
+    getHomeLayout() {
+      return options.store.getState().homeLayout;
+    },
+    saveHomeLayout(layout) {
+      options.store.setHomeLayout(layout);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+
+      return options.store.getState().homeLayout;
     },
     getNews() {
       return options.store.getState().news;

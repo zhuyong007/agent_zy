@@ -151,4 +151,29 @@ describe("control-plane store", () => {
 
     expect(store.getState().notifications.some((item) => item.id === "history-1")).toBe(false);
   });
+
+  it("persists home layout custom names in state.json", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+
+    store.setHomeLayout([
+      ...store.getState().homeLayout.map((item) =>
+        item.id === "news"
+          ? {
+              ...item,
+              customName: "",
+              showInNavigation: true
+            }
+          : item
+      )
+    ]);
+
+    const reloadedStore = createControlPlaneStore(dataDir);
+
+    expect(reloadedStore.getState().homeLayout.find((item) => item.id === "news")).toMatchObject({
+      customName: "",
+      showInNavigation: true
+    });
+  });
 });

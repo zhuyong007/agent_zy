@@ -152,10 +152,18 @@ export interface NewsState {
 
 export type TopicScoreLabel = "low" | "medium" | "high";
 export type TopicIdeaStatus = "new" | "saved" | "dismissed";
+export type TopicDimensionId = string;
+
+export interface TopicDimensionDefinition {
+  id: TopicDimensionId;
+  label: string;
+  description: string;
+}
 
 export interface TopicIdea {
   id: string;
   batchId: string;
+  dimensionId: TopicDimensionId;
   title: string;
   hook: string;
   summary: string;
@@ -171,13 +179,21 @@ export interface TopicIdea {
   createdAt: string;
 }
 
+export interface TopicDimensionBucket {
+  dimensionId: TopicDimensionId;
+  label: string;
+  description: string;
+  items: TopicIdea[];
+}
+
 export interface TopicState {
+  dimensions: TopicDimensionDefinition[];
   current: TopicIdea[];
+  currentByDimension: TopicDimensionBucket[];
   history: TopicIdea[];
   lastGeneratedAt: string | null;
-  nextRunAt: string | null;
   status: "idle" | "generating";
-  strategy: "news-to-content";
+  strategy: "manual-curation";
   lastError: string | null;
 }
 
@@ -198,6 +214,19 @@ export interface HistoryPostPayload {
 
 export interface HistoryPushState {
   lastTriggeredDate: string | null;
+}
+
+export type HomeModuleId = string;
+export type HomeModuleSize = "max" | "large" | "medium" | "smaller" | "small";
+
+export interface HomeModulePreference {
+  id: HomeModuleId;
+  visible: boolean;
+  showInNavigation: boolean;
+  size: HomeModuleSize;
+  collapsed: boolean;
+  order: number;
+  customName?: string;
 }
 
 export type NotificationKind =
@@ -227,6 +256,7 @@ export interface AppState {
   tasks: TaskRecord[];
   messages: ChatMessage[];
   notifications: NotificationRecord[];
+  homeLayout: HomeModulePreference[];
   ledger: LedgerState;
   schedule: ScheduleState;
   news: NewsState;
@@ -249,6 +279,7 @@ export interface DashboardData {
   recentTasks: TaskRecord[];
   messages: ChatMessage[];
   notifications: NotificationRecord[];
+  homeLayout: HomeModulePreference[];
   ledger: LedgerState & {
     summary: {
       todayExpense: number;

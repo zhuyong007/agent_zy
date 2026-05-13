@@ -1,6 +1,7 @@
 import type {
   ChatResponse,
   DashboardData,
+  HomeModulePreference,
   NewsState,
   TopicState
 } from "@agent-zy/shared-types";
@@ -24,6 +25,36 @@ export async function cancelNotification(notificationId: string): Promise<Dashbo
 
   if (!response.ok) {
     throw new Error("Failed to cancel notification");
+  }
+
+  return response.json();
+}
+
+export async function fetchHomeLayout(): Promise<HomeModulePreference[]> {
+  const response = await fetch(`${API_BASE}/api/home-layout`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch home layout");
+  }
+
+  return response.json();
+}
+
+export async function saveHomeLayout(
+  layout: readonly HomeModulePreference[]
+): Promise<HomeModulePreference[]> {
+  const response = await fetch(`${API_BASE}/api/home-layout`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      layout
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to save home layout");
   }
 
   return response.json();

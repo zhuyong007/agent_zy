@@ -7,12 +7,13 @@ import { agent } from "./index";
 
 function createTopicState(topics?: Partial<TopicState>): TopicState {
   return {
+    dimensions: [],
     current: [],
+    currentByDimension: [],
     history: [],
     lastGeneratedAt: null,
-    nextRunAt: null,
     status: "idle",
-    strategy: "news-to-content",
+    strategy: "manual-curation",
     lastError: null,
     ...topics
   };
@@ -44,6 +45,7 @@ function createState(state?: {
     tasks: [],
     messages: [],
     notifications: [],
+    homeLayout: [],
     ledger: {
       entries: [],
       modules: []
@@ -69,7 +71,7 @@ function createRequest(
 ): AgentExecutionRequest {
   return {
     taskId: `task-${requestedAt}`,
-    trigger: "schedule",
+    trigger: "system",
     meta: {
       action: "generate"
     },
@@ -79,7 +81,7 @@ function createRequest(
 }
 
 describe("topic agent", () => {
-  it("turns AI news into scored self-media topic ideas", async () => {
+  it("generates grouped topic ideas across three dimensions", async () => {
     const result = await agent.execute(
       createRequest(
         createState({
@@ -89,16 +91,16 @@ describe("topic agent", () => {
               hasNext: false,
               nextCursor: null,
               items: [
-              {
-                id: "news-ai-agent",
-                title: "AI agents reshape personal workspaces",
-                titleEn: null,
-                summary: "多个信源显示，AI agents 正在进入个人桌面工作台。",
-                category: "ai-products",
-                source: "AI Daily",
-                url: "https://example.com/ai-agent",
-                publishedAt: "2026-05-06T05:30:00.000Z"
-              }
+                {
+                  id: "news-ai-agent",
+                  title: "AI agents reshape personal workspaces",
+                  titleEn: null,
+                  summary: "多个信源显示，AI agents 正在进入个人桌面工作台。",
+                  category: "ai-products",
+                  source: "AI Daily",
+                  url: "https://example.com/ai-agent",
+                  publishedAt: "2026-05-06T05:30:00.000Z"
+                }
               ]
             }
           }
@@ -107,10 +109,16 @@ describe("topic agent", () => {
     );
 
     const topics = result.domainUpdates?.topics;
-    const firstTopic = topics?.current[0];
+    const technologyBucket = topics?.currentByDimension[0];
+    const firstTopic = technologyBucket?.items[0];
+
     expect(result.status).toBe("completed");
-    expect(topics?.current).toHaveLength(5);
+    expect(topics?.dimensions.map((item) => item.label)).toEqual(["技术", "有趣", "故事"]);
+    expect(topics?.currentByDimension).toHaveLength(3);
+    expect(topics?.current).toHaveLength(3);
+    expect(technologyBucket?.label).toBe("技术");
     expect(firstTopic).toMatchObject({
+      dimensionId: "technology",
       title: expect.stringContaining("AI agents reshape personal workspaces"),
       audience: expect.any(String),
       angle: expect.any(String),
@@ -122,23 +130,22 @@ describe("topic agent", () => {
       batchId: "topic-batch-2026-05-06T06:00:00.000Z"
     });
     expect(firstTopic?.contentDirection).toContain("实际问题");
-    expect(topics?.history.slice(0, 5).map((item) => item.id)).toEqual(
+    expect(topics?.history.slice(0, 3).map((item) => item.id)).toEqual(
       topics?.current.map((item) => item.id)
     );
-    expect(topics?.nextRunAt).toBe("2026-05-06T09:00:00.000Z");
   });
 
-  it("uses evergreen AI media ideas when news is empty", async () => {
+  it("uses evergreen ideas when news is empty", async () => {
     const result = await agent.execute(createRequest(createState()));
 
     const topics = result.domainUpdates?.topics;
-    expect(topics?.current).toHaveLength(5);
-    expect(topics?.current[0].title).toContain("AI");
-    expect(topics?.current[0].sourceNewsItemIds).toEqual([]);
+    expect(topics?.current).toHaveLength(3);
+    expect(topics?.currentByDimension[0]?.items[0].title).toContain("AI");
+    expect(topics?.currentByDimension[0]?.items[0].sourceNewsItemIds).toEqual([]);
     expect(topics?.lastError).toBeNull();
   });
 
-  it("uses current AI model and technology signals in the content direction", async () => {
+  it("uses current AI model and technology signals in the technology dimension", async () => {
     const result = await agent.execute(
       createRequest(
         createState({
@@ -148,17 +155,17 @@ describe("topic agent", () => {
               hasNext: false,
               nextCursor: null,
               items: [
-              {
-                id: "news-gpt51-coding",
-                title: "OpenAI GPT-5.1 improves coding agents for enterprise teams",
-                titleEn: null,
-                summary:
-                  "GPT-5.1、Gemini 3 与 Claude Code 的更新都指向更强的代码审查、自动修复和企业知识库集成。",
-                category: "ai-products",
-                source: "OpenAI Blog",
-                url: "https://example.com/gpt51",
-                publishedAt: "2026-05-06T05:30:00.000Z"
-              }
+                {
+                  id: "news-gpt51-coding",
+                  title: "OpenAI GPT-5.1 improves coding agents for enterprise teams",
+                  titleEn: null,
+                  summary:
+                    "GPT-5.1、Gemini 3 与 Claude Code 的更新都指向更强的代码审查、自动修复和企业知识库集成。",
+                  category: "ai-products",
+                  source: "OpenAI Blog",
+                  url: "https://example.com/gpt51",
+                  publishedAt: "2026-05-06T05:30:00.000Z"
+                }
               ]
             }
           }
@@ -166,8 +173,9 @@ describe("topic agent", () => {
       )
     );
 
-    const topic = result.domainUpdates?.topics?.current[0];
+    const topic = result.domainUpdates?.topics?.currentByDimension[0]?.items[0];
 
+    expect(topic?.dimensionId).toBe("technology");
     expect(topic?.title).toContain("GPT-5.1");
     expect(topic?.contentDirection).toContain("GPT-5.1");
     expect(topic?.contentDirection).toContain("Gemini 3");
@@ -180,6 +188,7 @@ describe("topic agent", () => {
     const existing = {
       id: "topic-existing",
       batchId: "topic-batch-old",
+      dimensionId: "story",
       title: "旧选题",
       hook: "旧钩子",
       summary: "旧摘要",
