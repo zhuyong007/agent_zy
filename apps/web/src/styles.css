@@ -721,6 +721,7 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-top: 15px;
 }
 
 .panel-toggle {
@@ -1701,6 +1702,7 @@ textarea {
   padding-top: 4px;
   color: var(--muted);
   font-size: 0.74rem;
+  padding-left: 30px;
 }
 
 .edge-panel__header--minor {
@@ -1980,6 +1982,7 @@ textarea {
   width: 100%;
   min-height: 100%;
   padding: 18px 18px 16px 22px;
+  padding-left: 22px !important;
   border: 1px solid rgba(191, 156, 93, 0.16);
   border-radius: 24px;
   color: var(--text);
@@ -2051,6 +2054,7 @@ textarea {
   display: grid;
   justify-items: end;
   gap: 8px;
+  margin-top: 10px;
 }
 
 .history-panel__body-link {
@@ -4994,6 +4998,10 @@ body[data-theme="day"] .topic-score {
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.news-mini-timeline__dot {
+  left: -4px;
 }
 
 .news-timeline-item__dot {
