@@ -1,20 +1,19 @@
+# Environment
 .env
 .env.*
 !.env.example
+
+# Local / agent data
 .agent-zy-data/
 .agent-zy-test-data/
 .superpowers/
+
+# Build output
 apps/web/dist/
-apps/web/node_modules/
-apps/web/package-lock.json
-apps/web/pnpm-lock.yaml
-apps/web/pnpm-workspace.yaml
-apps/web/pnpm-lock.yaml
-apps/web/pnpm-workspace.yaml
-apps/web/pnpm-lock.yaml
-apps/web/pnpm-workspace.yaml
+
+# Dependencies (install via npm — do not commit)
 node_modules/
-/package-lock.json
-/pnpm-lock.yaml
-/pnpm-workspace.yaml
-/pnpm-lock.yaml
+
+# npm / tooling caches (optional local artifacts)
+.npm/
+.cache/
