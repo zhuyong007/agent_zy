@@ -783,6 +783,7 @@ function HistoryPanel({
 
   return (
     <article className={`history-panel history-panel--${size}`}>
+      <div className="history-panel__rail" aria-hidden="true" />
       <div className="history-panel__header">
         <div>
           <p className="eyebrow">History Daily</p>
@@ -809,6 +810,7 @@ function HistoryPanel({
         {latestNotification && latestPayload ? (
           <>
             <div className="history-panel__lead">
+              <span className="history-panel__kicker">今日策展主题</span>
               <strong>{latestPayload.topic}</strong>
               {rule.showMetaLine ? (
                 <p className="history-panel__meta">
@@ -816,20 +818,20 @@ function HistoryPanel({
                   <span>{archiveCount} 条存档</span>
                 </p>
               ) : null}
-              {rule.showSummary ? <p>{latestPayload.summary}</p> : null}
+              {rule.showSummary ? <p className="history-panel__summary">{latestPayload.summary}</p> : null}
             </div>
             {rule.showStats ? (
               <div className="history-panel__stats">
                 <div>
-                  <span>主题库</span>
+                  <span>主题存档</span>
                   <strong>{archiveCount}</strong>
                 </div>
                 <div>
-                  <span>拆卡数</span>
+                  <span>拆卡进度</span>
                   <strong>{latestPayload.cardCount}</strong>
                 </div>
                 <div>
-                  <span>正文态</span>
+                  <span>正文状态</span>
                   <strong>已生成</strong>
                 </div>
               </div>
@@ -837,7 +839,7 @@ function HistoryPanel({
             <div className="history-panel__list">
               {cards.map((card, index) => (
                 <div key={`${latestNotification.id}-${card.title}`} className="history-panel__item">
-                  <span>{index + 1}</span>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
                   <div>
                     <strong>{card.title}</strong>
                     {size !== "small" ? <p>{card.imageText}</p> : null}
@@ -848,8 +850,14 @@ function HistoryPanel({
             </div>
             {rule.showCaption ? (
               <div className="history-panel__caption">
-                <span>正文预览</span>
+                <span>正文摘录</span>
                 <p>{buildCaptionExcerpt(latestPayload.xiaohongshuCaption, size === "max" ? 140 : 96)}</p>
+              </div>
+            ) : null}
+            {!rule.showMetaLine ? (
+              <div className="history-panel__status">
+                <span>{latestPayload ? `更新 ${formatTime(latestPayload.generatedAt)}` : "等待推送"}</span>
+                <strong>{size === "small" ? "已生成" : `${archiveCount} 条存档`}</strong>
               </div>
             ) : null}
           </>
@@ -1676,98 +1684,115 @@ export function HomeManagePage() {
                 </div>
               </article>
 
-              <article className="manage-card manage-card--background">
+              <article className="manage-card manage-card--background-workspace">
                 <div className="manage-card__header">
                   <div>
-                    <h3>当前背景</h3>
-                    <p>上传图片后立即生效，可反复替换；历史会自动保留在本地。</p>
+                    <h3>背景工作台</h3>
+                    <p>当前背景、上传入口和历史切换放在同一处，减少视线来回跳转。</p>
                   </div>
                 </div>
 
-                <div
-                  className={`background-stage${activeBackground ? " has-image" : ""}`}
-                  style={
-                    activeBackground
-                      ? { backgroundImage: `url("${activeBackground.src}")` }
-                      : undefined
-                  }
-                >
-                  <div>
-                    <strong>{activeBackground ? activeBackground.name : "未设置自定义背景"}</strong>
-                    <p>
-                      {activeBackground
-                        ? `最近启用：${formatDateTime(activeBackground.createdAt)}`
-                        : "上传一张背景图后会立即覆盖当前项目背景。"}
-                    </p>
+                <div className="background-workspace">
+                  <div
+                    className={`background-stage${activeBackground ? " has-image" : ""}`}
+                    style={
+                      activeBackground
+                        ? { backgroundImage: `url("${activeBackground.src}")` }
+                        : undefined
+                    }
+                  >
+                    <div>
+                      <span className="background-stage__eyebrow">当前背景</span>
+                      <strong>{activeBackground ? activeBackground.name : "未设置自定义背景"}</strong>
+                      <p>
+                        {activeBackground
+                          ? `最近启用：${formatDateTime(activeBackground.createdAt)}`
+                          : "上传一张背景图后会立即覆盖当前项目背景。"}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="manage-upload">
-                  <input
-                    ref={fileInputRef}
-                    className="manage-upload__input"
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => {
-                      void handleBackgroundUpload(event);
-                    }}
-                  />
-                  <button type="button" onClick={() => fileInputRef.current?.click()}>
-                    上传背景图
-                  </button>
-                  <span>仅保存当前浏览器本地</span>
-                </div>
-                {backgroundUploadError ? <p className="manage-upload__error">{backgroundUploadError}</p> : null}
-              </article>
-
-              <article className="manage-card manage-card--history">
-                <div className="manage-card__header">
-                  <div>
-                    <h3>背景历史</h3>
-                    <p>保留最近上传过的背景图，支持重新设为当前或直接删除。</p>
-                  </div>
-                </div>
-
-                {gallery.length === 0 ? (
-                  <div className="manage-empty-state">还没有背景历史，先上传一张图片。</div>
-                ) : (
-                  <div className="background-history">
-                    {gallery.map((background) => (
-                      <article
-                        key={background.id}
-                        className={`background-history__item${
-                          activeBackgroundId === background.id ? " is-active" : ""
-                        }`}
-                      >
-                        <div
-                          className="background-history__thumb"
-                          style={{ backgroundImage: `url("${background.src}")` }}
+                  <div className="background-controls">
+                    <div className="background-controls__section">
+                      <span className="background-controls__label">上传背景图</span>
+                      <p>支持直接替换当前背景，原图仅保存在本地浏览器。</p>
+                      <div className="manage-upload">
+                        <input
+                          ref={fileInputRef}
+                          className="manage-upload__input"
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => {
+                            void handleBackgroundUpload(event);
+                          }}
                         />
-                        <div className="background-history__body">
-                          <strong>{background.name}</strong>
-                          <p>{formatDateTime(background.createdAt)}</p>
-                        </div>
-                        <div className="background-history__actions">
-                          <button
-                            type="button"
-                            disabled={activeBackgroundId === background.id}
-                            onClick={() => setActiveBackground(background.id)}
-                          >
-                            {activeBackgroundId === background.id ? "当前背景" : "设为当前"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void removeBackground(background.id);
-                            }}
-                          >
-                            删除
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                        <button type="button" onClick={() => fileInputRef.current?.click()}>
+                          选择图片
+                        </button>
+                        <span>不压缩原图</span>
+                      </div>
+                      {backgroundUploadError ? <p className="manage-upload__error">{backgroundUploadError}</p> : null}
+                    </div>
+
+                    <div className="background-controls__section background-controls__section--meta">
+                      <span className="background-controls__label">当前状态</span>
+                      <div className="background-meta-list">
+                        <span>{backgroundCount > 0 ? `已保存 ${backgroundCount} 张背景` : "还没有背景历史"}</span>
+                        <span>{activeBackground ? "当前背景已启用" : "正在使用系统默认背景"}</span>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
+
+                <div className="background-history-shell">
+                  <div className="background-history-shell__header">
+                    <div>
+                      <h4>背景历史</h4>
+                      <p>保留最近上传过的背景图，支持重新设为当前或直接删除。</p>
+                    </div>
+                  </div>
+
+                  {gallery.length === 0 ? (
+                    <div className="manage-empty-state">还没有背景历史，先上传一张图片。</div>
+                  ) : (
+                    <div className="background-history">
+                      {gallery.map((background) => (
+                        <article
+                          key={background.id}
+                          className={`background-history__item${
+                            activeBackgroundId === background.id ? " is-active" : ""
+                          }`}
+                        >
+                          <div
+                            className="background-history__thumb"
+                            style={{ backgroundImage: `url("${background.src}")` }}
+                          />
+                          <div className="background-history__body">
+                            <strong>{background.name}</strong>
+                            <p>{formatDateTime(background.createdAt)}</p>
+                          </div>
+                          <div className="background-history__actions">
+                            <button
+                              type="button"
+                              disabled={activeBackgroundId === background.id}
+                              onClick={() => setActiveBackground(background.id)}
+                            >
+                              {activeBackgroundId === background.id ? "当前背景" : "设为当前"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void removeBackground(background.id);
+                              }}
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </article>
             </div>
           </section>

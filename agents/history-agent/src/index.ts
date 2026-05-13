@@ -1,6 +1,8 @@
 import { defineAgent } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
 import type { HistoryPostCard, HistoryPostPayload } from "@agent-zy/shared-types";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 const HISTORY_TOPICS = [
   "玄奘取经为什么重要",
@@ -27,8 +29,127 @@ function hashText(value: string): number {
   return hash;
 }
 
-function selectTopic(localDate: string): string {
-  return HISTORY_TOPICS[hashText(`history:${localDate}`) % HISTORY_TOPICS.length];
+interface HistoryTopicArchiveEntry {
+  topic: string;
+  firstGeneratedAt: string;
+  lastGeneratedAt: string;
+  generatedCount: number;
+}
+
+interface HistoryTopicArchive {
+  entries: HistoryTopicArchiveEntry[];
+}
+
+function getTopicArchivePath(): string {
+  return process.env.HISTORY_TOPIC_ARCHIVE_PATH ?? resolve(process.cwd(), "data/history/topic-archive.json");
+}
+
+function parseArchive(value: string): HistoryTopicArchive {
+  const parsed = parseJson(value);
+  const record = asRecord(parsed);
+  const entries = Array.isArray(record?.entries) ? record.entries : [];
+
+  return {
+    entries: entries
+      .map((entry) => {
+        const item = asRecord(entry);
+        const topic = asString(item?.topic);
+        const firstGeneratedAt = asString(item?.firstGeneratedAt);
+        const lastGeneratedAt = asString(item?.lastGeneratedAt);
+        const generatedCount =
+          typeof item?.generatedCount === "number" && Number.isInteger(item.generatedCount)
+            ? item.generatedCount
+            : 0;
+
+        if (!topic || !firstGeneratedAt || !lastGeneratedAt || generatedCount < 1) {
+          return null;
+        }
+
+        return {
+          topic,
+          firstGeneratedAt,
+          lastGeneratedAt,
+          generatedCount
+        };
+      })
+      .filter((entry): entry is HistoryTopicArchiveEntry => entry !== null)
+  };
+}
+
+function loadTopicArchive(path: string): HistoryTopicArchive {
+  if (!existsSync(path)) {
+    return { entries: [] };
+  }
+
+  try {
+    return parseArchive(readFileSync(path, "utf8"));
+  } catch (error) {
+    console.error("[history-agent] archive:read-failed", {
+      path,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return { entries: [] };
+  }
+}
+
+function writeTopicArchive(path: string, archive: HistoryTopicArchive) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(archive, null, 2), "utf8");
+}
+
+function selectTopic(localDate: string, archive: HistoryTopicArchive): string {
+  const usedTopics = new Set(archive.entries.map((entry) => entry.topic));
+  const dateSeedTopic = HISTORY_TOPICS[hashText(`history:${localDate}`) % HISTORY_TOPICS.length];
+
+  if (!usedTopics.has(dateSeedTopic)) {
+    return dateSeedTopic;
+  }
+
+  const unusedTopics = HISTORY_TOPICS.filter((topic) => !usedTopics.has(topic));
+
+  if (unusedTopics.length > 0) {
+    return unusedTopics[0];
+  }
+
+  const oldestEntry = [...archive.entries]
+    .filter((entry) => HISTORY_TOPICS.includes(entry.topic))
+    .sort((left, right) => left.lastGeneratedAt.localeCompare(right.lastGeneratedAt))[0];
+
+  return oldestEntry?.topic ?? dateSeedTopic;
+}
+
+function recordGeneratedTopic(
+  archive: HistoryTopicArchive,
+  topic: string,
+  generatedAt: string
+): HistoryTopicArchive {
+  const existingEntry = archive.entries.find((entry) => entry.topic === topic);
+
+  if (existingEntry) {
+    return {
+      entries: archive.entries.map((entry) =>
+        entry.topic === topic
+          ? {
+              ...entry,
+              lastGeneratedAt: generatedAt,
+              generatedCount: entry.generatedCount + 1
+            }
+          : entry
+      )
+    };
+  }
+
+  return {
+    entries: [
+      ...archive.entries,
+      {
+        topic,
+        firstGeneratedAt: generatedAt,
+        lastGeneratedAt: generatedAt,
+        generatedCount: 1
+      }
+    ]
+  };
 }
 
 function parseJson(value: string): unknown | null {
@@ -90,7 +211,9 @@ function validateCard(value: unknown): HistoryPostCard | null {
 }
 
 function validatePayload(value: unknown, generatedAt: string): HistoryPostPayload {
-  const record = asRecord(value);
+  const normalizedValue =
+    Array.isArray(value) && value.length === 1 && hasPayloadShape(value[0]) ? value[0] : value;
+  const record = asRecord(normalizedValue);
 
   if (!record) {
     throw new Error("ModelScope 输出不是 JSON 对象");
@@ -278,7 +401,9 @@ async function generateWithModelScope(topic: string, requestedAt: string): Promi
 export const agent = defineAgent({
   async execute(input: AgentExecutionRequest): Promise<AgentExecutionResult> {
     const localDate = asString(input.meta?.localDate) ?? input.requestedAt.slice(0, 10);
-    const topic = asString(input.meta?.topic) ?? selectTopic(localDate);
+    const archivePath = getTopicArchivePath();
+    const archive = loadTopicArchive(archivePath);
+    const topic = asString(input.meta?.topic) ?? selectTopic(localDate, archive);
 
     console.info("[history-agent] execute:start", {
       taskId: input.taskId,
@@ -291,6 +416,8 @@ export const agent = defineAgent({
 
     try {
       const payload = await generateWithModelScope(topic, input.requestedAt);
+      const nextArchive = recordGeneratedTopic(archive, payload.topic, input.requestedAt);
+      writeTopicArchive(archivePath, nextArchive);
 
       console.info("[history-agent] execute:success", {
         taskId: input.taskId,
