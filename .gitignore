@@ -5,3 +5,16 @@
 .agent-zy-test-data/
 .superpowers/
 apps/web/dist/
+apps/web/node_modules/
+apps/web/package-lock.json
+apps/web/pnpm-lock.yaml
+apps/web/pnpm-workspace.yaml
+apps/web/pnpm-lock.yaml
+apps/web/pnpm-workspace.yaml
+apps/web/pnpm-lock.yaml
+apps/web/pnpm-workspace.yaml
+node_modules/
+/package-lock.json
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+/pnpm-lock.yaml
