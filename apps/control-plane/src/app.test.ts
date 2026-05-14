@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,6 +56,182 @@ describe("control-plane app", () => {
         status: "completed"
       }
     });
+  });
+
+  it("records ledger facts through the ledger-agent path and exposes them in dashboard recent facts", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-record-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T14:30:00+08:00"));
+
+    try {
+      const recordResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/ledger/record",
+        payload: {
+          message: "今天梦幻西游卖货赚了 500"
+        }
+      });
+
+      expect(recordResponse.statusCode).toBe(200);
+      expect(recordResponse.json()).toMatchObject({
+        route: {
+          agentId: "ledger-agent"
+        },
+        task: {
+          status: "completed"
+        }
+      });
+
+      const dashboardResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/dashboard"
+      });
+
+      expect(dashboardResponse.statusCode).toBe(200);
+      expect(dashboardResponse.json().ledger.dashboard.recentFacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            amountCents: 50000,
+            summary: expect.stringContaining("梦幻西游")
+          })
+        ])
+      );
+      expect(dashboardResponse.json().ledger.summary.todayIncome).toBe(
+        dashboardResponse.json().ledger.dashboard.todayIncomeCents / 100
+      );
+      expect(dashboardResponse.json().ledger.summary.todayIncome).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("returns repository-backed ledger timeline facts", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-timeline-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const recordResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/ledger/record",
+        payload: {
+          message: "昨天和老婆吃火锅花了 280"
+        }
+      });
+
+      expect(recordResponse.statusCode).toBe(200);
+
+      const timelineResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/ledger/timeline"
+      });
+
+      expect(timelineResponse.statusCode).toBe(200);
+      expect(timelineResponse.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            fact: expect.objectContaining({
+              rawText: "昨天和老婆吃火锅花了 280",
+              amountCents: 28000,
+              direction: "expense"
+            }),
+            semantic: expect.objectContaining({
+              primaryCategory: "餐饮",
+              confidence: 0.86
+            })
+          })
+        ])
+      );
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("returns the minimal ledger reports list", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-reports-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const reportsResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/ledger/reports"
+      });
+
+      expect(reportsResponse.statusCode).toBe(200);
+      expect(reportsResponse.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: expect.stringMatching(/weekly|monthly/),
+            summary: expect.any(String),
+            insights: expect.any(Array)
+          })
+        ])
+      );
+      expect(
+        JSON.parse(readFileSync(join(isolatedDataDir, "ledger", "reports.json"), "utf8"))
+      ).toEqual([]);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("rejects empty ledger record messages", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-empty-record-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/ledger/record",
+        payload: {
+          message: "   "
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        message: expect.stringContaining("message")
+      });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
   });
 
   it("syncs AI HOT all items and daily reports", async () => {

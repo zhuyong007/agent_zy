@@ -4,10 +4,12 @@ import {
   clearLegacyBackgroundGallery,
   dataUrlToBlob,
   getActiveBackgroundId,
+  getBackgroundVisibility,
   getInitialThemeKey,
   getLegacyBackgroundGallery,
   isThemeKey,
   persistActiveBackgroundId,
+  persistBackgroundVisibility,
   persistTheme,
   themeOptions
 } from "./theme";
@@ -87,6 +89,24 @@ describe("theme", () => {
     expect(getActiveBackgroundId(storage)).toBeNull();
   });
 
+  test("persists background visibility independently from the selected background", () => {
+    const storage = new MemoryStorage();
+
+    expect(getBackgroundVisibility(storage)).toBe(true);
+
+    persistBackgroundVisibility(false, storage);
+    expect(getBackgroundVisibility(storage)).toBe(false);
+    expect(getActiveBackgroundId(storage)).toBeNull();
+
+    persistActiveBackgroundId("bg-2", storage);
+    expect(getActiveBackgroundId(storage)).toBe("bg-2");
+    expect(getBackgroundVisibility(storage)).toBe(false);
+
+    persistBackgroundVisibility(true, storage);
+    expect(getBackgroundVisibility(storage)).toBe(true);
+    expect(getActiveBackgroundId(storage)).toBe("bg-2");
+  });
+
   test("reads and clears legacy background gallery metadata from local storage", () => {
     const storage = new MemoryStorage();
     const legacyGallery = [
@@ -127,6 +147,7 @@ describe("theme", () => {
     const target: {
       dataset: {
         backgroundMode?: string;
+        backgroundVisibility?: string;
       };
       style: {
         setProperty: (name: string, value: string) => void;
@@ -155,15 +176,33 @@ describe("theme", () => {
         src: "blob:forest",
         createdAt: "2026-05-12T09:00:00.000Z"
       },
+      true,
       target
     );
 
     expect(target.dataset.backgroundMode).toBe("custom");
+    expect(target.dataset.backgroundVisibility).toBe("visible");
     expect(target.style.getPropertyValue("--custom-scene-backdrop")).toContain("blob:forest");
 
-    applyBackgroundSelection(null, target);
+    applyBackgroundSelection(
+      {
+        id: "bg-2",
+        name: "forest.jpg",
+        src: "blob:forest",
+        createdAt: "2026-05-12T09:00:00.000Z"
+      },
+      false,
+      target
+    );
 
     expect(target.dataset.backgroundMode).toBe("default");
+    expect(target.dataset.backgroundVisibility).toBe("hidden");
+    expect(target.style.getPropertyValue("--custom-scene-backdrop")).toBe("");
+
+    applyBackgroundSelection(null, true, target);
+
+    expect(target.dataset.backgroundMode).toBe("default");
+    expect(target.dataset.backgroundVisibility).toBe("visible");
     expect(target.style.getPropertyValue("--custom-scene-backdrop")).toBe("");
   });
 });

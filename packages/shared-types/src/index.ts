@@ -41,20 +41,119 @@ export interface ChatMessage {
 }
 
 export type LedgerDirection = "expense" | "income";
+export type LedgerSourceType =
+  | "chat"
+  | "ledger_quick_input"
+  | "voice"
+  | "ocr"
+  | "manual_edit";
+export type LedgerFactDirection = "expense" | "income" | "transfer" | "refund";
+
+export interface LedgerFactRecord {
+  id: string;
+  sourceType: LedgerSourceType;
+  rawText: string;
+  normalizedText: string;
+  direction: LedgerFactDirection;
+  amountCents: number;
+  currency: "CNY";
+  occurredAt: string;
+  recordedAt: string;
+  accountHint?: string;
+  counterparty?: string;
+  status: "confirmed" | "needs_review";
+  taskId?: string;
+  revisionOf?: string;
+}
+
+export interface LedgerSemanticRecord {
+  factId: string;
+  primaryCategory: string;
+  secondaryCategories: string[];
+  tags: string[];
+  people: string[];
+  scene?: string;
+  emotion?: string;
+  consumptionType?: string;
+  businessType?: string;
+  lifeStageIds: string[];
+  confidence: number;
+  reasoningSummary: string;
+  parserVersion: string;
+}
+
+export interface LifeStageRecord {
+  id: string;
+  name: string;
+  startAt: string;
+  endAt?: string;
+  status: "active" | "closed";
+  description: string;
+  tags: string[];
+}
+
+export interface LedgerReportRecord {
+  id: string;
+  kind: "weekly" | "monthly";
+  periodStart: string;
+  periodEnd: string;
+  generatedAt: string;
+  summary: string;
+  insights: string[];
+  risks: string[];
+  opportunities: string[];
+  promptVersion: string;
+}
+
+export interface LedgerCoachMemory {
+  id: string;
+  date: string;
+  type: "pattern" | "risk" | "milestone" | "preference";
+  title: string;
+  content: string;
+  relatedFactIds: string[];
+  score: number;
+}
+
+export interface LedgerDashboardSummary {
+  todayIncomeCents: number;
+  todayExpenseCents: number;
+  rolling7dNetCents: number;
+  recentFacts: Array<{
+    id: string;
+    direction: LedgerDirection;
+    amountCents: number;
+    occurredAt: string;
+    summary: string;
+  }>;
+  coachTip: string | null;
+  pendingReviewCount: number;
+}
 
 export interface LedgerEntry {
   id: string;
   module: string;
   direction: LedgerDirection;
+  // Legacy compatibility layer: unit follows the pre-existing implementation.
   amount: number;
   note: string;
   createdAt: string;
   taskId: string;
 }
 
+export interface LedgerLegacySummary {
+  // Legacy compatibility layer: values follow the pre-existing implementation.
+  todayExpense: number;
+  todayIncome: number;
+  balance: number;
+}
+
 export interface LedgerState {
   entries: LedgerEntry[];
   modules: string[];
+  // Legacy compatibility layer; new fact-layer monetary fields use *Cents.
+  summary?: LedgerLegacySummary;
+  dashboard?: LedgerDashboardSummary;
 }
 
 export type ScheduleUrgency = "low" | "medium" | "high";
@@ -281,11 +380,8 @@ export interface DashboardData {
   notifications: NotificationRecord[];
   homeLayout: HomeModulePreference[];
   ledger: LedgerState & {
-    summary: {
-      todayExpense: number;
-      todayIncome: number;
-      balance: number;
-    };
+    summary: LedgerLegacySummary;
+    dashboard: LedgerDashboardSummary;
   };
   schedule: ScheduleState & {
     todayItems: ScheduleItem[];

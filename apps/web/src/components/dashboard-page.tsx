@@ -1,4 +1,4 @@
-import type { CSSProperties, ChangeEvent, ReactNode } from "react";
+import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,6 +38,8 @@ import {
   fetchHomeLayout,
   generateHistory,
   openDashboardStream,
+  recordLedger,
+  refreshNews,
   saveHomeLayout,
   sendChat
 } from "../api";
@@ -54,11 +56,13 @@ import {
   applyTheme,
   deleteBackgroundImage,
   getActiveBackgroundId,
+  getBackgroundVisibility,
   getInitialThemeKey,
   isThemeKey,
   listBackgroundGallery,
   migrateLegacyBackgroundGallery,
   persistActiveBackgroundId,
+  persistBackgroundVisibility,
   persistTheme,
   saveBackgroundImage,
   type BackgroundImageViewRecord,
@@ -361,8 +365,10 @@ function useBackgroundGalleryPreferences() {
   const [gallery, setGallery] = useState<StoredBackgroundImageRecord[]>([]);
   const [galleryView, setGalleryView] = useState<BackgroundImageViewRecord[]>([]);
   const [activeBackgroundId, setActiveBackgroundId] = useState<string | null>(() => getActiveBackgroundId());
+  const [backgroundVisible, setBackgroundVisible] = useState<boolean>(() => getBackgroundVisibility());
   const objectUrlsRef = useRef(new Map<string, string>());
-  const activeBackground = galleryView.find((item) => item.id === activeBackgroundId) ?? null;
+  const selectedBackground = galleryView.find((item) => item.id === activeBackgroundId) ?? null;
+  const activeBackground = backgroundVisible ? selectedBackground : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -429,8 +435,8 @@ function useBackgroundGalleryPreferences() {
   }, []);
 
   useEffect(() => {
-    applyBackgroundSelection(activeBackground);
-  }, [activeBackground]);
+    applyBackgroundSelection(selectedBackground, backgroundVisible);
+  }, [selectedBackground, backgroundVisible]);
 
   async function refreshGallery() {
     const storedGallery = await listBackgroundGallery();
@@ -447,15 +453,22 @@ function useBackgroundGalleryPreferences() {
     gallery: galleryView,
     activeBackground,
     activeBackgroundId,
+    backgroundVisible,
     setActiveBackground: (backgroundId: string | null) => {
       setActiveBackgroundId(backgroundId);
       persistActiveBackgroundId(backgroundId);
+    },
+    setBackgroundVisible: (visible: boolean) => {
+      setBackgroundVisible(visible);
+      persistBackgroundVisibility(visible);
     },
     addBackground: async (background: StoredBackgroundImageRecord) => {
       await saveBackgroundImage(background);
       await refreshGallery();
       setActiveBackgroundId(background.id);
       persistActiveBackgroundId(background.id);
+      setBackgroundVisible(true);
+      persistBackgroundVisibility(true);
     },
     removeBackground: async (backgroundId: string) => {
       await deleteBackgroundImage(backgroundId);
@@ -599,18 +612,24 @@ export function CommandRail({
   );
 }
 
-function NewsPanel({
+export function NewsPanel({
   items,
   updatedAt,
   size,
   filter,
-  onFilterChange
+  onFilterChange,
+  onRefresh,
+  isRefreshing,
+  refreshError
 }: {
   items: NewsFeedItem[];
   updatedAt: string | null;
   size: HomeModuleSize;
   filter: NewsFilter;
   onFilterChange: (next: NewsFilter) => void;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+  refreshError: string | null;
 }) {
   const filteredItems = items.filter((item) => filter === "all" || item.category === filter);
   const visibleItemsBySize: Record<HomeModuleSize, number> = {
@@ -640,6 +659,15 @@ function NewsPanel({
           <h2>AI 热点</h2>
         </div>
         <div className="edge-panel__actions">
+          <button
+            type="button"
+            className="history-panel__generate"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            aria-label="立即更新 AI 热点"
+          >
+            {isRefreshing ? "更新中..." : "立即更新"}
+          </button>
           <span className="panel-stamp">{updatedAt ? `刷新 ${formatTime(updatedAt)}` : "等待刷新"}</span>
         </div>
       </div>
@@ -691,6 +719,7 @@ function NewsPanel({
         <span>{filteredItems.length} 条 AI HOT</span>
         <img src={homeImageAssets.iconMore} alt="" aria-hidden="true" />
       </div>
+      {refreshError ? <div className="news-inline-error">错误：{refreshError}</div> : null}
     </aside>
   );
 }
@@ -745,35 +774,107 @@ function TodoPanel({
 }
 
 function LedgerPanel({
-  balance,
-  todayIncome,
-  todayExpense
+  dashboard,
+  size
 }: {
-  balance: number;
-  todayIncome: number;
-  todayExpense: number;
+  dashboard: DashboardData;
+  size: HomeModuleSize;
 }) {
+  const queryClient = useQueryClient();
+  const [input, setInput] = useState("");
+  const [lastReply, setLastReply] = useState<string | null>(null);
+  const summary = dashboard.ledger.summary;
+  const coach = dashboard.ledger.dashboard;
+  const todayIncome = coach.todayIncomeCents / 100 || summary.todayIncome;
+  const todayExpense = coach.todayExpenseCents / 100 || summary.todayExpense;
+  const rolling7dNet = coach.rolling7dNetCents / 100;
+  const coachTip = coach.coachTip ?? "记录几笔后，AI 会开始提醒你的消费变化和经营投入效果。";
+  const compact = size === "small" || size === "smaller";
+  const inputOnly = size === "small";
+  const ledgerMutation = useMutation({
+    mutationFn: recordLedger,
+    onSuccess: (response) => {
+      setInput("");
+      setLastReply(response.message.content);
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard"]
+      });
+    }
+  });
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const message = input.trim();
+
+    if (message.length === 0 || ledgerMutation.isPending) {
+      return;
+    }
+
+    ledgerMutation.mutate(message);
+  };
+
   return (
-    <Link to="/ledger" className="ledger-panel">
+    <section className={`ledger-panel ledger-panel--${size}`}>
       <div className="ledger-panel__header">
-        <p className="eyebrow">Ledger Snapshot</p>
-        <h2>记账</h2>
+        <div>
+          <p className="eyebrow">AI Ledger</p>
+          <h2>一句话记账</h2>
+        </div>
+        <Link to="/ledger" className="panel-link">
+          时间轴
+        </Link>
       </div>
-      <div className="ledger-panel__metrics">
-        <div>
-          <span>支出</span>
-          <strong>{formatAmount(todayExpense)}</strong>
+      <form className="ledger-panel__composer" onSubmit={handleSubmit}>
+        <input
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={compact ? "昨天火锅 280" : "昨天和老婆吃火锅花了 280"}
+          aria-label="自然语言记账"
+        />
+        <button type="submit" disabled={ledgerMutation.isPending || input.trim().length === 0}>
+          {ledgerMutation.isPending ? "记录中" : "记录"}
+        </button>
+      </form>
+      {!inputOnly ? (
+        <div className="ledger-panel__metrics">
+          <div>
+            <span>今日支出</span>
+            <strong>{formatAmount(todayExpense)}</strong>
+          </div>
+          <div>
+            <span>今日收入</span>
+            <strong>{formatAmount(todayIncome)}</strong>
+          </div>
+          <div>
+            <span>近 7 日</span>
+            <strong>{formatAmount(rolling7dNet)}</strong>
+          </div>
         </div>
-        <div>
-          <span>收入</span>
-          <strong>{formatAmount(todayIncome)}</strong>
+      ) : null}
+      {ledgerMutation.isError ? (
+        <p className="ledger-panel__error">
+          {ledgerMutation.error instanceof Error ? ledgerMutation.error.message : "记录失败"}
+        </p>
+      ) : null}
+      {lastReply && !inputOnly ? <p className="ledger-panel__reply">{lastReply}</p> : null}
+      {!compact ? (
+        <div className="ledger-panel__coach">
+          <span>教练提示</span>
+          <p>{coachTip}</p>
         </div>
-        <div>
-          <span>结余</span>
-          <strong>{formatAmount(balance)}</strong>
+      ) : null}
+      {!compact && coach.recentFacts.length > 0 ? (
+        <div className="ledger-panel__recent" aria-label="最近记账">
+          {coach.recentFacts.slice(0, 2).map((fact) => (
+            <span key={fact.id}>
+              {fact.direction === "income" ? "收入" : "支出"} {formatAmount(fact.amountCents / 100)}
+              {" · "}
+              {fact.summary}
+            </span>
+          ))}
         </div>
-      </div>
-    </Link>
+      ) : null}
+    </section>
   );
 }
 
@@ -1484,13 +1585,19 @@ function renderHomeModuleContent({
   dashboard,
   newsFilter,
   onNewsFilterChange,
-  size
+  size,
+  onNewsRefresh,
+  isNewsRefreshing,
+  newsRefreshError
 }: {
   id: HomeModuleId;
   dashboard: DashboardData;
   newsFilter: NewsFilter;
   onNewsFilterChange: (next: NewsFilter) => void;
   size: HomeModuleSize;
+  onNewsRefresh: () => void;
+  isNewsRefreshing: boolean;
+  newsRefreshError: string | null;
 }) {
   if (id === "news") {
     return (
@@ -1500,6 +1607,9 @@ function renderHomeModuleContent({
         size={size}
         filter={newsFilter}
         onFilterChange={onNewsFilterChange}
+        onRefresh={onNewsRefresh}
+        isRefreshing={isNewsRefreshing}
+        refreshError={newsRefreshError}
       />
     );
   }
@@ -1513,13 +1623,7 @@ function renderHomeModuleContent({
   }
 
   if (id === "ledger") {
-    return (
-      <LedgerPanel
-        balance={dashboard.ledger.summary.balance}
-        todayIncome={dashboard.ledger.summary.todayIncome}
-        todayExpense={dashboard.ledger.summary.todayExpense}
-      />
-    );
+    return <LedgerPanel dashboard={dashboard} size={size} />;
   }
 
   if (id === "topics") {
@@ -1634,7 +1738,9 @@ export function HomeManagePage() {
     gallery,
     activeBackground,
     activeBackgroundId,
+    backgroundVisible,
     setActiveBackground,
+    setBackgroundVisible,
     addBackground,
     removeBackground
   } = useBackgroundGalleryPreferences();
@@ -1802,7 +1908,13 @@ export function HomeManagePage() {
 
                 <div className="manage-card__meta">
                   <span>当前主题：{themeOptions.find((item) => item.key === themeKey)?.label ?? themeKey}</span>
-                  <span>{activeBackground ? "背景图已覆盖" : "使用系统默认背景"}</span>
+                  <span>
+                    {activeBackground
+                      ? "背景图已覆盖"
+                      : activeBackgroundId && !backgroundVisible
+                        ? "背景图已隐藏"
+                        : "使用系统默认背景"}
+                  </span>
                 </div>
               </article>
 
@@ -1825,11 +1937,19 @@ export function HomeManagePage() {
                   >
                     <div>
                       <span className="background-stage__eyebrow">当前背景</span>
-                      <strong>{activeBackground ? activeBackground.name : "未设置自定义背景"}</strong>
+                      <strong>
+                        {activeBackground
+                          ? activeBackground.name
+                          : activeBackgroundId && !backgroundVisible
+                            ? "背景图已隐藏"
+                            : "未设置自定义背景"}
+                      </strong>
                       <p>
                         {activeBackground
                           ? `最近启用：${formatDateTime(activeBackground.createdAt)}`
-                          : "上传一张背景图后会立即覆盖当前项目背景。"}
+                          : activeBackgroundId && !backgroundVisible
+                            ? "当前已保留所选背景图，但工作台和管理页都不会展示。"
+                            : "上传一张背景图后会立即覆盖当前项目背景。"}
                       </p>
                     </div>
                   </div>
@@ -1860,8 +1980,22 @@ export function HomeManagePage() {
                       <span className="background-controls__label">当前状态</span>
                       <div className="background-meta-list">
                         <span>{backgroundCount > 0 ? `已保存 ${backgroundCount} 张背景` : "还没有背景历史"}</span>
-                        <span>{activeBackground ? "当前背景已启用" : "正在使用系统默认背景"}</span>
+                        <span>
+                          {activeBackground
+                            ? "当前背景已启用"
+                            : activeBackgroundId && !backgroundVisible
+                              ? "当前背景已隐藏"
+                              : "正在使用系统默认背景"}
+                        </span>
                       </div>
+                      <label className="manage-field manage-field--toggle background-visibility-toggle">
+                        <span>隐藏背景图</span>
+                        <input
+                          type="checkbox"
+                          checked={!backgroundVisible}
+                          onChange={(event) => setBackgroundVisible(!event.target.checked)}
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -1899,7 +2033,7 @@ export function HomeManagePage() {
                               disabled={activeBackgroundId === background.id}
                               onClick={() => setActiveBackground(background.id)}
                             >
-                              {activeBackgroundId === background.id ? "当前背景" : "设为当前"}
+                              {activeBackgroundId === background.id ? "当前选择" : "设为当前"}
                             </button>
                             <button
                               type="button"
@@ -1931,11 +2065,25 @@ export function DashboardPage() {
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
   const { layout, updateModule, moveModule } = useHomeLayoutPreferences();
+  useBackgroundGalleryPreferences();
   const { activeId, sensors, handleDragStart, handleDragEnd, handleDragCancel } = useSortableModuleDnd(moveModule);
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard"],
     queryFn: fetchDashboard
+  });
+  const newsRefreshMutation = useMutation({
+    mutationFn: () => refreshNews({ reason: "manual" }),
+    onSuccess: (news) => {
+      queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
+        current
+          ? {
+              ...current,
+              news
+            }
+          : current
+      );
+    }
   });
 
   useEffect(() => {
@@ -1998,7 +2146,15 @@ export function DashboardPage() {
                     dashboard,
                     newsFilter,
                     onNewsFilterChange: setNewsFilter,
-                    size: preference.size
+                    size: preference.size,
+                    onNewsRefresh: () => newsRefreshMutation.mutate(),
+                    isNewsRefreshing: newsRefreshMutation.isPending,
+                    newsRefreshError:
+                      newsRefreshMutation.isError && newsRefreshMutation.error instanceof Error
+                        ? newsRefreshMutation.error.message
+                        : newsRefreshMutation.isError
+                          ? "热点更新失败，请稍后重试。"
+                          : null
                   })}
                 </SortableHomeModuleShell>
               ))
@@ -2025,7 +2181,15 @@ export function DashboardPage() {
                 dashboard,
                 newsFilter,
                 onNewsFilterChange: setNewsFilter,
-                size: activePreference.size
+                size: activePreference.size,
+                onNewsRefresh: () => newsRefreshMutation.mutate(),
+                isNewsRefreshing: newsRefreshMutation.isPending,
+                newsRefreshError:
+                  newsRefreshMutation.isError && newsRefreshMutation.error instanceof Error
+                    ? newsRefreshMutation.error.message
+                    : newsRefreshMutation.isError
+                      ? "热点更新失败，请稍后重试。"
+                      : null
               })}
             </HomeModuleShell>
           ) : null}

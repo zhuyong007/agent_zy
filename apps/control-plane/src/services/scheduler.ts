@@ -8,6 +8,40 @@ function localDate(now = new Date()): string {
   return `${year}-${month}-${date}`;
 }
 
+function startOfLocalDay(value: Date): Date {
+  const date = new Date(value.getTime());
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getPreviousWeeklyPeriod(now: Date) {
+  const currentWeekStart = startOfLocalDay(now);
+  const weekDay = currentWeekStart.getDay();
+  const mondayOffset = weekDay === 0 ? -6 : 1 - weekDay;
+  currentWeekStart.setDate(currentWeekStart.getDate() + mondayOffset);
+
+  const periodStart = new Date(currentWeekStart.getTime());
+  periodStart.setDate(periodStart.getDate() - 7);
+
+  const periodEnd = new Date(currentWeekStart.getTime());
+  periodEnd.setDate(periodEnd.getDate() - 1);
+
+  return {
+    periodStart: localDate(periodStart),
+    periodEnd: localDate(periodEnd)
+  };
+}
+
+function getPreviousMonthlyPeriod(now: Date) {
+  const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+  return {
+    periodStart: localDate(periodStart),
+    periodEnd: localDate(periodEnd)
+  };
+}
+
 export interface ControlPlaneScheduler {
   start(): void;
   stop(): void;
@@ -26,6 +60,8 @@ export function createControlPlaneScheduler(options: {
   let reviewTimer: NodeJS.Timeout | null = null;
   let historyTimer: NodeJS.Timeout | null = null;
   let historyAttemptedDate: string | null = null;
+  let weeklyLedgerAttemptedKey: string | null = null;
+  let monthlyLedgerAttemptedKey: string | null = null;
 
   async function refreshNews(reason: string) {
     await options.orchestrator.runSystemTask({
@@ -82,6 +118,90 @@ export function createControlPlaneScheduler(options: {
     }
   }
 
+  async function maybeTriggerWeeklyLedgerReport() {
+    const now = new Date();
+
+    if (!(now.getDay() === 1 && now.getHours() === 8 && now.getMinutes() === 0)) {
+      return;
+    }
+
+    const period = getPreviousWeeklyPeriod(now);
+    const periodKey = `${period.periodStart}:${period.periodEnd}`;
+
+    if (weeklyLedgerAttemptedKey === periodKey) {
+      return;
+    }
+
+    if (
+      options.store
+        .getLedgerReports()
+        .some(
+          (report) =>
+            report.kind === "weekly" &&
+            report.periodStart === period.periodStart &&
+            report.periodEnd === period.periodEnd
+        )
+    ) {
+      weeklyLedgerAttemptedKey = periodKey;
+      return;
+    }
+
+    weeklyLedgerAttemptedKey = periodKey;
+    await options.orchestrator.runSystemTask({
+      agentId: "ledger-agent",
+      trigger: "schedule",
+      summary: "生成账本周报",
+      meta: {
+        action: "generate-weekly-report",
+        kind: "weekly",
+        periodStart: period.periodStart,
+        periodEnd: period.periodEnd
+      }
+    });
+  }
+
+  async function maybeTriggerMonthlyLedgerReport() {
+    const now = new Date();
+
+    if (!(now.getDate() === 1 && now.getHours() === 8 && now.getMinutes() === 5)) {
+      return;
+    }
+
+    const period = getPreviousMonthlyPeriod(now);
+    const periodKey = `${period.periodStart}:${period.periodEnd}`;
+
+    if (monthlyLedgerAttemptedKey === periodKey) {
+      return;
+    }
+
+    if (
+      options.store
+        .getLedgerReports()
+        .some(
+          (report) =>
+            report.kind === "monthly" &&
+            report.periodStart === period.periodStart &&
+            report.periodEnd === period.periodEnd
+        )
+    ) {
+      monthlyLedgerAttemptedKey = periodKey;
+      return;
+    }
+
+    monthlyLedgerAttemptedKey = periodKey;
+    await options.orchestrator.runSystemTask({
+      agentId: "ledger-agent",
+      trigger: "schedule",
+      summary: "生成账本月报",
+      meta: {
+        action: "generate-monthly-report",
+        kind: "monthly",
+        periodStart: period.periodStart,
+        periodEnd: period.periodEnd
+      }
+    });
+  }
+
   return {
     start() {
       if (!newsTimer) {
@@ -92,8 +212,13 @@ export function createControlPlaneScheduler(options: {
       }
 
       if (!reviewTimer) {
+        void maybeTriggerNightlyReview();
+        void maybeTriggerWeeklyLedgerReport();
+        void maybeTriggerMonthlyLedgerReport();
         reviewTimer = setInterval(() => {
           void maybeTriggerNightlyReview();
+          void maybeTriggerWeeklyLedgerReport();
+          void maybeTriggerMonthlyLedgerReport();
         }, 60_000);
       }
 

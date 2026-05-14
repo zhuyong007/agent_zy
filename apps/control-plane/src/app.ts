@@ -7,6 +7,8 @@ import { createHeuristicRouterModel, createHybridRouter } from "@agent-zy/router
 
 import { createAgentWorkerPool } from "./runtime/agent-pool";
 import { createEventBus } from "./services/events";
+import { createLedgerReportService } from "./services/ledger-report-service";
+import { createLedgerSemanticService } from "./services/ledger-semantic-service";
 import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
@@ -21,6 +23,8 @@ export function createControlPlaneApp(options?: {
   registry.registerMany(SUB_AGENT_MANIFESTS);
 
   const store = createControlPlaneStore(options?.dataDir ?? ".agent-zy-data");
+  const ledgerSemanticService = createLedgerSemanticService();
+  const ledgerReportService = createLedgerReportService();
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
   });
@@ -32,7 +36,9 @@ export function createControlPlaneApp(options?: {
     registry,
     router,
     workerPool,
-    eventBus
+    eventBus,
+    ledgerSemanticService,
+    ledgerReportService
   });
   const scheduler = createControlPlaneScheduler({
     orchestrator,
@@ -98,6 +104,35 @@ export function createControlPlaneApp(options?: {
     };
 
     return orchestrator.handleChat(body.message);
+  });
+
+  app.post("/api/ledger/record", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      message?: unknown;
+    };
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+
+    if (message.length === 0) {
+      return reply.code(400).send({
+        message: "message is required"
+      });
+    }
+
+    return orchestrator.handleLedgerChat(message);
+  });
+
+  app.get("/api/ledger/timeline", async () => orchestrator.getLedgerTimeline());
+
+  app.get("/api/ledger/reports", async () => orchestrator.getLedgerReports());
+
+  app.get("/api/ledger/stages", async () => orchestrator.getLedgerStages());
+
+  app.post("/api/ledger/chat", async (request) => {
+    const body = (request.body ?? {}) as {
+      message?: unknown;
+    };
+
+    return orchestrator.handleLedgerChat(typeof body.message === "string" ? body.message : "");
   });
 
   app.get("/api/stream", async (_request, reply) => {

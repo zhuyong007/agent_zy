@@ -9,6 +9,7 @@ import { QueryClient } from "@tanstack/react-query";
 
 import { DashboardPage, DetailPlaceholderPage, HomeManagePage } from "./components/dashboard-page";
 import { HistoryPage } from "./components/history-page";
+import { LedgerPage } from "./components/ledger-page";
 import { NewsPage } from "./components/news-page";
 import { TopicPage } from "./components/topic-page";
 
@@ -55,13 +56,7 @@ const manageRoute = createRoute({
 const ledgerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/ledger",
-  component: () => (
-    <DetailPlaceholderPage
-      section="ledger"
-      title="记账入口"
-      description="记账详情页暂未设计，这一期只在顶部命令路由条中保留入口，避免首页主体被账本模块抢占。"
-    />
-  )
+  component: LedgerPage
 });
 
 const todoRoute = createRoute({

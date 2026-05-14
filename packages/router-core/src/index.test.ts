@@ -10,11 +10,11 @@ const manifests: AgentManifest[] = [
     name: "账本 Agent",
     description: "处理收入支出和账本模块",
     version: "0.1.0",
-    capabilities: ["ledger.record", "ledger.summary"],
+    capabilities: ["ledger.record", "ledger.summary", "ledger.capture", "ledger.review"],
     triggers: ["user"],
     modulePath: "agents/ledger-agent/src/index.ts",
     manifestPath: "agents/ledger-agent/src/manifest.ts",
-    tags: ["ledger", "money", "expense", "income", "accounting"]
+    tags: ["ledger", "money", "expense", "income", "accounting", "转账", "转给", "记一笔"]
   },
   {
     id: "schedule-agent",
@@ -90,5 +90,25 @@ describe("router-core", () => {
 
     expect(route.agentId).toBe("schedule-agent");
     expect(route.candidates[0].id).toBe("schedule-agent");
+  });
+
+  it("keeps transfer-like ledger chat routed to ledger-agent", async () => {
+    const model: RouterModel = {
+      async selectCandidate() {
+        return null;
+      }
+    };
+
+    const router = createHybridRouter({ model });
+    const route = await router.route(
+      {
+        message: "转给老婆 200，帮我记一笔",
+        trigger: "user"
+      },
+      manifests
+    );
+
+    expect(route.agentId).toBe("ledger-agent");
+    expect(route.candidates[0].id).toBe("ledger-agent");
   });
 });

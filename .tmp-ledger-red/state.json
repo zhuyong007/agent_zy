@@ -1,0 +1,130 @@
+{
+  "tasks": [],
+  "messages": [],
+  "notifications": [],
+  "homeLayout": [
+    {
+      "id": "news",
+      "visible": true,
+      "showInNavigation": true,
+      "size": "large",
+      "collapsed": false,
+      "order": 0
+    },
+    {
+      "id": "chat",
+      "visible": true,
+      "showInNavigation": false,
+      "size": "max",
+      "collapsed": false,
+      "order": 1
+    },
+    {
+      "id": "todo",
+      "visible": true,
+      "showInNavigation": true,
+      "size": "medium",
+      "collapsed": false,
+      "order": 2
+    },
+    {
+      "id": "ledger",
+      "visible": true,
+      "showInNavigation": true,
+      "size": "small",
+      "collapsed": false,
+      "order": 3
+    },
+    {
+      "id": "topics",
+      "visible": true,
+      "showInNavigation": true,
+      "size": "smaller",
+      "collapsed": false,
+      "order": 4
+    },
+    {
+      "id": "history",
+      "visible": false,
+      "showInNavigation": false,
+      "size": "smaller",
+      "collapsed": false,
+      "order": 5
+    }
+  ],
+  "ledger": {
+    "entries": [],
+    "modules": [
+      "工作",
+      "游戏",
+      "生活"
+    ],
+    "dashboard": {
+      "todayIncomeCents": 0,
+      "todayExpenseCents": 0,
+      "rolling7dNetCents": 0,
+      "recentFacts": [],
+      "coachTip": null,
+      "pendingReviewCount": 0
+    }
+  },
+  "schedule": {
+    "items": [
+      {
+        "id": "schedule_1",
+        "title": "梳理今天的重点任务",
+        "date": "2026-05-14",
+        "suggestedWindow": "09:00-10:00",
+        "urgency": "high",
+        "status": "pending"
+      },
+      {
+        "id": "schedule_2",
+        "title": "完成一个推进型任务",
+        "date": "2026-05-14",
+        "suggestedWindow": "14:00-16:00",
+        "urgency": "medium",
+        "status": "pending"
+      },
+      {
+        "id": "schedule_3",
+        "title": "晚间复盘并确认待办完成情况",
+        "date": "2026-05-14",
+        "suggestedWindow": "21:30-22:00",
+        "urgency": "medium",
+        "status": "pending"
+      }
+    ],
+    "pendingReview": null
+  },
+  "news": {
+    "feed": {
+      "count": 0,
+      "hasNext": false,
+      "nextCursor": null,
+      "items": []
+    },
+    "daily": null,
+    "dailyArchive": [],
+    "lastFetchedAt": null,
+    "lastUpdatedAt": null,
+    "lastError": null,
+    "status": "idle"
+  },
+  "topics": {
+    "dimensions": [],
+    "current": [],
+    "currentByDimension": [],
+    "history": [],
+    "lastGeneratedAt": null,
+    "status": "idle",
+    "strategy": "manual-curation",
+    "lastError": null
+  },
+  "historyPush": {
+    "lastTriggeredDate": null
+  },
+  "nightlyReview": {
+    "lastTriggeredDate": null
+  }
+}

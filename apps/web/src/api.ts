@@ -2,6 +2,10 @@ import type {
   ChatResponse,
   DashboardData,
   HomeModulePreference,
+  LedgerFactRecord,
+  LedgerReportRecord,
+  LedgerSemanticRecord,
+  LifeStageRecord,
   NewsState,
   TopicState
 } from "@agent-zy/shared-types";
@@ -199,6 +203,97 @@ export async function sendChat(message: string): Promise<ChatResponse> {
 
   if (!response.ok) {
     throw new Error("Failed to send chat");
+  }
+
+  return response.json();
+}
+
+export type LedgerTimelineItem = {
+  fact: LedgerFactRecord;
+  semantic: Pick<
+    LedgerSemanticRecord,
+    | "primaryCategory"
+    | "secondaryCategories"
+    | "tags"
+    | "people"
+    | "confidence"
+    | "reasoningSummary"
+    | "parserVersion"
+    | "lifeStageIds"
+    | "scene"
+  > | null;
+};
+
+async function readApiError(response: Response, fallback: string) {
+  try {
+    const data = (await response.json()) as { message?: string };
+    return data.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function recordLedger(message: string): Promise<ChatResponse> {
+  const response = await fetch(`${API_BASE}/api/ledger/record`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to record ledger item"));
+  }
+
+  return response.json();
+}
+
+export async function askLedgerCoach(message: string): Promise<ChatResponse> {
+  const response = await fetch(`${API_BASE}/api/ledger/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to ask ledger coach"));
+  }
+
+  return response.json();
+}
+
+export async function fetchLedgerTimeline(): Promise<LedgerTimelineItem[]> {
+  const response = await fetch(`${API_BASE}/api/ledger/timeline`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch ledger timeline");
+  }
+
+  return response.json();
+}
+
+export async function fetchLedgerReports(): Promise<LedgerReportRecord[]> {
+  const response = await fetch(`${API_BASE}/api/ledger/reports`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch ledger reports");
+  }
+
+  return response.json();
+}
+
+export async function fetchLedgerStages(): Promise<LifeStageRecord[]> {
+  const response = await fetch(`${API_BASE}/api/ledger/stages`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch ledger stages");
   }
 
   return response.json();

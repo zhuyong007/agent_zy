@@ -27,6 +27,7 @@ type LegacyBackgroundImageRecord = BackgroundImageRecord & {
 export const THEME_STORAGE_KEY = "agent-zy-theme";
 export const BACKGROUND_GALLERY_STORAGE_KEY = "agent-zy-background-gallery-v1";
 export const ACTIVE_BACKGROUND_STORAGE_KEY = "agent-zy-active-background-v1";
+export const BACKGROUND_VISIBILITY_STORAGE_KEY = "agent-zy-background-visibility-v1";
 export const DEFAULT_THEME_KEY = "night";
 
 const BACKGROUND_DATABASE_NAME = "agent-zy-background-gallery";
@@ -45,6 +46,7 @@ type ThemeTarget = {
   dataset: {
     theme?: string;
     backgroundMode?: string;
+    backgroundVisibility?: string;
   };
   style?: {
     setProperty: (name: string, value: string) => void;
@@ -325,11 +327,33 @@ export function persistActiveBackgroundId(
   }
 }
 
+export function getBackgroundVisibility(storage: StorageLike | null = getBrowserStorage()) {
+  try {
+    return storage?.getItem(BACKGROUND_VISIBILITY_STORAGE_KEY) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+
+export function persistBackgroundVisibility(
+  visible: boolean,
+  storage: StorageLike | null = getBrowserStorage()
+) {
+  try {
+    storage?.setItem(BACKGROUND_VISIBILITY_STORAGE_KEY, visible ? "visible" : "hidden");
+  } catch {
+    // Background visibility is cosmetic preference and should not block rendering.
+  }
+}
+
 export function applyBackgroundSelection(
   background: BackgroundImageViewRecord | null,
+  visible = true,
   target: ThemeTarget = document.body
 ) {
-  if (background) {
+  target.dataset.backgroundVisibility = visible ? "visible" : "hidden";
+
+  if (background && visible) {
     target.dataset.backgroundMode = "custom";
     target.style?.setProperty("--custom-scene-backdrop", `url("${background.src}")`);
     return;

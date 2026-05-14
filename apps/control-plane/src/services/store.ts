@@ -9,8 +9,13 @@ import type {
   HomeModuleId,
   HomeModulePreference,
   HomeModuleSize,
+  LedgerDashboardSummary,
   LedgerEntry,
+  LedgerFactRecord,
+  LedgerReportRecord,
+  LedgerSemanticRecord,
   HistoryPushState,
+  LifeStageRecord,
   NotificationRecord,
   NewsState,
   TopicDimensionBucket,
@@ -22,6 +27,12 @@ import type {
 } from "@agent-zy/shared-types";
 import type { AgentExecutionResult, AgentManifest } from "@agent-zy/agent-sdk";
 import { groupTasksByStatus } from "@agent-zy/task-core";
+
+import { createLedgerRepository } from "./ledger-repository";
+
+function isEnoentError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
 
 function todayLocalDate(now = new Date()): string {
   const year = now.getFullYear();
@@ -157,7 +168,8 @@ function createInitialState(): AppState {
     homeLayout: getDefaultHomeLayout(),
     ledger: {
       entries: [],
-      modules: ["工作", "游戏", "生活"]
+      modules: [],
+      dashboard: createEmptyLedgerDashboardSummary()
     },
     schedule: {
       items: seedScheduleItems(),
@@ -193,6 +205,194 @@ function createInitialState(): AppState {
     nightlyReview: {
       lastTriggeredDate: null
     }
+  };
+}
+
+function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
+  return {
+    todayIncomeCents: 0,
+    todayExpenseCents: 0,
+    rolling7dNetCents: 0,
+    recentFacts: [],
+    coachTip: null,
+    pendingReviewCount: 0
+  };
+}
+
+function getBusinessDateKey(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value).slice(0, 10);
+  }
+
+  return todayLocalDate(date);
+}
+
+function isLedgerDashboardDirection(
+  direction: LedgerFactRecord["direction"]
+): direction is "expense" | "income" {
+  return direction === "expense" || direction === "income";
+}
+
+function buildLegacyLedgerSummary(entries: LedgerEntry[], today: string) {
+  return entries
+    .filter((entry) => getBusinessDateKey(entry.createdAt) === today)
+    .reduce(
+      (accumulator, entry) => {
+        if (entry.direction === "expense") {
+          accumulator.todayExpense += entry.amount;
+          accumulator.balance -= entry.amount;
+        } else {
+          accumulator.todayIncome += entry.amount;
+          accumulator.balance += entry.amount;
+        }
+
+        return accumulator;
+      },
+      {
+        todayExpense: 0,
+        todayIncome: 0,
+        balance: 0
+      }
+    );
+}
+
+function buildLedgerSummaryFromFacts(facts: LedgerFactRecord[], today: string) {
+  return facts.reduce(
+    (accumulator, fact) => {
+      if (fact.status !== "confirmed" || !isLedgerDashboardDirection(fact.direction)) {
+        return accumulator;
+      }
+
+      const amount = fact.amountCents / 100;
+
+      if (getBusinessDateKey(fact.occurredAt) === today) {
+        if (fact.direction === "expense") {
+          accumulator.todayExpense += amount;
+        } else {
+          accumulator.todayIncome += amount;
+        }
+      }
+
+      if (fact.direction === "expense") {
+        accumulator.balance -= amount;
+      } else {
+        accumulator.balance += amount;
+      }
+
+      return accumulator;
+    },
+    {
+      todayExpense: 0,
+      todayIncome: 0,
+      balance: 0
+    }
+  );
+}
+
+function buildLedgerDashboardSummary(
+  facts: LedgerFactRecord[],
+  semantics: LedgerSemanticRecord[],
+  now = new Date(Date.now())
+): LedgerDashboardSummary {
+  if (facts.length === 0) {
+    return createEmptyLedgerDashboardSummary();
+  }
+
+  const today = getBusinessDateKey(now);
+  const sevenDayWindowStart = new Date(now.getTime());
+  sevenDayWindowStart.setHours(0, 0, 0, 0);
+  sevenDayWindowStart.setDate(sevenDayWindowStart.getDate() - 6);
+
+  const semanticByFactId = new Map(semantics.map((semantic) => [semantic.factId, semantic]));
+  const pendingReviewCount = facts.filter((fact) => fact.status === "needs_review").length;
+  const dashboardFacts = facts.filter(
+    (fact) => fact.status === "confirmed" && isLedgerDashboardDirection(fact.direction)
+  );
+  let recentDiningExpenseCount = 0;
+  const sortedFacts = [...dashboardFacts].sort((left, right) => {
+    const occurredDelta = new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime();
+
+    if (occurredDelta !== 0) {
+      return occurredDelta;
+    }
+
+    return new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime();
+  });
+
+  const summary = sortedFacts.reduce<LedgerDashboardSummary>(
+    (summary, fact) => {
+      const semantic = semanticByFactId.get(fact.id);
+      const occurredAt = new Date(fact.occurredAt);
+      const occurredAtTime = occurredAt.getTime();
+
+      if (getBusinessDateKey(fact.occurredAt) === today) {
+        if (fact.direction === "income") {
+          summary.todayIncomeCents += fact.amountCents;
+        } else {
+          summary.todayExpenseCents += fact.amountCents;
+        }
+      }
+
+      if (!Number.isNaN(occurredAtTime) && occurredAtTime >= sevenDayWindowStart.getTime()) {
+        summary.rolling7dNetCents += fact.direction === "income" ? fact.amountCents : -fact.amountCents;
+
+        if (
+          fact.direction === "expense" &&
+          semantic?.primaryCategory === "餐饮" &&
+          semantic.confidence >= 0.7
+        ) {
+          recentDiningExpenseCount += 1;
+        }
+      }
+
+      if (summary.recentFacts.length < 3) {
+        const direction = fact.direction === "income" ? "income" : "expense";
+
+        summary.recentFacts.push({
+          id: fact.id,
+          direction,
+          amountCents: fact.amountCents,
+          occurredAt: fact.occurredAt,
+          summary:
+            semantic?.primaryCategory && semantic.primaryCategory.trim().length > 0
+              ? `${semantic.primaryCategory} · ${fact.rawText}`
+              : fact.rawText
+        });
+      }
+
+      return summary;
+    },
+    {
+      ...createEmptyLedgerDashboardSummary(),
+      pendingReviewCount
+    }
+  );
+
+  if (recentDiningExpenseCount >= 2) {
+    return {
+      ...summary,
+      coachTip: "最近餐饮支出较频繁，留意外食节奏。"
+    };
+  }
+
+  if (summary.pendingReviewCount > 0) {
+    return {
+      ...summary,
+      coachTip: "你有待确认的账目，建议补充金额或场景。"
+    };
+  }
+
+  return summary;
+}
+
+function normalizeLedgerState(state: AppState["ledger"] | undefined): AppState["ledger"] {
+  return {
+    entries: state?.entries ?? [],
+    modules: state?.modules ?? ["工作", "游戏", "生活"],
+    ...(state?.summary ? { summary: state.summary } : {}),
+    dashboard: state?.dashboard ?? createEmptyLedgerDashboardSummary()
   };
 }
 
@@ -271,6 +471,40 @@ function normalizeHistoryPushState(
   };
 }
 
+function bootstrapLegacyLedgerFact(entry: LedgerEntry): LedgerFactRecord {
+  const note = entry.note.trim();
+
+  return {
+    id: entry.id,
+    // Legacy entries already exist in state.json, so bootstrap them as confirmed manual facts.
+    sourceType: "manual_edit",
+    rawText: note,
+    normalizedText: note,
+    direction: entry.direction,
+    amountCents: Math.round(entry.amount * 100),
+    currency: "CNY",
+    occurredAt: entry.createdAt,
+    recordedAt: entry.createdAt,
+    status: "confirmed",
+    ...(entry.taskId ? { taskId: entry.taskId } : {})
+  };
+}
+
+function bootstrapLedgerRepositoryFromLegacyState(
+  state: AppState,
+  ledgerRepository: ReturnType<typeof createLedgerRepository>
+): void {
+  if (state.ledger.entries.length === 0) {
+    return;
+  }
+
+  if (ledgerRepository.readFacts().length > 0) {
+    return;
+  }
+
+  ledgerRepository.writeFacts(state.ledger.entries.map(bootstrapLegacyLedgerFact));
+}
+
 function normalizeAppState(state: AppState): AppState {
   const news = normalizeNewsState(state.news);
   const { newsBodies: _newsBodies, ...stateWithoutLegacyNewsBodies } = state as AppState & {
@@ -280,6 +514,7 @@ function normalizeAppState(state: AppState): AppState {
   return {
     ...stateWithoutLegacyNewsBodies,
     homeLayout: normalizeHomeLayout(state.homeLayout),
+    ledger: normalizeLedgerState(state.ledger),
     news,
     topics: normalizeTopicState(state.topics),
     historyPush: normalizeHistoryPushState(state.historyPush)
@@ -295,6 +530,13 @@ export interface ControlPlaneStore {
   addNotifications(notifications: NotificationRecord[]): void;
   cancelNotification(notificationId: string): void;
   applyAgentResult(result: AgentExecutionResult): void;
+  appendLedgerFact(fact: LedgerFactRecord): LedgerFactRecord;
+  appendLedgerSemantic(semantic: LedgerSemanticRecord): LedgerSemanticRecord;
+  getLedgerFacts(): LedgerFactRecord[];
+  getLedgerSemantics(): LedgerSemanticRecord[];
+  getLedgerReports(): LedgerReportRecord[];
+  getLedgerStages(): LifeStageRecord[];
+  upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
   setNightlyReviewDate(date: string): void;
   getDashboard(
     manifests: AgentManifest[],
@@ -305,8 +547,10 @@ export interface ControlPlaneStore {
 export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
   const filePath = resolve(dataDir, "state.json");
   mkdirSync(dirname(filePath), { recursive: true });
+  const ledgerRepository = createLedgerRepository(dataDir);
 
   let state = loadState(filePath);
+  bootstrapLedgerRepositoryFromLegacyState(state, ledgerRepository);
 
   function persist() {
     writeFileSync(filePath, JSON.stringify(state, null, 2), "utf8");
@@ -392,35 +636,57 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       persist();
     },
+    appendLedgerFact(fact) {
+      const facts = ledgerRepository.readFacts();
+      const nextFacts = facts.filter((item) => item.id !== fact.id);
+
+      nextFacts.unshift(structuredClone(fact));
+      ledgerRepository.writeFacts(nextFacts);
+
+      return fact;
+    },
+    appendLedgerSemantic(semantic) {
+      const semantics = ledgerRepository.readSemantics();
+      const nextSemantics = semantics.filter((item) => item.factId !== semantic.factId);
+
+      nextSemantics.unshift(structuredClone(semantic));
+      ledgerRepository.writeSemantics(nextSemantics);
+
+      return semantic;
+    },
+    getLedgerFacts() {
+      return structuredClone(ledgerRepository.readFacts());
+    },
+    getLedgerSemantics() {
+      return structuredClone(ledgerRepository.readSemantics());
+    },
+    getLedgerReports() {
+      return structuredClone(ledgerRepository.readReports());
+    },
+    getLedgerStages() {
+      return structuredClone(ledgerRepository.readStages());
+    },
+    upsertLedgerReport(report) {
+      const reports = ledgerRepository.readReports();
+      const nextReports = reports.filter((item) => item.id !== report.id);
+
+      nextReports.unshift(structuredClone(report));
+      ledgerRepository.writeReports(nextReports);
+
+      return report;
+    },
     setNightlyReviewDate(date) {
       state.nightlyReview.lastTriggeredDate = date;
       persist();
     },
     getDashboard(manifests, runtimeViews) {
       const groups = groupTasksByStatus(state.tasks);
-      const today = todayLocalDate();
-      const todayEntries = state.ledger.entries.filter(
-        (entry) => entry.createdAt.slice(0, 10) === today
-      );
-
-      const summary = todayEntries.reduce(
-        (accumulator, entry) => {
-          if (entry.direction === "expense") {
-            accumulator.todayExpense += entry.amount;
-            accumulator.balance -= entry.amount;
-          } else {
-            accumulator.todayIncome += entry.amount;
-            accumulator.balance += entry.amount;
-          }
-
-          return accumulator;
-        },
-        {
-          todayExpense: 0,
-          todayIncome: 0,
-          balance: 0
-        }
-      );
+      const now = new Date(Date.now());
+      const today = todayLocalDate(now);
+      const facts = ledgerRepository.readFacts();
+      const semantics = ledgerRepository.readSemantics();
+      const summary = buildLedgerSummaryFromFacts(facts, today);
+      const dashboard = buildLedgerDashboardSummary(facts, semantics, now);
 
       return {
         tasks: groups,
@@ -442,7 +708,8 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         homeLayout: state.homeLayout,
         ledger: {
           ...state.ledger,
-          summary
+          summary,
+          dashboard
         },
         schedule: {
           ...state.schedule,
@@ -470,12 +737,25 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 }
 
 function loadState(filePath: string): AppState {
+  let raw: string;
+
   try {
-    const raw = readFileSync(filePath, "utf8");
-    return normalizeAppState(JSON.parse(raw) as AppState);
-  } catch {
+    raw = readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (!isEnoentError(error)) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load control-plane state at ${filePath}: ${reason}`);
+    }
+
     const state = createInitialState();
     writeFileSync(filePath, JSON.stringify(state, null, 2), "utf8");
     return state;
+  }
+
+  try {
+    return normalizeAppState(JSON.parse(raw) as AppState);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse control-plane state at ${filePath}: ${reason}`);
   }
 }

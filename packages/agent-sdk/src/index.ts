@@ -1,6 +1,8 @@
 import type {
   AppState,
   HistoryPostPayload,
+  LedgerFactRecord,
+  LedgerSemanticRecord,
   HistoryPushState,
   LedgerState,
   NewsState,
@@ -52,10 +54,43 @@ export interface AgentExecutionRequest {
   state: AppState;
 }
 
+export interface AgentExecutionLedgerDraft {
+  status: "confirmed" | "needs_review";
+  issues: Array<"amount_missing" | "direction_unknown">;
+  fact: {
+    rawText: string;
+    normalizedText: string;
+    direction: LedgerFactRecord["direction"] | null;
+    amountCents: number | null;
+    currency: LedgerFactRecord["currency"];
+    occurredAt: string;
+    recordedAt: string;
+    counterparty?: string;
+    status: LedgerFactRecord["status"];
+  };
+  semantic: {
+    primaryCategory: string | null;
+    secondaryCategories: string[];
+    tags: string[];
+    people: string[];
+    scene?: string;
+    confidence: number;
+    reasoningSummary: string;
+    parserVersion: string;
+  };
+}
+
 export interface AgentExecutionResult {
   status: Extract<TaskStatus, "completed" | "waiting_feedback" | "failed">;
   summary: string;
   assistantMessage: string;
+  metadata?: {
+    ledger?: {
+      fact?: LedgerFactRecord;
+      semantic?: LedgerSemanticRecord;
+      draft?: AgentExecutionLedgerDraft;
+    };
+  };
   notifications?: Array<{
     kind: NotificationKind;
     title: string;
