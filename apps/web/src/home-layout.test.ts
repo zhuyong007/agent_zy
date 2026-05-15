@@ -56,7 +56,7 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
       "large",
       "max",
-      "medium",
+      "max",
       "small",
       "smaller",
       "smaller"
@@ -213,7 +213,7 @@ describe("home-layout", () => {
       JSON.stringify([
         { id: "news", visible: true, size: "max", collapsed: false, order: 0 },
         { id: "chat", visible: true, size: "max", collapsed: false, order: 1 },
-        { id: "todo", visible: true, size: "large", collapsed: false, order: 2 },
+        { id: "todo", visible: true, size: "max", collapsed: false, order: 2 },
         { id: "topics", visible: true, size: "medium", collapsed: false, order: 3 },
         { id: "ledger", visible: true, size: "small", collapsed: false, order: 4 }
       ])
@@ -223,7 +223,7 @@ describe("home-layout", () => {
 
     expect(loaded.find((item) => item.id === "news")).toMatchObject({ size: "large" });
     expect(loaded.find((item) => item.id === "chat")).toMatchObject({ size: "max" });
-    expect(loaded.find((item) => item.id === "todo")).toMatchObject({ size: "medium" });
+    expect(loaded.find((item) => item.id === "todo")).toMatchObject({ size: "large" });
     expect(loaded.find((item) => item.id === "topics")).toMatchObject({ size: "smaller" });
     expect(loaded.find((item) => item.id === "ledger")).toMatchObject({ size: "small" });
   });

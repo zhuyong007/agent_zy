@@ -28,8 +28,7 @@ import type {
   HomeModulePreference,
   NotificationRecord,
   NewsCategory,
-  NewsFeedItem,
-  ScheduleItem
+  NewsFeedItem
 } from "@agent-zy/shared-types";
 
 import {
@@ -92,6 +91,7 @@ import {
   getHistoryHomePreviewRule,
   getHistoryNotifications
 } from "../history-view";
+import { getTodoModuleSummary, TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
 
 export type RailSection = "home" | "manage" | "news" | "topics" | "history" | "ledger" | "todo";
 type NewsFilter = "all" | NewsCategory;
@@ -272,8 +272,7 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
   }
 
   if (id === "todo") {
-    const pendingCount = dashboard.schedule.todayItems.filter((item) => item.status === "pending").length;
-    return `${formatShortCount(pendingCount)} 项待处理`;
+    return getTodoModuleSummary(dashboard);
   }
 
   if (id === "ledger") {
@@ -720,55 +719,6 @@ export function NewsPanel({
         <img src={homeImageAssets.iconMore} alt="" aria-hidden="true" />
       </div>
       {refreshError ? <div className="news-inline-error">错误：{refreshError}</div> : null}
-    </aside>
-  );
-}
-
-function TodoPanel({
-  items
-}: {
-  items: ScheduleItem[];
-}) {
-  const pendingCount = items.filter((item) => item.status === "pending").length;
-  const completedCount = items.filter((item) => item.status === "done").length;
-  const highPriorityCount = items.filter((item) => item.urgency === "high" && item.status !== "done").length;
-  const pendingNote = pendingCount > 0 ? "优先清掉关键事项" : "当前没有未完成事项";
-  const footerNote =
-    items.length > 0 ? `共 ${formatShortCount(items.length)} 项任务，建议先处理高优先事项。` : "今天还没有待办安排。";
-
-  return (
-    <aside className="edge-panel edge-panel--todo edge-panel--ops edge-panel--right">
-      <div className="edge-panel__header edge-panel__header--compact">
-        <div>
-          <p className="eyebrow">Today Focus</p>
-          <h2>今日待办</h2>
-        </div>
-      </div>
-      <div className="todo-panel__summary">
-        <div className="todo-panel__hero">
-          <span>待处理</span>
-          <strong>{formatShortCount(pendingCount)}</strong>
-          <small>{pendingNote}</small>
-        </div>
-        <div className="todo-summary-grid">
-          <div className="todo-summary-tile">
-            <span>高优先</span>
-            <strong>{formatShortCount(highPriorityCount)}</strong>
-            <small>需要尽快处理</small>
-          </div>
-          <div className="todo-summary-tile">
-            <span>已完成</span>
-            <strong>{formatShortCount(completedCount)}</strong>
-            <small>今日已勾选</small>
-          </div>
-        </div>
-      </div>
-      <div className="todo-panel__footer">
-        <p>{footerNote}</p>
-        <Link to="/todo" className="panel-link">
-          进入任务页
-        </Link>
-      </div>
     </aside>
   );
 }
@@ -1583,6 +1533,7 @@ function SortableHomeModuleShell({
 function renderHomeModuleContent({
   id,
   dashboard,
+  todoActions,
   newsFilter,
   onNewsFilterChange,
   size,
@@ -1592,6 +1543,7 @@ function renderHomeModuleContent({
 }: {
   id: HomeModuleId;
   dashboard: DashboardData;
+  todoActions: ReturnType<typeof useTodoWorkspaceDashboard>;
   newsFilter: NewsFilter;
   onNewsFilterChange: (next: NewsFilter) => void;
   size: HomeModuleSize;
@@ -1619,7 +1571,14 @@ function renderHomeModuleContent({
   }
 
   if (id === "todo") {
-    return <TodoPanel items={dashboard.schedule.todayItems} />;
+    return (
+      <TodoPanel
+        dashboard={dashboard}
+        size={size}
+        onToggleItem={todoActions.toggleItemStatus}
+        onAddItem={todoActions.addItem}
+      />
+    );
   }
 
   if (id === "ledger") {
@@ -2094,11 +2053,17 @@ export function DashboardPage() {
     });
   }, [queryClient]);
 
+  const todoWorkspace = useTodoWorkspaceDashboard(dashboardQuery.data);
+
   if (dashboardQuery.isLoading || !dashboardQuery.data) {
     return <div className="loading-shell">正在连接控制台并加载首页工作台...</div>;
   }
 
-  const dashboard = dashboardQuery.data;
+  if (!todoWorkspace.dashboard) {
+    return <div className="loading-shell">正在连接控制台并加载首页工作台...</div>;
+  }
+
+  const dashboard = todoWorkspace.dashboard;
   const visibleLayout = layout.filter((item) => item.visible);
   const activePreference = activeId ? visibleLayout.find((item) => item.id === activeId) : null;
 
@@ -2144,6 +2109,7 @@ export function DashboardPage() {
                   {renderHomeModuleContent({
                     id: preference.id,
                     dashboard,
+                    todoActions: todoWorkspace,
                     newsFilter,
                     onNewsFilterChange: setNewsFilter,
                     size: preference.size,

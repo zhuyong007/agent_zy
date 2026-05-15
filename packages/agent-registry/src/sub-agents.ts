@@ -45,7 +45,7 @@ export const SUB_AGENT_ROUTES = [
       id: "todo",
       label: "今日待办",
       description: "今日任务数量、优先级和完成状态",
-      defaultSize: "medium",
+      defaultSize: "max",
       defaultVisible: true,
       order: 2
     }

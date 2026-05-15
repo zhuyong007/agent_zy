@@ -7,10 +7,11 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 
-import { DashboardPage, DetailPlaceholderPage, HomeManagePage } from "./components/dashboard-page";
+import { DashboardPage, HomeManagePage } from "./components/dashboard-page";
 import { HistoryPage } from "./components/history-page";
 import { LedgerPage } from "./components/ledger-page";
 import { NewsPage } from "./components/news-page";
+import { TodoPage } from "./components/todo-module";
 import { TopicPage } from "./components/topic-page";
 
 const queryClient = new QueryClient();
@@ -62,13 +63,7 @@ const ledgerRoute = createRoute({
 const todoRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/todo",
-  component: () => (
-    <DetailPlaceholderPage
-      section="todo"
-      title="待办详情"
-      description="完整任务管理页会在后续版本扩展，这一期首页只展示待办预览和状态摘要。"
-    />
-  )
+  component: TodoPage
 });
 
 const routeTree = rootRoute.addChildren([
