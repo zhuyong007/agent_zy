@@ -18,6 +18,9 @@ import type {
   LifeStageRecord,
   NotificationRecord,
   NewsState,
+  SummaryDashboard,
+  SummaryEntry,
+  SummaryState,
   TopicDimensionBucket,
   TopicDimensionDefinition,
   TopicIdea,
@@ -95,7 +98,8 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "topics",
   "ledger",
   "todo",
-  "history"
+  "history",
+  "summary"
 ]);
 
 function canShowHomeModuleInNavigation(id: HomeModuleId) {
@@ -199,11 +203,23 @@ function createInitialState(): AppState {
       strategy: "manual-curation",
       lastError: null
     },
+    summary: createEmptySummaryState(),
     historyPush: {
       lastTriggeredDate: null
     },
     nightlyReview: {
       lastTriggeredDate: null
+    }
+  };
+}
+
+function createEmptySummaryState(): SummaryState {
+  return {
+    entries: [],
+    drafts: [],
+    lastUpdatedAt: null,
+    settings: {
+      defaultSummaryType: "daily"
     }
   };
 }
@@ -216,6 +232,82 @@ function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
     recentFacts: [],
     coachTip: null,
     pendingReviewCount: 0
+  };
+}
+
+function uniqueLimited(items: string[], limit: number): string[] {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))].slice(0, limit);
+}
+
+function sortSummaryEntries(entries: SummaryEntry[]): SummaryEntry[] {
+  return [...entries].sort((left, right) => {
+    const periodDelta = right.periodStart.localeCompare(left.periodStart);
+
+    if (periodDelta !== 0) {
+      return periodDelta;
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+}
+
+function getWeekBounds(now: Date): { start: string; end: string } {
+  const date = new Date(now.getTime());
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay() || 7;
+  const start = new Date(date.getTime());
+  start.setDate(date.getDate() - day + 1);
+  const end = new Date(start.getTime());
+  end.setDate(start.getDate() + 6);
+
+  return {
+    start: todayLocalDate(start),
+    end: todayLocalDate(end)
+  };
+}
+
+function hasFinalSummary(entry: SummaryEntry): boolean {
+  return entry.finalSummary.trim().length > 0;
+}
+
+function getSummaryStatus(entries: SummaryEntry[], drafts: SummaryEntry[], type: SummaryEntry["summaryType"], period: {
+  start: string;
+  end: string;
+}): "missing" | "draft" | "final" {
+  const matchesPeriod = (entry: SummaryEntry) =>
+    entry.summaryType === type && entry.periodStart <= period.end && entry.periodEnd >= period.start;
+
+  if (entries.some((entry) => matchesPeriod(entry) && hasFinalSummary(entry))) {
+    return "final";
+  }
+
+  if (drafts.some(matchesPeriod)) {
+    return "draft";
+  }
+
+  return "missing";
+}
+
+function buildSummaryDashboard(summary: SummaryState, now = new Date(Date.now())): SummaryDashboard {
+  const entries = sortSummaryEntries(summary.entries);
+  const latestSummary = entries[0] ?? null;
+  const weekBounds = getWeekBounds(now);
+  const today = todayLocalDate(now);
+
+  return {
+    todaySummaryStatus: getSummaryStatus(entries, summary.drafts, "daily", {
+      start: today,
+      end: today
+    }),
+    weekSummaryStatus: getSummaryStatus(entries, summary.drafts, "weekly", weekBounds),
+    latestSummary,
+    recentKeywords: uniqueLimited(entries.flatMap((entry) => entry.keywords), 8),
+    recentMoodTags: uniqueLimited(entries.flatMap((entry) => entry.moodTags), 8),
+    totalCount: entries.length,
+    dailyCount: entries.filter((entry) => entry.summaryType === "daily").length,
+    weeklyCount: entries.filter((entry) => entry.summaryType === "weekly").length,
+    monthlyCount: entries.filter((entry) => entry.summaryType === "monthly").length,
+    yearlyCount: entries.filter((entry) => entry.summaryType === "yearly").length
   };
 }
 
@@ -463,6 +555,28 @@ function normalizeTopicState(topics: Partial<TopicState> | undefined): TopicStat
   };
 }
 
+function normalizeSummaryEntry(entry: SummaryEntry): SummaryEntry {
+  return {
+    ...entry,
+    structuredFields: entry.structuredFields ?? {},
+    moodTags: entry.moodTags ?? [],
+    energyLevel: typeof entry.energyLevel === "number" ? entry.energyLevel : null,
+    keywords: entry.keywords ?? [],
+    version: entry.version ?? 1
+  };
+}
+
+function normalizeSummaryState(summary: Partial<SummaryState> | undefined): SummaryState {
+  return {
+    entries: sortSummaryEntries((summary?.entries ?? []).map(normalizeSummaryEntry)),
+    drafts: sortSummaryEntries((summary?.drafts ?? []).map(normalizeSummaryEntry)),
+    lastUpdatedAt: summary?.lastUpdatedAt ?? null,
+    settings: {
+      defaultSummaryType: summary?.settings?.defaultSummaryType ?? "daily"
+    }
+  };
+}
+
 function normalizeHistoryPushState(
   historyPush: Partial<HistoryPushState> | undefined
 ): HistoryPushState {
@@ -517,6 +631,7 @@ function normalizeAppState(state: AppState): AppState {
     ledger: normalizeLedgerState(state.ledger),
     news,
     topics: normalizeTopicState(state.topics),
+    summary: normalizeSummaryState(state.summary),
     historyPush: normalizeHistoryPushState(state.historyPush)
   };
 }
@@ -537,6 +652,7 @@ export interface ControlPlaneStore {
   getLedgerReports(): LedgerReportRecord[];
   getLedgerStages(): LifeStageRecord[];
   upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
+  setSummaryState(summary: SummaryState): SummaryState;
   setNightlyReviewDate(date: string): void;
   getDashboard(
     manifests: AgentManifest[],
@@ -628,6 +744,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         state.topics = result.domainUpdates.topics;
       }
 
+      if (result.domainUpdates?.summary) {
+        state.summary = result.domainUpdates.summary;
+      }
+
       if (result.domainUpdates?.historyPush) {
         state.historyPush = result.domainUpdates.historyPush;
       }
@@ -675,6 +795,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       return report;
     },
+    setSummaryState(summary) {
+      state.summary = normalizeSummaryState(summary);
+      persist();
+
+      return structuredClone(state.summary);
+    },
     setNightlyReviewDate(date) {
       state.nightlyReview.lastTriggeredDate = date;
       persist();
@@ -717,6 +843,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         },
         news: state.news,
         topics: state.topics,
+        summary: {
+          ...state.summary,
+          dashboard: buildSummaryDashboard(state.summary, now)
+        },
         agents: manifests.map((manifest) => {
           const runtimeView = runtimeViews.find((item) => item.id === manifest.id);
 

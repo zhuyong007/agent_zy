@@ -66,7 +66,9 @@ describe("control-plane app", () => {
     });
 
     await isolatedApp.ready();
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: ["Date"]
+    });
     vi.setSystemTime(new Date("2026-05-14T14:30:00+08:00"));
 
     try {
@@ -224,6 +226,102 @@ describe("control-plane app", () => {
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({
         message: expect.stringContaining("message")
+      });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("creates, lists, drafts, exports, imports, and deletes summaries through the summary API", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-summary-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const draftResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/summaries/generate-draft",
+        payload: {
+          summaryType: "daily",
+          rawInput: "今天上班很累，晚上研究 AI agent 有进展，但剪视频没动，有点焦虑。"
+        }
+      });
+
+      expect(draftResponse.statusCode).toBe(200);
+      expect(draftResponse.json()).toMatchObject({
+        summaryType: "daily",
+        finalSummary: "",
+        aiDraft: expect.stringContaining("焦虑")
+      });
+      const draft = draftResponse.json() as Record<string, unknown>;
+
+      const createResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/summaries",
+        payload: {
+          ...draft,
+          finalSummary: "今天推进了 AI agent 学习，但视频任务继续拖延，焦虑来自重要任务迟迟没有开始。"
+        }
+      });
+
+      expect(createResponse.statusCode).toBe(200);
+      expect(createResponse.json()).toMatchObject({
+        id: expect.any(String),
+        summaryType: "daily",
+        version: 1
+      });
+
+      const listResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/summaries?summaryType=daily&q=agent"
+      });
+
+      expect(listResponse.statusCode).toBe(200);
+      expect(listResponse.json().entries).toHaveLength(1);
+
+      const exportResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/summaries/export"
+      });
+
+      expect(exportResponse.statusCode).toBe(200);
+      expect(exportResponse.json()).toMatchObject({
+        version: 1,
+        entries: expect.arrayContaining([
+          expect.objectContaining({
+            id: createResponse.json().id
+          })
+        ])
+      });
+
+      const importResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/summaries/import",
+        payload: exportResponse.json()
+      });
+
+      expect(importResponse.statusCode).toBe(200);
+      expect(importResponse.json()).toMatchObject({
+        importedCount: 0,
+        skippedCount: 1
+      });
+
+      const deleteResponse = await isolatedApp.inject({
+        method: "DELETE",
+        url: `/api/summaries/${createResponse.json().id}`
+      });
+
+      expect(deleteResponse.statusCode).toBe(200);
+      expect(deleteResponse.json()).toMatchObject({
+        ok: true
       });
     } finally {
       await isolatedApp.close();

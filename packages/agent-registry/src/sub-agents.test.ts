@@ -13,7 +13,8 @@ describe("sub-agent route config", () => {
       "schedule-agent",
       "news-agent",
       "topic-agent",
-      "history-agent"
+      "history-agent",
+      "summary-agent"
     ]);
   });
 
@@ -30,7 +31,8 @@ describe("sub-agent route config", () => {
       "todo",
       "ledger",
       "topics",
-      "history"
+      "history",
+      "summary"
     ]);
   });
 });

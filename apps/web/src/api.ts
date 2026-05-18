@@ -7,6 +7,8 @@ import type {
   LedgerSemanticRecord,
   LifeStageRecord,
   NewsState,
+  SummaryEntry,
+  SummaryType,
   TopicState
 } from "@agent-zy/shared-types";
 
@@ -79,6 +81,141 @@ export async function fetchTopics(): Promise<TopicState> {
 
   if (!response.ok) {
     throw new Error("Failed to fetch topics");
+  }
+
+  return response.json();
+}
+
+export type SummaryListInput = {
+  summaryType?: SummaryType;
+  q?: string;
+  start?: string;
+  end?: string;
+};
+
+export type SummaryExportPayload = {
+  version: 1;
+  exportedAt: string;
+  metadata: {
+    source: "agent-zy";
+    count: number;
+  };
+  entries: SummaryEntry[];
+};
+
+function buildQuery(input: Record<string, string | undefined>) {
+  const params = new URLSearchParams();
+
+  Object.entries(input).forEach(([key, value]) => {
+    if (value) {
+      params.set(key, value);
+    }
+  });
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function fetchSummaries(input: SummaryListInput = {}): Promise<{ entries: SummaryEntry[] }> {
+  const response = await fetch(`${API_BASE}/api/summaries${buildQuery(input)}`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch summaries");
+  }
+
+  return response.json();
+}
+
+export async function createSummary(input: SummaryEntry): Promise<SummaryEntry> {
+  const response = await fetch(`${API_BASE}/api/summaries`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to create summary"));
+  }
+
+  return response.json();
+}
+
+export async function updateSummary(id: string, input: Partial<SummaryEntry>): Promise<SummaryEntry> {
+  const response = await fetch(`${API_BASE}/api/summaries/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to update summary"));
+  }
+
+  return response.json();
+}
+
+export async function deleteSummary(id: string): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/summaries/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to delete summary"));
+  }
+
+  return response.json();
+}
+
+export async function generateSummaryDraft(input: {
+  summaryType: SummaryType;
+  rawInput: string;
+}): Promise<SummaryEntry> {
+  const response = await fetch(`${API_BASE}/api/summaries/generate-draft`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to generate summary draft"));
+  }
+
+  return response.json();
+}
+
+export async function exportSummaries(): Promise<SummaryExportPayload> {
+  const response = await fetch(`${API_BASE}/api/summaries/export`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to export summaries");
+  }
+
+  return response.json();
+}
+
+export async function importSummaries(input: SummaryExportPayload): Promise<{
+  importedCount: number;
+  skippedCount: number;
+  entries: SummaryEntry[];
+}> {
+  const response = await fetch(`${API_BASE}/api/summaries/import`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to import summaries"));
   }
 
   return response.json();

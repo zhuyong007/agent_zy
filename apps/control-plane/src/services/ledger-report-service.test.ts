@@ -58,6 +58,14 @@ describe("control-plane orchestrator ledger report routing", () => {
               strategy: "manual-curation",
               lastError: null
             },
+            summary: {
+              entries: [],
+              drafts: [],
+              lastUpdatedAt: null,
+              settings: {
+                defaultSummaryType: "daily"
+              }
+            },
             historyPush: {
               lastTriggeredDate: null
             },
@@ -95,6 +103,9 @@ describe("control-plane orchestrator ledger report routing", () => {
           return report;
         },
         setHomeLayout() {},
+        setSummaryState(summary: any) {
+          return summary;
+        },
         cancelNotification() {},
         replaceState() {},
         setNightlyReviewDate() {},
@@ -153,7 +164,17 @@ describe("control-plane orchestrator ledger report routing", () => {
           throw new Error("should not generate report");
         }),
         listReports: vi.fn(({ reports }) => reports)
-      }
+      },
+      summaryService: {
+        list: vi.fn(() => ({ entries: [] })),
+        get: vi.fn(() => null),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(() => ({ ok: true })),
+        generateDraft: vi.fn(),
+        export: vi.fn(),
+        import: vi.fn()
+      } as any
     });
 
     const task = await orchestrator.runSystemTask({

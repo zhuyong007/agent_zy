@@ -46,6 +46,14 @@ function createState(): AppState {
       strategy: "manual-curation",
       lastError: null
     },
+    summary: {
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: {
+        defaultSummaryType: "daily"
+      }
+    },
     nightlyReview: {
       lastTriggeredDate: null
     },

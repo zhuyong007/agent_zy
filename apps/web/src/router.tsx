@@ -11,6 +11,7 @@ import { DashboardPage, HomeManagePage } from "./components/dashboard-page";
 import { HistoryPage } from "./components/history-page";
 import { LedgerPage } from "./components/ledger-page";
 import { NewsPage } from "./components/news-page";
+import { SummaryPage } from "./components/summary-page";
 import { TodoPage } from "./components/todo-module";
 import { TopicPage } from "./components/topic-page";
 
@@ -66,6 +67,12 @@ const todoRoute = createRoute({
   component: TodoPage
 });
 
+const summaryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/summaries",
+  component: SummaryPage
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   manageRoute,
@@ -73,7 +80,8 @@ const routeTree = rootRoute.addChildren([
   topicsRoute,
   historyRoute,
   ledgerRoute,
-  todoRoute
+  todoRoute,
+  summaryRoute
 ]);
 
 const router = createRouter({

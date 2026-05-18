@@ -12,6 +12,7 @@ import { createLedgerSemanticService } from "./services/ledger-semantic-service"
 import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
+import { createSummaryService } from "./services/summary-service";
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
@@ -25,6 +26,7 @@ export function createControlPlaneApp(options?: {
   const store = createControlPlaneStore(options?.dataDir ?? ".agent-zy-data");
   const ledgerSemanticService = createLedgerSemanticService();
   const ledgerReportService = createLedgerReportService();
+  const summaryService = createSummaryService(store);
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
   });
@@ -38,7 +40,8 @@ export function createControlPlaneApp(options?: {
     workerPool,
     eventBus,
     ledgerSemanticService,
-    ledgerReportService
+    ledgerReportService,
+    summaryService
   });
   const scheduler = createControlPlaneScheduler({
     orchestrator,
@@ -76,6 +79,88 @@ export function createControlPlaneApp(options?: {
   app.get("/api/news", async () => orchestrator.getNews());
 
   app.get("/api/topics", async () => orchestrator.getTopics());
+
+  app.get("/api/summaries", async (request) => {
+    const query = request.query as Record<string, string | undefined>;
+
+    return orchestrator.listSummaries({
+      summaryType:
+        query.summaryType === "daily" ||
+        query.summaryType === "weekly" ||
+        query.summaryType === "monthly" ||
+        query.summaryType === "yearly"
+          ? query.summaryType
+          : undefined,
+      q: query.q,
+      start: query.start,
+      end: query.end
+    });
+  });
+
+  app.get("/api/summaries/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    const entry = orchestrator.getSummary(params.id);
+
+    if (!entry) {
+      return reply.code(404).send({
+        message: "summary not found"
+      });
+    }
+
+    return entry;
+  });
+
+  app.post("/api/summaries", async (request, reply) => {
+    try {
+      return orchestrator.createSummary(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid summary"
+      });
+    }
+  });
+
+  app.patch("/api/summaries/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return orchestrator.updateSummary(params.id, request.body);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "summary not found"
+      });
+    }
+  });
+
+  app.delete("/api/summaries/:id", async (request) => {
+    const params = request.params as { id: string };
+
+    return orchestrator.deleteSummary(params.id);
+  });
+
+  app.post("/api/summaries/generate-draft", async (request, reply) => {
+    const body = (request.body ?? {}) as { summaryType?: any; rawInput?: any };
+
+    try {
+      return orchestrator.generateSummaryDraft(body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to generate summary draft"
+      });
+    }
+  });
+
+  app.post("/api/summaries/export", async () => orchestrator.exportSummaries());
+
+  app.post("/api/summaries/import", async (request, reply) => {
+    try {
+      return orchestrator.importSummaries(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid summary import payload"
+      });
+    }
+  });
 
   app.post("/api/topics/generate", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;

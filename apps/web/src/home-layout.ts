@@ -7,7 +7,7 @@ import type {
 
 export const HOME_LAYOUT_STORAGE_KEY = "agent-zy-home-layout-v1";
 
-export type BuiltInHomeModuleId = "news" | "chat" | "todo" | "ledger" | "topics" | "history";
+export type BuiltInHomeModuleId = "news" | "chat" | "todo" | "ledger" | "topics" | "history" | "summary";
 export type { HomeModuleId, HomeModulePreference, HomeModuleSize };
 
 export interface HomeModuleDefinition {
@@ -75,7 +75,14 @@ export const HOME_MODULE_DEFINITIONS = [
 ] as const satisfies readonly HomeModuleDefinition[];
 
 const sizeValues = new Set<HomeModuleSize>(HOME_MODULE_SIZE_OPTIONS.map((item) => item.value));
-const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>(["news", "topics", "ledger", "todo", "history"]);
+const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
+  "news",
+  "topics",
+  "ledger",
+  "todo",
+  "history",
+  "summary"
+]);
 
 export function canShowHomeModuleInNavigation(id: HomeModuleId) {
   return HOME_MODULE_NAVIGATION_ROUTES.has(id);

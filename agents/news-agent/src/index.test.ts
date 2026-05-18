@@ -65,6 +65,14 @@ function createState(news?: Partial<NewsState>): AppState {
       strategy: "manual-curation",
       lastError: null
     },
+    summary: {
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: {
+        defaultSummaryType: "daily"
+      }
+    },
     historyPush: {
       lastTriggeredDate: null
     },

@@ -8,6 +8,7 @@ import type {
   NewsState,
   NotificationKind,
   ScheduleState,
+  SummaryState,
   TaskStatus,
   TaskTrigger,
   TopicState
@@ -103,6 +104,7 @@ export interface AgentExecutionResult {
     schedule?: ScheduleState;
     news?: NewsState;
     topics?: TopicState;
+    summary?: SummaryState;
     historyPush?: HistoryPushState;
   };
 }

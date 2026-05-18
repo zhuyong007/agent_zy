@@ -56,6 +56,14 @@ function createState(state?: {
     },
     news: createNewsState(state?.news),
     topics: createTopicState(state?.topics),
+    summary: {
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: {
+        defaultSummaryType: "daily"
+      }
+    },
     historyPush: {
       lastTriggeredDate: null
     },

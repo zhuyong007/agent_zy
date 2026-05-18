@@ -3,6 +3,7 @@ import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
 import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
 import { manifest as scheduleManifest } from "@agent-zy/schedule-agent/manifest";
+import { manifest as summaryManifest } from "@agent-zy/summary-agent/manifest";
 import { manifest as topicManifest } from "@agent-zy/topic-agent/manifest";
 
 export type SubAgentHomeModuleSize = "max" | "large" | "medium" | "smaller" | "small";
@@ -84,6 +85,18 @@ export const SUB_AGENT_ROUTES = [
       defaultSize: "smaller",
       defaultVisible: false,
       order: 5
+    }
+  },
+  {
+    agentId: "summary-agent",
+    manifest: summaryManifest,
+    homeModule: {
+      id: "summary",
+      label: "总结",
+      description: "每日、每周、每月、每年个人复盘",
+      defaultSize: "smaller",
+      defaultVisible: true,
+      order: 6
     }
   }
 ] as const satisfies readonly SubAgentRouteConfig[];

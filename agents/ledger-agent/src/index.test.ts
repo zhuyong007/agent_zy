@@ -43,6 +43,14 @@ function createState(): AppState {
       strategy: "manual-curation",
       lastError: null
     },
+    summary: {
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: {
+        defaultSummaryType: "daily"
+      }
+    },
     historyPush: {
       lastTriggeredDate: null
     },
@@ -116,7 +124,7 @@ describe("ledger agent", () => {
 
     expect(result.status).toBe("completed");
     expect(result.summary).toContain("待确认");
-    expect(result.assistantMessage).toContain("已先记录");
+    expect(result.assistantMessage).toContain("已先为你记录");
     expect(result.assistantMessage).toContain("待你确认");
     expect(result.metadata?.ledger?.fact).toMatchObject({
       direction: "transfer",

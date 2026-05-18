@@ -104,6 +104,80 @@ describe("control-plane store", () => {
     expect("newsBodies" in state).toBe(false);
   });
 
+  it("normalizes missing summary state and exposes summary dashboard counts", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+
+    writeFileSync(
+      join(dataDir, "state.json"),
+      JSON.stringify({
+        tasks: [],
+        messages: [],
+        notifications: [],
+        homeLayout: [],
+        ledger: {
+          entries: [],
+          modules: []
+        },
+        schedule: {
+          items: [],
+          pendingReview: null
+        },
+        news: {
+          feed: {
+            count: 0,
+            hasNext: false,
+            nextCursor: null,
+            items: []
+          },
+          daily: null,
+          dailyArchive: [],
+          lastFetchedAt: null,
+          lastUpdatedAt: null,
+          lastError: null,
+          status: "idle"
+        },
+        topics: {
+          dimensions: [],
+          current: [],
+          currentByDimension: [],
+          history: [],
+          lastGeneratedAt: null,
+          status: "idle",
+          strategy: "manual-curation",
+          lastError: null
+        },
+        historyPush: {
+          lastTriggeredDate: null
+        },
+        nightlyReview: {
+          lastTriggeredDate: null
+        }
+      }),
+      "utf8"
+    );
+
+    const store = createControlPlaneStore(dataDir);
+
+    expect(store.getState().summary).toEqual({
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: {
+        defaultSummaryType: "daily"
+      }
+    });
+    expect(store.getDashboard([], []).summary.dashboard).toMatchObject({
+      todaySummaryStatus: "missing",
+      weekSummaryStatus: "missing",
+      totalCount: 0,
+      dailyCount: 0,
+      weeklyCount: 0,
+      monthlyCount: 0,
+      yearlyCount: 0
+    });
+  });
+
   it("keeps persistent notifications until they are explicitly cancelled", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);
@@ -489,9 +563,9 @@ describe("control-plane store", () => {
       const dashboard = store.getDashboard([], []);
 
       expect(dashboard.ledger.summary).toEqual({
-        todayExpense: 999,
-        todayIncome: 0,
-        balance: -999
+        todayExpense: 280,
+        todayIncome: 500,
+        balance: 1380
       });
       expect(dashboard.ledger.dashboard).toEqual({
         todayIncomeCents: 50000,

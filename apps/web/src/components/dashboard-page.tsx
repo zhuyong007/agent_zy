@@ -93,7 +93,7 @@ import {
 } from "../history-view";
 import { getTodoModuleSummary, TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
 
-export type RailSection = "home" | "manage" | "news" | "topics" | "history" | "ledger" | "todo";
+export type RailSection = "home" | "manage" | "news" | "topics" | "history" | "ledger" | "todo" | "summary";
 type NewsFilter = "all" | NewsCategory;
 
 const railItems: Array<{
@@ -109,7 +109,8 @@ const railItems: Array<{
   { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
   { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
   { key: "ledger", label: "记账", stamp: "05", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "06", to: "/todo", moduleId: "todo" }
+  { key: "todo", label: "待办", stamp: "06", to: "/todo", moduleId: "todo" },
+  { key: "summary", label: "总结", stamp: "07", to: "/summaries", moduleId: "summary" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -286,6 +287,10 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
   if (id === "history") {
     const historyCount = dashboard.notifications.filter((item) => item.kind === "history-post" && item.payload).length;
     return `${formatShortCount(historyCount)} 条知识卡`;
+  }
+
+  if (id === "summary") {
+    return `${formatShortCount(dashboard.summary.dashboard.totalCount)} 条总结`;
   }
 
   return "待接入";
@@ -1028,6 +1033,70 @@ function HistoryPanel({
   );
 }
 
+function SummaryPanel({
+  dashboard,
+  size
+}: {
+  dashboard: DashboardData;
+  size: HomeModuleSize;
+}) {
+  const summary = dashboard.summary.dashboard;
+  const latest = summary.latestSummary;
+  const compact = size === "small";
+  const showDetails = size !== "small" && size !== "smaller";
+  const statusLabel: Record<string, string> = {
+    missing: "未总结",
+    draft: "有草稿",
+    final: "已完成"
+  };
+
+  return (
+    <section className={`summary-panel summary-panel--${size}`}>
+      <div className="summary-panel__header">
+        <div>
+          <p className="eyebrow">Reflection</p>
+          <h2>总结</h2>
+        </div>
+        <Link to="/summaries" className="panel-link">
+          总结中心
+        </Link>
+      </div>
+      <div className="summary-panel__status">
+        <div>
+          <span>今日</span>
+          <strong>{statusLabel[summary.todaySummaryStatus]}</strong>
+        </div>
+        <div>
+          <span>本周</span>
+          <strong>{statusLabel[summary.weekSummaryStatus]}</strong>
+        </div>
+        <div>
+          <span>总数</span>
+          <strong>{summary.totalCount}</strong>
+        </div>
+      </div>
+      {!compact ? (
+        <div className="summary-panel__latest">
+          <span>最近一条</span>
+          <strong>{latest?.title ?? "还没有正式总结"}</strong>
+          {latest ? <p>{latest.finalSummary || latest.aiDraft}</p> : <p>写下真实素材，再让 AI 生成一版有判断的草稿。</p>}
+        </div>
+      ) : null}
+      {showDetails ? (
+        <div className="summary-panel__chips">
+          {[...summary.recentKeywords, ...summary.recentMoodTags].slice(0, 8).map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      ) : null}
+      <div className="summary-panel__actions">
+        <Link to="/summaries">新建</Link>
+        <Link to="/summaries">进入中心</Link>
+      </div>
+    </section>
+  );
+}
+
 function buildFallbackProgress(dashboard: DashboardData): ChatProgressStep[] {
   const latestTask = dashboard.recentTasks[0];
 
@@ -1599,6 +1668,10 @@ function renderHomeModuleContent({
     return <HistoryPanel notifications={dashboard.notifications} size={size} />;
   }
 
+  if (id === "summary") {
+    return <SummaryPanel dashboard={dashboard} size={size} />;
+  }
+
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;
 }
 
@@ -2145,6 +2218,7 @@ export function DashboardPage() {
               {renderHomeModuleContent({
                 id: activePreference.id,
                 dashboard,
+                todoActions: todoWorkspace,
                 newsFilter,
                 onNewsFilterChange: setNewsFilter,
                 size: activePreference.size,

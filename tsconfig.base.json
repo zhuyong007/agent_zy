@@ -44,6 +44,9 @@
       ],
       "@agent-zy/history-agent/manifest": [
         "agents/history-agent/src/manifest.ts"
+      ],
+      "@agent-zy/summary-agent/manifest": [
+        "agents/summary-agent/src/manifest.ts"
       ]
     }
   }

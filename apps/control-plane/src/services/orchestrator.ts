@@ -9,6 +9,8 @@ import type {
   LedgerSemanticRecord,
   NewsState,
   NotificationRecord,
+  SummaryEntry,
+  SummaryType,
   TopicState,
   TaskRecord,
   TaskTrigger
@@ -23,6 +25,7 @@ import type { EventBus } from "./events";
 import type { LedgerReportService } from "./ledger-report-service";
 import type { LedgerSemanticService } from "./ledger-semantic-service";
 import type { ControlPlaneStore } from "./store";
+import type { SummaryExportPayload, SummaryListQuery, SummaryService } from "./summary-service";
 
 function createMessage(
   role: ChatMessage["role"],
@@ -67,6 +70,14 @@ export interface ControlPlaneOrchestrator {
   getTopics(): TopicState;
   generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
   generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
+  listSummaries(query?: SummaryListQuery): { entries: SummaryEntry[] };
+  getSummary(id: string): SummaryEntry | null;
+  createSummary(input: unknown): SummaryEntry;
+  updateSummary(id: string, input: unknown): SummaryEntry;
+  deleteSummary(id: string): { ok: true };
+  generateSummaryDraft(input: { summaryType?: SummaryType; rawInput?: string }): SummaryEntry;
+  exportSummaries(): SummaryExportPayload;
+  importSummaries(input: unknown): ReturnType<SummaryService["import"]>;
   getLedgerTimeline(): Array<{
     fact: LedgerFactRecord;
     semantic: Pick<
@@ -102,6 +113,7 @@ export function createControlPlaneOrchestrator(options: {
   eventBus: EventBus;
   ledgerSemanticService: LedgerSemanticService;
   ledgerReportService: LedgerReportService;
+  summaryService: SummaryService;
 }): ControlPlaneOrchestrator {
   function persistLedgerMetadata(input: {
     taskId: string;
@@ -486,6 +498,40 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return this.getDashboard();
+    },
+    listSummaries(query) {
+      return options.summaryService.list(query);
+    },
+    getSummary(id) {
+      return options.summaryService.get(id);
+    },
+    createSummary(input) {
+      const entry = options.summaryService.create(input);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+      return entry;
+    },
+    updateSummary(id, input) {
+      const entry = options.summaryService.update(id, input);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+      return entry;
+    },
+    deleteSummary(id) {
+      const result = options.summaryService.delete(id);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+      return result;
+    },
+    generateSummaryDraft(input) {
+      const draft = options.summaryService.generateDraft(input);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+      return draft;
+    },
+    exportSummaries() {
+      return options.summaryService.export();
+    },
+    importSummaries(input) {
+      const result = options.summaryService.import(input);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+      return result;
     },
     cancelNotification(notificationId) {
       options.store.cancelNotification(notificationId);

@@ -9,6 +9,8 @@ import {
 
 function createDashboard(): DashboardData {
   const today = toDateKey(new Date());
+  const todayStartedAt = `${today}T09:00:00.000Z`;
+  const todayBlockedAt = `${today}T12:00:00.000Z`;
   const yesterdayDate = new Date();
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const yesterday = toDateKey(yesterdayDate);
@@ -24,8 +26,8 @@ function createDashboard(): DashboardData {
           trigger: "user",
           input: {},
           status: "running",
-          createdAt: "2026-05-15T09:00:00.000Z",
-          updatedAt: "2026-05-15T09:15:00.000Z",
+          createdAt: todayStartedAt,
+          updatedAt: `${today}T09:15:00.000Z`,
           history: []
         }
       ],
@@ -37,8 +39,8 @@ function createDashboard(): DashboardData {
           trigger: "schedule",
           input: {},
           status: "waiting_feedback",
-          createdAt: "2026-05-15T12:00:00.000Z",
-          updatedAt: "2026-05-15T12:20:00.000Z",
+          createdAt: todayBlockedAt,
+          updatedAt: `${today}T12:20:00.000Z`,
           history: []
         }
       ],
@@ -52,8 +54,8 @@ function createDashboard(): DashboardData {
         trigger: "user",
         input: {},
         status: "running",
-        createdAt: "2026-05-15T09:00:00.000Z",
-        updatedAt: "2026-05-15T09:15:00.000Z",
+        createdAt: todayStartedAt,
+        updatedAt: `${today}T09:15:00.000Z`,
         history: []
       },
       {
@@ -63,8 +65,8 @@ function createDashboard(): DashboardData {
         trigger: "schedule",
         input: {},
         status: "waiting_feedback",
-        createdAt: "2026-05-15T12:00:00.000Z",
-        updatedAt: "2026-05-15T12:20:00.000Z",
+        createdAt: todayBlockedAt,
+        updatedAt: `${today}T12:20:00.000Z`,
         history: []
       }
     ],
@@ -156,7 +158,30 @@ function createDashboard(): DashboardData {
       history: [],
       dimensions: [],
       currentByDimension: [],
-      lastGeneratedAt: null
+      lastGeneratedAt: null,
+      status: "idle",
+      strategy: "manual-curation",
+      lastError: null
+    },
+    summary: {
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: {
+        defaultSummaryType: "daily"
+      },
+      dashboard: {
+        todaySummaryStatus: "missing",
+        weekSummaryStatus: "missing",
+        latestSummary: null,
+        recentKeywords: [],
+        recentMoodTags: [],
+        totalCount: 0,
+        dailyCount: 0,
+        weeklyCount: 0,
+        monthlyCount: 0,
+        yearlyCount: 0
+      }
     },
     agents: []
   };

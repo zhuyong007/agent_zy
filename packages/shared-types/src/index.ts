@@ -296,6 +296,52 @@ export interface TopicState {
   lastError: string | null;
 }
 
+export type SummaryType = "daily" | "weekly" | "monthly" | "yearly";
+
+export type SummaryStatus = "missing" | "draft" | "final";
+
+export type SummaryStructuredFields = Record<string, string | string[] | number | null>;
+
+export interface SummaryEntry {
+  id: string;
+  summaryType: SummaryType;
+  periodStart: string;
+  periodEnd: string;
+  title: string;
+  rawInput: string;
+  structuredFields: SummaryStructuredFields;
+  aiDraft: string;
+  finalSummary: string;
+  moodTags: string[];
+  energyLevel: number | null;
+  keywords: string[];
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface SummaryState {
+  entries: SummaryEntry[];
+  drafts: SummaryEntry[];
+  lastUpdatedAt: string | null;
+  settings: {
+    defaultSummaryType: SummaryType;
+  };
+}
+
+export interface SummaryDashboard {
+  todaySummaryStatus: SummaryStatus;
+  weekSummaryStatus: SummaryStatus;
+  latestSummary: SummaryEntry | null;
+  recentKeywords: string[];
+  recentMoodTags: string[];
+  totalCount: number;
+  dailyCount: number;
+  weeklyCount: number;
+  monthlyCount: number;
+  yearlyCount: number;
+}
+
 export interface HistoryPostCard {
   title: string;
   imageText: string;
@@ -360,6 +406,7 @@ export interface AppState {
   schedule: ScheduleState;
   news: NewsState;
   topics: TopicState;
+  summary: SummaryState;
   historyPush: HistoryPushState;
   nightlyReview: NightlyReviewState;
 }
@@ -388,6 +435,9 @@ export interface DashboardData {
   };
   news: NewsState;
   topics: TopicState;
+  summary: SummaryState & {
+    dashboard: SummaryDashboard;
+  };
   agents: AgentRuntimeView[];
 }
 

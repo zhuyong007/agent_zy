@@ -51,13 +51,15 @@ describe("home-layout", () => {
       "todo",
       "ledger",
       "topics",
-      "history"
+      "history",
+      "summary"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
       "large",
       "max",
       "max",
       "small",
+      "smaller",
       "smaller",
       "smaller"
     ]);
@@ -67,7 +69,8 @@ describe("home-layout", () => {
       true,
       true,
       true,
-      false
+      false,
+      true
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
       true,
@@ -75,9 +78,19 @@ describe("home-layout", () => {
       true,
       true,
       true,
-      false
+      false,
+      true
     ]);
     expect(DEFAULT_HOME_LAYOUT.every((item) => !item.collapsed)).toBe(true);
+  });
+
+  test("allows summary module to appear in top navigation", () => {
+    expect(canShowHomeModuleInNavigation("summary")).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "summary")).toMatchObject({
+      visible: true,
+      showInNavigation: true,
+      size: "smaller"
+    });
   });
 
   test("allows history module to opt into top navigation from manage page", () => {
@@ -268,9 +281,10 @@ describe("home-layout", () => {
       "chat",
       "todo",
       "ledger",
-      "history"
+      "history",
+      "summary"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {
