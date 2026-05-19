@@ -5,6 +5,7 @@
 
 # Local / agent data
 .agent-zy-data/
+.agent-zy-data/secrets/
 .agent-zy-test-data/
 .superpowers/
 

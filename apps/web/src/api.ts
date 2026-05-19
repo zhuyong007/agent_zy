@@ -6,6 +6,12 @@ import type {
   LedgerReportRecord,
   LedgerSemanticRecord,
   LifeStageRecord,
+  ModelCapability,
+  ModelProfile,
+  ModelProviderDefinition,
+  ModelProviderId,
+  ModelPurpose,
+  ModelSettingsState,
   NewsState,
   SummaryEntry,
   SummaryType,
@@ -61,6 +67,108 @@ export async function saveHomeLayout(
 
   if (!response.ok) {
     throw new Error("Failed to save home layout");
+  }
+
+  return response.json();
+}
+
+export type ModelProfileView = ModelProfile & {
+  hasApiKey: boolean;
+  maskedKey: string | null;
+  apiKeySource: "env" | "local" | null;
+};
+
+export type ModelProfileInput = {
+  displayName: string;
+  provider: ModelProviderId;
+  modelName: string;
+  baseUrl: string;
+  apiKey?: string;
+  capabilities: ModelCapability[];
+  purpose: ModelPurpose[];
+  temperature: number | null;
+  maxTokens: number | null;
+  enabled: boolean;
+  isDefault: boolean;
+};
+
+export async function fetchModelProviders(): Promise<{ providers: ModelProviderDefinition[] }> {
+  const response = await fetch(`${API_BASE}/api/model-providers`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch model providers");
+  }
+
+  return response.json();
+}
+
+export async function fetchModelProfiles(): Promise<{
+  profiles: ModelProfileView[];
+  settings: ModelSettingsState;
+}> {
+  const response = await fetch(`${API_BASE}/api/model-profiles`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch model profiles");
+  }
+
+  return response.json();
+}
+
+export async function createModelProfile(input: ModelProfileInput): Promise<ModelProfileView> {
+  const response = await fetch(`${API_BASE}/api/model-profiles`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to create model profile"));
+  }
+
+  return response.json();
+}
+
+export async function updateModelProfile(
+  id: string,
+  input: Partial<ModelProfileInput>
+): Promise<ModelProfileView> {
+  const response = await fetch(`${API_BASE}/api/model-profiles/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to update model profile"));
+  }
+
+  return response.json();
+}
+
+export async function deleteModelProfile(id: string): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/model-profiles/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to delete model profile"));
+  }
+
+  return response.json();
+}
+
+export async function testModelProfile(id: string): Promise<{ ok: boolean; latencyMs?: number; message: string }> {
+  const response = await fetch(`${API_BASE}/api/model-profiles/${id}/test`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to test model profile"));
   }
 
   return response.json();

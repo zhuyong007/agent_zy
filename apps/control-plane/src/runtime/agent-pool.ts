@@ -7,6 +7,7 @@ import type { AgentExecutionRequest, AgentExecutionResult, AgentManifest } from 
 import type { AgentRuntimeView } from "@agent-zy/shared-types";
 
 import type { EventBus } from "../services/events";
+import type { ModelRuntime, ModelRuntimeRequest } from "../services/model-runtime";
 
 interface WorkerRecord {
   child: ChildProcess;
@@ -27,6 +28,7 @@ export interface AgentWorkerPool {
 
 export function createAgentWorkerPool(options: {
   eventBus: EventBus;
+  modelRuntime?: ModelRuntime;
   idleMs?: number;
 }): AgentWorkerPool {
   const workerEntry = resolve("apps/control-plane/src/runtime/agent-worker.ts");
@@ -53,6 +55,10 @@ export function createAgentWorkerPool(options: {
 
     const child = fork(workerEntry, {
       cwd: process.cwd(),
+      env: {
+        ...process.env,
+        AGENT_ZY_WORKER: "1"
+      },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       execArgv: ["--import", "tsx"]
     });
@@ -79,6 +85,38 @@ export function createAgentWorkerPool(options: {
     child.on("exit", () => {
       workers.delete(manifest.id);
       emitRuntimeUpdate();
+    });
+
+    child.on("message", (message: { type?: string; requestId?: string; payload?: ModelRuntimeRequest }) => {
+      if (message.type !== "model-request" || !message.requestId) {
+        return;
+      }
+
+      if (!options.modelRuntime || !message.payload) {
+        child.send({
+          type: "model-response",
+          requestId: message.requestId,
+          error: "Model runtime is not available"
+        });
+        return;
+      }
+
+      options.modelRuntime
+        .execute(message.payload)
+        .then((result) => {
+          child.send({
+            type: "model-response",
+            requestId: message.requestId,
+            result
+          });
+        })
+        .catch((error) => {
+          child.send({
+            type: "model-response",
+            requestId: message.requestId,
+            error: error instanceof Error ? error.message : "Model request failed"
+          });
+        });
     });
 
     return record;

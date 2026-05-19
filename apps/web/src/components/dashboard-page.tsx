@@ -26,6 +26,11 @@ import { CSS } from "@dnd-kit/utilities";
 import type {
   DashboardData,
   HomeModulePreference,
+  ModelCapability,
+  ModelProfile,
+  ModelProviderDefinition,
+  ModelProviderId,
+  ModelPurpose,
   NotificationRecord,
   NewsCategory,
   NewsFeedItem
@@ -33,14 +38,22 @@ import type {
 
 import {
   cancelNotification,
+  createModelProfile,
+  deleteModelProfile,
   fetchDashboard,
   fetchHomeLayout,
+  fetchModelProfiles,
+  fetchModelProviders,
   generateHistory,
   openDashboardStream,
   recordLedger,
   refreshNews,
   saveHomeLayout,
-  sendChat
+  sendChat,
+  testModelProfile,
+  updateModelProfile,
+  type ModelProfileInput,
+  type ModelProfileView
 } from "../api";
 import {
   addSession,
@@ -1761,6 +1774,246 @@ function ManageModuleCard({
   );
 }
 
+const MODEL_CAPABILITIES: ModelCapability[] = ["chat", "text", "embedding", "vision", "tool-use"];
+const MODEL_PURPOSES: ModelPurpose[] = ["general", "summary", "ledger", "todo", "router", "embedding", "vision"];
+
+function createModelForm(provider?: ModelProviderDefinition, profile?: ModelProfileView): ModelProfileInput {
+  return {
+    displayName: profile?.displayName ?? provider?.name ?? "",
+    provider: profile?.provider ?? provider?.id ?? "modelscope",
+    modelName: profile?.modelName ?? provider?.defaultModels[0] ?? "",
+    baseUrl: profile?.baseUrl ?? provider?.defaultBaseUrl ?? "",
+    apiKey: "",
+    capabilities: profile?.capabilities ?? provider?.supportedCapabilities.slice(0, 2) ?? ["chat", "text"],
+    purpose: profile?.purpose ?? ["general"],
+    temperature: profile?.temperature ?? 0.7,
+    maxTokens: profile?.maxTokens ?? 2000,
+    enabled: profile?.enabled ?? true,
+    isDefault: profile?.isDefault ?? false
+  };
+}
+
+function toggleListValue<T extends string>(items: T[], value: T) {
+  return items.includes(value) ? items.filter((item) => item !== value) : [...items, value];
+}
+
+export function ModelManagementSection({
+  providers,
+  profiles,
+  onSave,
+  onDelete,
+  onTest,
+  testResult
+}: {
+  providers: ModelProviderDefinition[];
+  profiles: ModelProfileView[];
+  onSave: (input: { id?: string; form: ModelProfileInput }) => void;
+  onDelete: (id: string) => void;
+  onTest: (id: string) => void;
+  testResult?: { profileId: string; ok: boolean; message: string } | null;
+}) {
+  const [editingProfile, setEditingProfile] = useState<ModelProfileView | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [form, setForm] = useState<ModelProfileInput>(() => createModelForm(providers[0]));
+  const selectedProvider = providers.find((provider) => provider.id === form.provider);
+
+  function openCreate() {
+    setEditingProfile(null);
+    setForm(createModelForm(providers[0]));
+    setShowApiKey(false);
+    setDrawerOpen(true);
+  }
+
+  function openEdit(profile: ModelProfileView) {
+    setEditingProfile(profile);
+    setForm(createModelForm(providers.find((provider) => provider.id === profile.provider), profile));
+    setShowApiKey(false);
+    setDrawerOpen(true);
+  }
+
+  function handleProviderChange(providerId: ModelProviderId) {
+    const provider = providers.find((item) => item.id === providerId);
+
+    setForm((current) => ({
+      ...current,
+      provider: providerId,
+      displayName: current.displayName || provider?.name || "",
+      baseUrl: provider?.defaultBaseUrl ?? "",
+      modelName: provider?.defaultModels[0] ?? "",
+      capabilities: provider?.supportedCapabilities.slice(0, 2) ?? current.capabilities
+    }));
+  }
+
+  function submitForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSave({
+      id: editingProfile?.id,
+      form
+    });
+    setForm((current) => ({
+      ...current,
+      apiKey: ""
+    }));
+    setDrawerOpen(false);
+  }
+
+  return (
+    <section className="manage-group model-management" aria-labelledby="manage-model-heading">
+      <div className="manage-group__header">
+        <div>
+          <p className="eyebrow">Model Runtime</p>
+          <h2 id="manage-model-heading">模型管理</h2>
+          <p>统一配置模型实例、密钥状态与用途绑定，agent 只通过后端运行时调用模型。</p>
+        </div>
+        <button type="button" onClick={openCreate}>
+          添加模型
+        </button>
+      </div>
+
+      <div className="model-profile-list">
+        {profiles.map((profile) => (
+          <article key={profile.id} className="model-profile-row">
+            <div>
+              <strong>{profile.displayName}</strong>
+              <p>
+                {profile.provider} · {profile.modelName}
+              </p>
+              <small>{profile.baseUrl || "未设置 Base URL"}</small>
+            </div>
+            <div className="model-profile-row__chips">
+              {profile.capabilities.map((capability) => (
+                <span key={capability}>{capability}</span>
+              ))}
+            </div>
+            <div className="model-profile-row__status">
+              <span>{profile.enabled ? "启用" : "停用"}</span>
+              <span>{profile.isDefault ? "默认" : "非默认"}</span>
+              <span>{profile.hasApiKey ? profile.maskedKey ?? "已配置" : "未配置 Key"}</span>
+              <span>{profile.purpose.join(" / ") || "未绑定用途"}</span>
+            </div>
+            <div className="model-profile-row__actions">
+              <button type="button" onClick={() => onTest(profile.id)}>
+                测试
+              </button>
+              <button type="button" onClick={() => openEdit(profile)}>
+                编辑
+              </button>
+              <button type="button" onClick={() => onDelete(profile.id)}>
+                删除
+              </button>
+            </div>
+            {testResult?.profileId === profile.id ? (
+              <p className={`model-test-result${testResult.ok ? " is-ok" : " is-error"}`}>
+                {testResult.message}
+              </p>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      {drawerOpen ? (
+        <div className="model-drawer" role="dialog" aria-label="编辑模型配置">
+          <form className="model-drawer__panel" onSubmit={submitForm}>
+            <div className="model-drawer__header">
+              <div>
+                <p className="eyebrow">Model Instance</p>
+                <h3>{editingProfile ? "编辑模型" : "添加模型"}</h3>
+              </div>
+              <button type="button" onClick={() => setDrawerOpen(false)}>
+                关闭
+              </button>
+            </div>
+
+            <label className="manage-field">
+              <span>Provider</span>
+              <select value={form.provider} onChange={(event) => handleProviderChange(event.target.value as ModelProviderId)}>
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="manage-field">
+              <span>显示名称</span>
+              <input value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
+            </label>
+            <label className="manage-field">
+              <span>模型 ID</span>
+              <input value={form.modelName} onChange={(event) => setForm((current) => ({ ...current, modelName: event.target.value }))} />
+            </label>
+            <label className="manage-field">
+              <span>Base URL</span>
+              <input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} />
+            </label>
+            <label className="manage-field">
+              <span>API Key {editingProfile?.maskedKey ? `(${editingProfile.maskedKey})` : ""}</span>
+              <div className="model-key-input">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={form.apiKey ?? ""}
+                  placeholder={editingProfile?.hasApiKey ? "留空则不修改" : "输入后由后端保存"}
+                  onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
+                />
+                <button type="button" onClick={() => setShowApiKey((value) => !value)}>
+                  {showApiKey ? "隐藏" : "显示"}
+                </button>
+              </div>
+            </label>
+
+            <div className="model-check-grid" aria-label="能力选择">
+              {MODEL_CAPABILITIES.map((capability) => (
+                <label key={capability}>
+                  <input
+                    type="checkbox"
+                    checked={form.capabilities.includes(capability)}
+                    disabled={selectedProvider ? !selectedProvider.supportedCapabilities.includes(capability) : false}
+                    onChange={() => setForm((current) => ({ ...current, capabilities: toggleListValue(current.capabilities, capability) }))}
+                  />
+                  <span>{capability}</span>
+                </label>
+              ))}
+            </div>
+            <div className="model-check-grid" aria-label="用途选择">
+              {MODEL_PURPOSES.map((purpose) => (
+                <label key={purpose}>
+                  <input
+                    type="checkbox"
+                    checked={form.purpose.includes(purpose)}
+                    onChange={() => setForm((current) => ({ ...current, purpose: toggleListValue(current.purpose, purpose) }))}
+                  />
+                  <span>{purpose}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="model-drawer__numbers">
+              <label className="manage-field">
+                <span>Temperature</span>
+                <input type="number" step="0.1" value={form.temperature ?? ""} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value ? Number(event.target.value) : null }))} />
+              </label>
+              <label className="manage-field">
+                <span>Max Tokens</span>
+                <input type="number" value={form.maxTokens ?? ""} onChange={(event) => setForm((current) => ({ ...current, maxTokens: event.target.value ? Number(event.target.value) : null }))} />
+              </label>
+            </div>
+            <label className="manage-field manage-field--toggle">
+              <span>启用</span>
+              <input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />
+            </label>
+            <label className="manage-field manage-field--toggle">
+              <span>设为默认</span>
+              <input type="checkbox" checked={form.isDefault} onChange={(event) => setForm((current) => ({ ...current, isDefault: event.target.checked }))} />
+            </label>
+            <button type="submit">保存模型</button>
+          </form>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function HomeManagePage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [themeKey, setThemeKey] = useThemePreference();
@@ -1778,6 +2031,44 @@ export function HomeManagePage() {
   } = useBackgroundGalleryPreferences();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [modelTestResult, setModelTestResult] = useState<{
+    profileId: string;
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const providersQuery = useQuery({
+    queryKey: ["model-providers"],
+    queryFn: fetchModelProviders
+  });
+  const profilesQuery = useQuery({
+    queryKey: ["model-profiles"],
+    queryFn: fetchModelProfiles
+  });
+  const saveModelMutation = useMutation({
+    mutationFn: ({ id, form }: { id?: string; form: ModelProfileInput }) =>
+      id ? updateModelProfile(id, form) : createModelProfile(form),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["model-profiles"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    }
+  });
+  const deleteModelMutation = useMutation({
+    mutationFn: deleteModelProfile,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["model-profiles"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    }
+  });
+  const testModelMutation = useMutation({
+    mutationFn: async (profileId: string) => ({
+      profileId,
+      ...(await testModelProfile(profileId))
+    }),
+    onSuccess: (result) => {
+      setModelTestResult(result);
+    }
+  });
   const visibleCount = layout.filter((item) => item.visible).length;
   const navigationCount = layout.filter((item) => item.showInNavigation).length;
   const backgroundCount = gallery.length;
@@ -1872,6 +2163,21 @@ export function HomeManagePage() {
         </div>
 
         <div className="manage-groups">
+          {providersQuery.data && profilesQuery.data ? (
+            <ModelManagementSection
+              providers={providersQuery.data.providers}
+              profiles={profilesQuery.data.profiles}
+              onSave={(input) => saveModelMutation.mutate(input)}
+              onDelete={(id) => deleteModelMutation.mutate(id)}
+              onTest={(id) => testModelMutation.mutate(id)}
+              testResult={modelTestResult}
+            />
+          ) : (
+            <section className="manage-group">
+              <div className="manage-empty-state">正在加载模型配置...</div>
+            </section>
+          )}
+
           <section className="manage-group" aria-labelledby="manage-home-layout-heading">
             <div className="manage-group__header">
               <div>

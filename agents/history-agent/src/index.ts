@@ -1,4 +1,4 @@
-import { defineAgent } from "@agent-zy/agent-sdk";
+import { defineAgent, getModelClient } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
 import type { HistoryPostCard, HistoryPostPayload } from "@agent-zy/shared-types";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -301,7 +301,7 @@ function normalizePayloadInput(value: unknown): unknown {
   if (typeof value === "string") {
     const parsed = parseJson(value);
 
-    return parsed ?? value;
+    return parsed ? normalizePayloadInput(parsed) : value;
   }
 
   if (Array.isArray(value)) {
@@ -331,58 +331,26 @@ function normalizePayloadInput(value: unknown): unknown {
   return value;
 }
 
-async function generateWithModelScope(topic: string, requestedAt: string): Promise<HistoryPostPayload> {
+async function generateWithModelRuntime(topic: string, requestedAt: string): Promise<HistoryPostPayload> {
   const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
 
   if (fixture) {
     return validatePayload(parseJson(fixture), requestedAt);
   }
 
-  const apiKey = process.env.MODELSCOPE_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("MODELSCOPE_API_KEY 未配置");
-  }
-
-  const baseUrl = process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1";
-  const model = process.env.MODELSCOPE_MODEL ?? "Qwen/Qwen3-235B-A22B";
-  const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
-  console.info("[history-agent] modelscope:request", {
-    endpoint,
-    model
+  console.info("[history-agent] model-runtime:request", {
+    purpose: "vision"
   });
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。"
-        },
-        {
-          role: "user",
-          content: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字，prompt 是中文生图提示词。`
-        }
-      ]
-    })
+  const result = await getModelClient().generateText({
+    purpose: "vision",
+    systemPrompt:
+      "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
+    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字，prompt 是中文生图提示词。`
   });
-  const responseText = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`ModelScope 请求失败：HTTP ${response.status}，${getModelScopeErrorMessage(responseText)}`);
-  }
-
-  const modelResponse = parseJson(responseText);
-  const rawContent = extractModelContent(modelResponse);
+  const rawContent = result.text;
   const normalizedPayloadInput = normalizePayloadInput(rawContent);
 
-  console.info("[history-agent] modelscope:response-shape", {
+  console.info("[history-agent] model-runtime:response-shape", {
     rawContentType: Array.isArray(rawContent) ? "array" : typeof rawContent,
     normalizedType: Array.isArray(normalizedPayloadInput) ? "array" : typeof normalizedPayloadInput,
     preview:
@@ -410,12 +378,11 @@ export const agent = defineAgent({
       trigger: input.trigger,
       localDate,
       topic,
-      hasModelScopeApiKey: Boolean(process.env.MODELSCOPE_API_KEY),
       hasFixture: Boolean(process.env.HISTORY_POST_FIXTURE_JSON)
     });
 
     try {
-      const payload = await generateWithModelScope(topic, input.requestedAt);
+      const payload = await generateWithModelRuntime(topic, input.requestedAt);
       const nextArchive = recordGeneratedTopic(archive, payload.topic, input.requestedAt);
       writeTopicArchive(archivePath, nextArchive);
 

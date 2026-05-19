@@ -78,6 +78,12 @@ function createState(news?: Partial<NewsState>): AppState {
     },
     nightlyReview: {
       lastTriggeredDate: null
+    },
+    modelSettings: {
+      profiles: [],
+      defaultProfileId: null,
+      purposeDefaults: {},
+      lastUpdatedAt: null
     }
   };
 }

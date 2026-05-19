@@ -17,7 +17,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import { NewsPanel } from "./components/dashboard-page";
+import { ModelManagementSection, NewsPanel } from "./components/dashboard-page";
 
 const sampleItems: NewsFeedItem[] = [
   {
@@ -98,5 +98,104 @@ describe("NewsPanel", () => {
     expect(disabledRefreshButton).not.toBeNull();
     expect(disabledRefreshButton?.textContent).toBe("更新中...");
     expect((disabledRefreshButton as HTMLButtonElement | null)?.disabled).toBe(true);
+  });
+});
+
+describe("ModelManagementSection", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("renders masked API key state without exposing plaintext and fills provider defaults", async () => {
+    const onSave = vi.fn();
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(ModelManagementSection, {
+          providers: [
+            {
+              id: "modelscope",
+              name: "ModelScope / 魔搭",
+              defaultBaseUrl: "https://modelscope.example/v1",
+              requiresApiKey: true,
+              authType: "bearer",
+              supportedCapabilities: ["chat", "text", "vision"],
+              defaultModels: ["Qwen/Test"],
+              docsHint: "",
+              compatibleMode: "openai"
+            },
+            {
+              id: "openai",
+              name: "OpenAI",
+              defaultBaseUrl: "https://api.openai.com/v1",
+              requiresApiKey: true,
+              authType: "bearer",
+              supportedCapabilities: ["chat", "text", "embedding"],
+              defaultModels: ["gpt-test"],
+              docsHint: "",
+              compatibleMode: "openai"
+            }
+          ],
+          profiles: [
+            {
+              id: "profile-1",
+              displayName: "OpenAI Mini",
+              provider: "openai",
+              modelName: "gpt-test",
+              baseUrl: "https://api.openai.com/v1",
+              apiKeyRef: "secret:profile-1",
+              capabilities: ["chat", "text"],
+              temperature: 0.2,
+              maxTokens: 1200,
+              enabled: true,
+              isDefault: true,
+              purpose: ["general"],
+              createdAt: "2026-05-19T00:00:00.000Z",
+              updatedAt: "2026-05-19T00:00:00.000Z",
+              hasApiKey: true,
+              maskedKey: "sk-****abcd",
+              apiKeySource: "local"
+            }
+          ],
+          onSave,
+          onDelete: vi.fn(),
+          onTest: vi.fn(),
+          testResult: null
+        })
+      );
+    });
+
+    expect(container.textContent).toContain("模型管理");
+    expect(container.textContent).toContain("sk-****abcd");
+    expect(container.textContent).not.toContain("sk-test-secret-abcd");
+
+    const addButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "添加模型"
+    );
+
+    await act(async () => {
+      addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const providerSelect = container.querySelector("select") as HTMLSelectElement;
+    providerSelect.value = "openai";
+
+    await act(async () => {
+      providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const inputs = Array.from(container.querySelectorAll("input")) as HTMLInputElement[];
+    expect(inputs.some((input) => input.value === "gpt-test")).toBe(true);
+    expect(inputs.some((input) => input.value === "https://api.openai.com/v1")).toBe(true);
   });
 });

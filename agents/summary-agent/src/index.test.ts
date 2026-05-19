@@ -56,6 +56,12 @@ function createState(): AppState {
     },
     nightlyReview: {
       lastTriggeredDate: null
+    },
+    modelSettings: {
+      profiles: [],
+      defaultProfileId: null,
+      purposeDefaults: {},
+      lastUpdatedAt: null
     }
   };
 }

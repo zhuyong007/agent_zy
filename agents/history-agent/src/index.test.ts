@@ -59,6 +59,12 @@ function createState(): AppState {
     },
     historyPush: {
       lastTriggeredDate: null
+    },
+    modelSettings: {
+      profiles: [],
+      defaultProfileId: null,
+      purposeDefaults: {},
+      lastUpdatedAt: null
     }
   };
 }
@@ -75,54 +81,27 @@ function createRequest(state = createState()): AgentExecutionRequest {
   };
 }
 
+function mockModelRuntimeText(textFactory: string | ((prompt: string) => string)) {
+  (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
+    generateText: vi.fn(async (input: { prompt: string }) => {
+      const prompt = input.prompt ?? "";
+      const text = typeof textFactory === "function" ? textFactory(prompt) : textFactory;
+
+      return { text };
+    })
+  };
+
+  return () => {
+    delete (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__;
+  };
+}
+
 function mockModelResponse(content: unknown) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: {
-        get() {
-          return "application/json";
-        }
-      },
-      text: async () =>
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify(content)
-              }
-            }
-          ]
-        })
-    }))
-  );
+  return mockModelRuntimeText(JSON.stringify(content));
 }
 
 function mockStructuredModelResponse(content: unknown) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: {
-        get() {
-          return "application/json";
-        }
-      },
-      text: async () =>
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content
-              }
-            }
-          ]
-        })
-    }))
-  );
+  return mockModelRuntimeText(JSON.stringify(content));
 }
 
 describe("history agent", () => {
@@ -131,14 +110,14 @@ describe("history agent", () => {
     delete process.env.MODELSCOPE_BASE_URL;
     delete process.env.MODELSCOPE_MODEL;
     delete process.env.HISTORY_TOPIC_ARCHIVE_PATH;
+    delete (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__;
     vi.unstubAllGlobals();
   });
 
-  it("generates a persistent history post notification from ModelScope JSON", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
+  it("generates a persistent history post notification from model runtime JSON", async () => {
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
-    mockModelResponse({
+    const restore = mockModelResponse({
       topic: "玄奘取经为什么重要",
       summary: "玄奘西行不只是宗教故事，也推动了中印知识交流。",
       cardCount: 3,
@@ -163,6 +142,7 @@ describe("history agent", () => {
     });
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("completed");
     expect(result.notifications).toEqual([
@@ -193,7 +173,7 @@ describe("history agent", () => {
     );
   });
 
-  it("fails without creating a notification when ModelScope is not configured", async () => {
+  it("fails without creating a notification when model runtime is unavailable", async () => {
     const result = await agent.execute(createRequest());
 
     expect(result.status).toBe("failed");
@@ -202,8 +182,7 @@ describe("history agent", () => {
   });
 
   it("rejects model output that needs more than five images", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
-    mockModelResponse({
+    const restore = mockModelResponse({
       topic: "超长选题",
       summary: "这条输出不符合图片数量限制。",
       cardCount: 6,
@@ -216,6 +195,7 @@ describe("history agent", () => {
     });
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("failed");
     expect(result.notifications).toBeUndefined();
@@ -223,8 +203,7 @@ describe("history agent", () => {
   });
 
   it("accepts content-block array responses that contain JSON text", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
-    mockStructuredModelResponse([
+    const restore = mockStructuredModelResponse([
       {
         type: "text",
         text: JSON.stringify({
@@ -244,6 +223,7 @@ describe("history agent", () => {
     ]);
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("completed");
     expect(result.notifications?.[0]).toMatchObject({
@@ -253,10 +233,9 @@ describe("history agent", () => {
   });
 
   it("accepts single-item JSON array payloads", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
-    mockModelResponse([
+    const restore = mockModelResponse([
       {
         topic: "玛雅历法为什么如此精密",
         summary: "历法背后是长期观测与系统化知识的累积。",
@@ -273,6 +252,7 @@ describe("history agent", () => {
     ]);
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("completed");
     expect(result.notifications?.[0]).toMatchObject({
@@ -282,7 +262,6 @@ describe("history agent", () => {
   });
 
   it("prefers an unused topic when the requested topic already exists in the archive", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
     writeFileSync(
@@ -303,56 +282,33 @@ describe("history agent", () => {
       ),
       "utf8"
     );
-    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body ?? "{}")) as {
-        messages?: Array<{ role: string; content: string }>;
-      };
-      const prompt = body.messages?.find((item) => item.role === "user")?.content ?? "";
+    const restore = mockModelRuntimeText((prompt) => {
       const topicMatch = prompt.match(/「(.+?)」/);
       const topic = topicMatch?.[1] ?? "未知主题";
 
-      return {
-        ok: true,
-        status: 200,
-        headers: {
-          get() {
-            return "application/json";
+      return JSON.stringify({
+        topic,
+        summary: `${topic} 的摘要`,
+        cardCount: 1,
+        cards: [
+          {
+            title: "一张图讲清",
+            imageText: `${topic} 图片文案`,
+            prompt: `${topic} 提示词`
           }
-        },
-        text: async () =>
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    topic,
-                    summary: `${topic} 的摘要`,
-                    cardCount: 1,
-                    cards: [
-                      {
-                        title: "一张图讲清",
-                        imageText: `${topic} 图片文案`,
-                        prompt: `${topic} 提示词`
-                      }
-                    ],
-                    xiaohongshuCaption: `${topic} 正文`
-                  })
-                }
-              }
-            ]
-          })
-      };
+        ],
+        xiaohongshuCaption: `${topic} 正文`
+      });
     });
-    vi.stubGlobal("fetch", fetchMock);
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("completed");
     expect(result.notifications?.[0]?.payload?.topic).not.toBe("玄奘取经为什么重要");
   });
 
   it("falls back to the least recently generated topic when all topics are archived", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
     writeFileSync(
@@ -439,59 +395,36 @@ describe("history agent", () => {
       ),
       "utf8"
     );
-    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body ?? "{}")) as {
-        messages?: Array<{ role: string; content: string }>;
-      };
-      const prompt = body.messages?.find((item) => item.role === "user")?.content ?? "";
+    const restore = mockModelRuntimeText((prompt) => {
       const topicMatch = prompt.match(/「(.+?)」/);
       const topic = topicMatch?.[1] ?? "未知主题";
 
-      return {
-        ok: true,
-        status: 200,
-        headers: {
-          get() {
-            return "application/json";
+      return JSON.stringify({
+        topic,
+        summary: `${topic} 的摘要`,
+        cardCount: 1,
+        cards: [
+          {
+            title: "一张图讲清",
+            imageText: `${topic} 图片文案`,
+            prompt: `${topic} 提示词`
           }
-        },
-        text: async () =>
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    topic,
-                    summary: `${topic} 的摘要`,
-                    cardCount: 1,
-                    cards: [
-                      {
-                        title: "一张图讲清",
-                        imageText: `${topic} 图片文案`,
-                        prompt: `${topic} 提示词`
-                      }
-                    ],
-                    xiaohongshuCaption: `${topic} 正文`
-                  })
-                }
-              }
-            ]
-          })
-      };
+        ],
+        xiaohongshuCaption: `${topic} 正文`
+      });
     });
-    vi.stubGlobal("fetch", fetchMock);
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("completed");
     expect(result.notifications?.[0]?.payload?.topic).toBe("玄奘取经为什么重要");
   });
 
   it("fails the task when persisting the topic archive fails", async () => {
-    process.env.MODELSCOPE_API_KEY = "test-token";
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = archiveDir;
-    mockModelResponse({
+    const restore = mockModelResponse({
       topic: "玄奘取经为什么重要",
       summary: "玄奘西行不只是宗教故事，也推动了中印知识交流。",
       cardCount: 1,
@@ -506,6 +439,7 @@ describe("history agent", () => {
     });
 
     const result = await agent.execute(createRequest());
+    restore();
 
     expect(result.status).toBe("failed");
     expect(result.notifications).toBeUndefined();

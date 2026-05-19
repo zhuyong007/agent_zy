@@ -361,6 +361,70 @@ export interface HistoryPushState {
   lastTriggeredDate: string | null;
 }
 
+export type ModelProviderId =
+  | "modelscope"
+  | "deepseek"
+  | "openai"
+  | "doubao"
+  | "ollama"
+  | "openai-compatible";
+
+export type ModelCapability = "chat" | "text" | "embedding" | "vision" | "tool-use";
+
+export type ModelPurpose =
+  | "general"
+  | "summary"
+  | "ledger"
+  | "todo"
+  | "router"
+  | "embedding"
+  | "vision";
+
+export interface ModelProfile {
+  id: string;
+  displayName: string;
+  provider: ModelProviderId;
+  modelName: string;
+  baseUrl: string;
+  apiKeyRef: string | null;
+  capabilities: ModelCapability[];
+  temperature: number | null;
+  maxTokens: number | null;
+  enabled: boolean;
+  isDefault: boolean;
+  purpose: ModelPurpose[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModelProviderDefinition {
+  id: ModelProviderId;
+  name: string;
+  defaultBaseUrl: string;
+  requiresApiKey: boolean;
+  authType: "bearer" | "none";
+  supportedCapabilities: ModelCapability[];
+  defaultModels: string[];
+  docsHint: string;
+  compatibleMode: "openai" | "ollama";
+}
+
+export interface ModelSettingsState {
+  profiles: ModelProfile[];
+  defaultProfileId: string | null;
+  purposeDefaults: Partial<Record<ModelPurpose, string>>;
+  lastUpdatedAt: string | null;
+}
+
+export interface ModelSettingsDashboard {
+  defaultProfile: Pick<ModelProfile, "id" | "displayName" | "provider" | "modelName"> | null;
+  enabledCount: number;
+  totalCount: number;
+  configuredPurposeCount: number;
+  purposeCount: number;
+  missingApiKeyCount: number;
+}
+
 export type HomeModuleId = string;
 export type HomeModuleSize = "max" | "large" | "medium" | "smaller" | "small";
 
@@ -409,6 +473,7 @@ export interface AppState {
   summary: SummaryState;
   historyPush: HistoryPushState;
   nightlyReview: NightlyReviewState;
+  modelSettings: ModelSettingsState;
 }
 
 export interface AgentRuntimeView {
@@ -438,6 +503,7 @@ export interface DashboardData {
   summary: SummaryState & {
     dashboard: SummaryDashboard;
   };
+  modelSettingsDashboard?: ModelSettingsDashboard;
   agents: AgentRuntimeView[];
 }
 
