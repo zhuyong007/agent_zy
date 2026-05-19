@@ -43,6 +43,7 @@ describe("NewsPanel", () => {
       root.unmount();
     });
     container.remove();
+    vi.unstubAllGlobals();
   });
 
   it("shows refresh button and disables it while refreshing", async () => {
@@ -98,5 +99,54 @@ describe("NewsPanel", () => {
     expect(disabledRefreshButton).not.toBeNull();
     expect(disabledRefreshButton?.textContent).toBe("更新中...");
     expect((disabledRefreshButton as HTMLButtonElement | null)?.disabled).toBe(true);
+  });
+
+  it("opens news items through the local browser bridge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(NewsPanel, {
+          items: sampleItems,
+          updatedAt: "2026-05-14T08:05:00.000Z",
+          size: "large",
+          filter: "all",
+          onFilterChange: () => undefined,
+          onRefresh: () => undefined,
+          isRefreshing: false,
+          refreshError: null
+        })
+      );
+    });
+
+    const newsLink = container.querySelector(".news-mini-timeline__item");
+
+    expect(newsLink).not.toBeNull();
+
+    await act(async () => {
+      newsLink?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/open-url"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          url: "https://example.com/news-1"
+        })
+      })
+    );
   });
 });

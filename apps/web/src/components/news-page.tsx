@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { NewsCategory, NewsDailyReport, NewsFeedItem } from "@agent-zy/shared-types";
 
-import { fetchNews, openDashboardStream, refreshNews } from "../api";
+import { fetchNews, openDashboardStream, openExternalUrl, refreshNews } from "../api";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
 const categories: Array<{
@@ -70,6 +70,13 @@ function groupFeedItems(items: NewsFeedItem[]) {
   }));
 }
 
+function handleExternalLinkClick(event: MouseEvent<HTMLAnchorElement>, url: string) {
+  event.preventDefault();
+  void openExternalUrl(url).catch(() => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+}
+
 function FeedTimeline({ items }: { items: NewsFeedItem[] }) {
   const groups = useMemo(() => groupFeedItems(items), [items]);
 
@@ -87,7 +94,13 @@ function FeedTimeline({ items }: { items: NewsFeedItem[] }) {
               <article key={item.id} className="news-timeline-item">
                 <time className="news-timeline-item__time">{formatTime(item.publishedAt)}</time>
                 <span className="news-timeline-item__dot" aria-hidden="true" />
-                <a className="news-timeline-card" href={item.url} target="_blank" rel="noreferrer">
+                <a
+                  className="news-timeline-card"
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => handleExternalLinkClick(event, item.url)}
+                >
                   <div className="news-timeline-card__meta">
                     <span>{item.source}</span>
                     <span>{categoryLabel(item.category)}</span>
@@ -144,6 +157,9 @@ function DailyReport({ report }: { report: NewsDailyReport | null }) {
                   href={item.sourceUrl ?? "https://aihot.virxact.com/daily"}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(event) =>
+                    handleExternalLinkClick(event, item.sourceUrl ?? "https://aihot.virxact.com/daily")
+                  }
                 >
                   <span>{item.sourceName}</span>
                   <strong>{item.title}</strong>

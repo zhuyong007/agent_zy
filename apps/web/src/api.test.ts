@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { generateHistory } from "./api";
+import { generateHistory, openExternalUrl } from "./api";
 
 describe("generateHistory", () => {
   afterEach(() => {
@@ -60,5 +60,35 @@ describe("generateHistory", () => {
         }
       ]
     });
+  });
+});
+
+describe("openExternalUrl", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the URL to the local browser bridge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await openExternalUrl("https://example.com/news-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/open-url"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          url: "https://example.com/news-1"
+        })
+      })
+    );
   });
 });

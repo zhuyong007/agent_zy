@@ -14,10 +14,13 @@ import { NewsPage } from "./components/news-page";
 import { SummaryPage } from "./components/summary-page";
 import { TodoPage } from "./components/todo-module";
 import { TopicPage } from "./components/topic-page";
+import { useWallpaperScrollSupport } from "./scroll-support";
 
 const queryClient = new QueryClient();
 
 function RootLayout() {
+  useWallpaperScrollSupport();
+
   return <Outlet />;
 }
 

@@ -37,7 +37,7 @@ loadDotEnv();
 
 const app = createControlPlaneApp();
 
-const port = Number(process.env.PORT ?? "4318");
+const port = Number(process.env.PORT ?? "4378");
 const host = process.env.HOST ?? "127.0.0.1";
 
 app

@@ -58,6 +58,71 @@ describe("control-plane app", () => {
     });
   });
 
+  it("opens safe external URLs through the local browser bridge", async () => {
+    const openExternalUrl = vi.fn();
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-open-url-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false,
+      openExternalUrl
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/open-url",
+        payload: {
+          url: "https://example.com/news-1"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true
+      });
+      expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/news-1");
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("rejects unsafe external URL protocols", async () => {
+    const openExternalUrl = vi.fn();
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-open-url-invalid-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false,
+      openExternalUrl
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/open-url",
+        payload: {
+          url: "file:///C:/Windows/System32/calc.exe"
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(openExternalUrl).not.toHaveBeenCalled();
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("records ledger facts through the ledger-agent path and exposes them in dashboard recent facts", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-record-test-"));
     const isolatedApp = createControlPlaneApp({
