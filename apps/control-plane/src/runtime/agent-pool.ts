@@ -102,7 +102,10 @@ export function createAgentWorkerPool(options: {
       }
 
       options.modelRuntime
-        .execute(message.payload)
+        .execute({
+          ...message.payload,
+          agentId: message.payload.agentId ?? manifest.id
+        } as ModelRuntimeRequest)
         .then((result) => {
           child.send({
             type: "model-response",

@@ -413,6 +413,7 @@ export interface ModelSettingsState {
   profiles: ModelProfile[];
   defaultProfileId: string | null;
   purposeDefaults: Partial<Record<ModelPurpose, string>>;
+  agentDefaults: Record<string, string>;
   lastUpdatedAt: string | null;
 }
 
@@ -422,6 +423,7 @@ export interface ModelSettingsDashboard {
   totalCount: number;
   configuredPurposeCount: number;
   purposeCount: number;
+  configuredAgentCount: number;
   missingApiKeyCount: number;
 }
 

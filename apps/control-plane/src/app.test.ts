@@ -610,6 +610,72 @@ describe("control-plane app", () => {
     expect(JSON.stringify(response.json())).not.toContain("API_KEY");
   });
 
+  it("sets an agent default model profile for a sub-agent module", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-agent-model-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const createResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/model-profiles",
+        payload: {
+          displayName: "DeepSeek for history",
+          provider: "deepseek",
+          modelName: "deepseek-chat",
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "sk-agent-secret-abcd",
+          capabilities: ["chat", "text"],
+          purpose: [],
+          enabled: true,
+          isDefault: false
+        }
+      });
+      const profileId = createResponse.json().id;
+
+      const bindResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/model-profiles/agent-default",
+        payload: {
+          agentId: "history-agent",
+          profileId
+        }
+      });
+
+      expect(bindResponse.statusCode).toBe(200);
+      expect(bindResponse.json().agentDefaults).toMatchObject({
+        "history-agent": profileId
+      });
+
+      const listResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/model-profiles"
+      });
+
+      expect(listResponse.json().agents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "history-agent",
+            name: expect.any(String)
+          })
+        ])
+      );
+      expect(listResponse.json().settings.agentDefaults).toMatchObject({
+        "history-agent": profileId
+      });
+      expect(JSON.stringify(listResponse.json())).not.toContain("sk-agent-secret-abcd");
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("exposes a notification cancellation endpoint", async () => {
     const response = await app.inject({
       method: "DELETE",

@@ -252,6 +252,7 @@ function createInitialModelSettingsState(): ModelSettingsState {
         summary: profile.id,
         vision: profile.id
       },
+      agentDefaults: {},
       lastUpdatedAt: createdAt
     };
   }
@@ -277,6 +278,7 @@ function createInitialModelSettingsState(): ModelSettingsState {
     ],
     defaultProfileId: null,
     purposeDefaults: {},
+    agentDefaults: {},
     lastUpdatedAt: createdAt
   };
 }
@@ -739,6 +741,15 @@ function normalizeModelSettingsState(
           profiles.some((profile) => profile.id === profileId)
       )
     ),
+    agentDefaults: Object.fromEntries(
+      Object.entries(modelSettings.agentDefaults ?? {}).filter(
+        ([agentId, profileId]) =>
+          typeof agentId === "string" &&
+          agentId.trim().length > 0 &&
+          typeof profileId === "string" &&
+          profiles.some((profile) => profile.id === profileId)
+      )
+    ),
     lastUpdatedAt: modelSettings.lastUpdatedAt ?? null
   };
 }
@@ -760,6 +771,7 @@ function buildModelSettingsDashboard(modelSettings: ModelSettingsState) {
     totalCount: modelSettings.profiles.length,
     configuredPurposeCount: Object.keys(modelSettings.purposeDefaults).length,
     purposeCount: MODEL_PURPOSES.length,
+    configuredAgentCount: Object.keys(modelSettings.agentDefaults).length,
     missingApiKeyCount: modelSettings.profiles.filter((profile) => {
       const provider = getModelProvider(profile.provider);
       return Boolean(profile.enabled && provider?.requiresApiKey && !profile.apiKeyRef);
@@ -844,6 +856,7 @@ export interface ControlPlaneStore {
   deleteModelProfile(id: string): { ok: true };
   setDefaultModelProfile(id: string): ModelSettingsState;
   setPurposeDefault(purpose: ModelPurpose, profileId: string | null): ModelSettingsState;
+  setAgentDefaultModelProfile(agentId: string, profileId: string | null): ModelSettingsState;
   setNightlyReviewDate(date: string): void;
   getDashboard(
     manifests: AgentManifest[],
@@ -1076,6 +1089,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         }
       }
 
+      for (const [agentId, profileId] of Object.entries(state.modelSettings.agentDefaults)) {
+        if (profileId === id) {
+          delete state.modelSettings.agentDefaults[agentId];
+        }
+      }
+
       state.modelSettings.lastUpdatedAt = nowIso();
       state.modelSettings = normalizeModelSettingsState(state.modelSettings);
       persist();
@@ -1104,6 +1123,26 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         delete state.modelSettings.purposeDefaults[purpose];
       } else if (state.modelSettings.profiles.some((profile) => profile.id === profileId)) {
         state.modelSettings.purposeDefaults[purpose] = profileId;
+      } else {
+        throw new Error("model profile not found");
+      }
+
+      state.modelSettings.lastUpdatedAt = nowIso();
+      persist();
+
+      return structuredClone(state.modelSettings);
+    },
+    setAgentDefaultModelProfile(agentId, profileId) {
+      const normalizedAgentId = agentId.trim();
+
+      if (!normalizedAgentId) {
+        throw new Error("agentId is required");
+      }
+
+      if (profileId === null) {
+        delete state.modelSettings.agentDefaults[normalizedAgentId];
+      } else if (state.modelSettings.profiles.some((profile) => profile.id === profileId)) {
+        state.modelSettings.agentDefaults[normalizedAgentId] = profileId;
       } else {
         throw new Error("model profile not found");
       }

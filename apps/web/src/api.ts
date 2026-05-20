@@ -105,6 +105,11 @@ export async function fetchModelProviders(): Promise<{ providers: ModelProviderD
 export async function fetchModelProfiles(): Promise<{
   profiles: ModelProfileView[];
   settings: ModelSettingsState;
+  agents: Array<{
+    id: string;
+    name: string;
+    capabilities: string[];
+  }>;
 }> {
   const response = await fetch(`${API_BASE}/api/model-profiles`);
 
@@ -169,6 +174,25 @@ export async function testModelProfile(id: string): Promise<{ ok: boolean; laten
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to test model profile"));
+  }
+
+  return response.json();
+}
+
+export async function setAgentDefaultModel(input: {
+  agentId: string;
+  profileId: string | null;
+}): Promise<ModelSettingsState> {
+  const response = await fetch(`${API_BASE}/api/model-profiles/agent-default`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to set agent default model"));
   }
 
   return response.json();

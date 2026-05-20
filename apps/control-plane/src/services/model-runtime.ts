@@ -13,6 +13,7 @@ export type ModelRuntimeRequest =
   | {
       kind: "chat";
       profileId?: string;
+      agentId?: string;
       purpose?: ModelPurpose;
       messages: ModelChatMessage[];
       temperature?: number;
@@ -21,6 +22,7 @@ export type ModelRuntimeRequest =
   | {
       kind: "generateText";
       profileId?: string;
+      agentId?: string;
       purpose?: ModelPurpose;
       prompt: string;
       systemPrompt?: string;
@@ -30,6 +32,7 @@ export type ModelRuntimeRequest =
   | {
       kind: "embedding";
       profileId?: string;
+      agentId?: string;
       purpose?: ModelPurpose;
       input: string | string[];
     };
@@ -69,10 +72,13 @@ export function createModelRuntime(options: {
   const timeoutMs = options.timeoutMs ?? 30_000;
   const retries = options.retries ?? 1;
 
-  function resolveProfile(input: { profileId?: string; purpose?: ModelPurpose }): ModelProfile {
+  function resolveProfile(input: { profileId?: string; agentId?: string; purpose?: ModelPurpose }): ModelProfile {
     const settings = options.store.getState().modelSettings;
     const profileId =
-      input.profileId ?? (input.purpose ? settings.purposeDefaults[input.purpose] : null) ?? settings.defaultProfileId;
+      input.profileId ??
+      (input.agentId ? settings.agentDefaults[input.agentId] : null) ??
+      (input.purpose ? settings.purposeDefaults[input.purpose] : null) ??
+      settings.defaultProfileId;
     const profile = settings.profiles.find((item) => item.id === profileId);
 
     if (!profile) {
@@ -192,6 +198,7 @@ export function createModelRuntime(options: {
       return chat({
         kind: "chat",
         profileId: input.profileId,
+        agentId: input.agentId,
         purpose: input.purpose,
         temperature: input.temperature,
         maxTokens: input.maxTokens,

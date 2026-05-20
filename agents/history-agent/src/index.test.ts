@@ -64,6 +64,7 @@ function createState(): AppState {
       profiles: [],
       defaultProfileId: null,
       purposeDefaults: {},
+      agentDefaults: {},
       lastUpdatedAt: null
     }
   };

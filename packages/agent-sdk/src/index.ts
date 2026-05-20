@@ -123,6 +123,7 @@ export type AgentModelRequest =
   | {
       kind: "chat";
       profileId?: string;
+      agentId?: string;
       purpose?: ModelPurpose;
       messages: AgentModelChatMessage[];
       temperature?: number;
@@ -131,6 +132,7 @@ export type AgentModelRequest =
   | {
       kind: "generateText";
       profileId?: string;
+      agentId?: string;
       purpose?: ModelPurpose;
       prompt: string;
       systemPrompt?: string;
@@ -140,6 +142,7 @@ export type AgentModelRequest =
   | {
       kind: "embedding";
       profileId?: string;
+      agentId?: string;
       purpose?: ModelPurpose;
       input: string | string[];
     };

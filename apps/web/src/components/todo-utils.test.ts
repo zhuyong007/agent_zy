@@ -190,6 +190,7 @@ function createDashboard(): DashboardData {
       totalCount: 0,
       configuredPurposeCount: 0,
       purposeCount: 7,
+      configuredAgentCount: 0,
       missingApiKeyCount: 0
     }
   };

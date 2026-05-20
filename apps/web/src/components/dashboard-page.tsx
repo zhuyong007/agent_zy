@@ -50,6 +50,7 @@ import {
   refreshNews,
   saveHomeLayout,
   sendChat,
+  setAgentDefaultModel,
   testModelProfile,
   updateModelProfile,
   type ModelProfileInput,
@@ -1800,16 +1801,26 @@ function toggleListValue<T extends string>(items: T[], value: T) {
 export function ModelManagementSection({
   providers,
   profiles,
+  agents,
+  agentDefaults,
   onSave,
   onDelete,
   onTest,
+  onSetAgentDefault,
   testResult
 }: {
   providers: ModelProviderDefinition[];
   profiles: ModelProfileView[];
+  agents?: Array<{
+    id: string;
+    name: string;
+    capabilities: string[];
+  }>;
+  agentDefaults?: Record<string, string>;
   onSave: (input: { id?: string; form: ModelProfileInput }) => void;
   onDelete: (id: string) => void;
   onTest: (id: string) => void;
+  onSetAgentDefault?: (input: { agentId: string; profileId: string | null }) => void;
   testResult?: { profileId: string; ok: boolean; message: string } | null;
 }) {
   const [editingProfile, setEditingProfile] = useState<ModelProfileView | null>(null);
@@ -1911,6 +1922,39 @@ export function ModelManagementSection({
           </article>
         ))}
       </div>
+
+      {agents && agents.length > 0 ? (
+        <div className="model-agent-bindings" aria-label="模块模型绑定">
+          <div className="model-agent-bindings__header">
+            <h3>模块默认模型</h3>
+            <p>未指定时按用途默认或全局默认模型执行。</p>
+          </div>
+          {agents.map((agent) => (
+            <label key={agent.id} className="model-agent-binding">
+              <span>
+                <strong>{agent.name}</strong>
+                <small>{agent.id}</small>
+              </span>
+              <select
+                value={agentDefaults?.[agent.id] ?? ""}
+                onChange={(event) =>
+                  onSetAgentDefault?.({
+                    agentId: agent.id,
+                    profileId: event.target.value || null
+                  })
+                }
+              >
+                <option value="">继承默认</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.displayName} · {profile.provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      ) : null}
 
       {drawerOpen ? (
         <div className="model-drawer" role="dialog" aria-label="编辑模型配置">
@@ -2069,6 +2113,13 @@ export function HomeManagePage() {
       setModelTestResult(result);
     }
   });
+  const setAgentDefaultMutation = useMutation({
+    mutationFn: setAgentDefaultModel,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["model-profiles"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    }
+  });
   const visibleCount = layout.filter((item) => item.visible).length;
   const navigationCount = layout.filter((item) => item.showInNavigation).length;
   const backgroundCount = gallery.length;
@@ -2167,9 +2218,12 @@ export function HomeManagePage() {
             <ModelManagementSection
               providers={providersQuery.data.providers}
               profiles={profilesQuery.data.profiles}
+              agents={profilesQuery.data.agents}
+              agentDefaults={profilesQuery.data.settings.agentDefaults}
               onSave={(input) => saveModelMutation.mutate(input)}
               onDelete={(id) => deleteModelMutation.mutate(id)}
               onTest={(id) => testModelMutation.mutate(id)}
+              onSetAgentDefault={(input) => setAgentDefaultMutation.mutate(input)}
               testResult={modelTestResult}
             />
           ) : (

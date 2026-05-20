@@ -83,6 +83,7 @@ function createState(news?: Partial<NewsState>): AppState {
       profiles: [],
       defaultProfileId: null,
       purposeDefaults: {},
+      agentDefaults: {},
       lastUpdatedAt: null
     }
   };

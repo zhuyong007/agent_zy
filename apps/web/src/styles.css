@@ -6921,6 +6921,38 @@ body[data-theme="day"] .todo-scene-hero p {
   white-space: nowrap;
 }
 
+.model-agent-bindings {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(7, 11, 20, 0.32);
+}
+
+.model-agent-bindings__header h3,
+.model-agent-bindings__header p {
+  margin: 0;
+}
+
+.model-agent-bindings__header p,
+.model-agent-binding small {
+  color: rgba(234, 240, 255, 0.62);
+}
+
+.model-agent-binding {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.model-agent-binding span {
+  display: grid;
+  gap: 2px;
+}
+
 .model-test-result {
   grid-column: 1 / -1;
   margin: 0;
@@ -6977,6 +7009,7 @@ body[data-theme="day"] .todo-scene-hero p {
 }
 
 body[data-theme="day"] .model-profile-row,
+body[data-theme="day"] .model-agent-bindings,
 body[data-theme="day"] .model-drawer__panel {
   background: rgba(255, 255, 255, 0.9);
   border-color: rgba(17, 24, 39, 0.1);
@@ -6984,6 +7017,8 @@ body[data-theme="day"] .model-drawer__panel {
 
 body[data-theme="day"] .model-profile-row p,
 body[data-theme="day"] .model-profile-row small,
+body[data-theme="day"] .model-agent-bindings__header p,
+body[data-theme="day"] .model-agent-binding small,
 body[data-theme="day"] .model-profile-row__chips span,
 body[data-theme="day"] .model-profile-row__status span,
 body[data-theme="day"] .model-check-grid label {

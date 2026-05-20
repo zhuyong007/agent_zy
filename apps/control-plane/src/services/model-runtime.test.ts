@@ -79,6 +79,64 @@ describe("model runtime", () => {
     );
   });
 
+  it("prefers an agent default profile over purpose defaults", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const generalProfile = store.createModelProfile({
+      id: "general-profile",
+      displayName: "General profile",
+      provider: "openai",
+      modelName: "gpt-general",
+      baseUrl: "https://general.example/v1",
+      apiKeyRef: "secret:general-profile",
+      capabilities: ["chat", "text"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general"]
+    });
+    const agentProfile = store.createModelProfile({
+      id: "agent-profile",
+      displayName: "Agent profile",
+      provider: "deepseek",
+      modelName: "deepseek-chat",
+      baseUrl: "https://agent.example/v1",
+      apiKeyRef: "secret:agent-profile",
+      capabilities: ["chat", "text"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: false,
+      purpose: []
+    });
+    store.setAgentDefaultModelProfile("history-agent", agentProfile.id);
+    secrets.save(generalProfile.id, "sk-general-secret");
+    secrets.save(agentProfile.id, "sk-agent-secret");
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      timeoutMs: 1000,
+      retries: 0
+    });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "agent model" } }] }), {
+        status: 200
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      runtime.generateText({ agentId: "history-agent", purpose: "general", prompt: "hello" })
+    ).resolves.toEqual({ text: "agent model" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.example/v1/chat/completions",
+      expect.any(Object)
+    );
+  });
+
   it("redacts API keys from provider errors", async () => {
     const runtime = setupRuntime();
     vi.stubGlobal(

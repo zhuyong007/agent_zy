@@ -114,6 +114,7 @@ describe("ModelManagementSection", () => {
 
   it("renders masked API key state without exposing plaintext and fills provider defaults", async () => {
     const onSave = vi.fn();
+    const onSetAgentDefault = vi.fn();
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -167,15 +168,28 @@ describe("ModelManagementSection", () => {
               apiKeySource: "local"
             }
           ],
+          agents: [
+            {
+              id: "history-agent",
+              name: "历史知识",
+              capabilities: ["history.generatePost"]
+            }
+          ],
+          agentDefaults: {
+            "history-agent": "profile-1"
+          },
           onSave,
           onDelete: vi.fn(),
           onTest: vi.fn(),
+          onSetAgentDefault,
           testResult: null
         })
       );
     });
 
     expect(container.textContent).toContain("模型管理");
+    expect(container.textContent).toContain("模块默认模型");
+    expect(container.textContent).toContain("历史知识");
     expect(container.textContent).toContain("sk-****abcd");
     expect(container.textContent).not.toContain("sk-test-secret-abcd");
 
@@ -187,7 +201,23 @@ describe("ModelManagementSection", () => {
       addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const providerSelect = container.querySelector("select") as HTMLSelectElement;
+    const selects = Array.from(container.querySelectorAll("select")) as HTMLSelectElement[];
+    const agentSelect = selects.find((select) => select.value === "profile-1");
+    expect(agentSelect).toBeTruthy();
+    agentSelect!.value = "";
+
+    await act(async () => {
+      agentSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(onSetAgentDefault).toHaveBeenCalledWith({
+      agentId: "history-agent",
+      profileId: null
+    });
+
+    const providerSelect = Array.from(container.querySelectorAll("select")).find(
+      (select) => (select as HTMLSelectElement).value === "modelscope"
+    ) as HTMLSelectElement;
     providerSelect.value = "openai";
 
     await act(async () => {

@@ -109,7 +109,12 @@ export function createControlPlaneApp(options?: {
 
   app.get("/api/model-profiles", async () => ({
     profiles: store.getState().modelSettings.profiles.map(serializeModelProfile),
-    settings: store.getState().modelSettings
+    settings: store.getState().modelSettings,
+    agents: registry.list().map((manifest) => ({
+      id: manifest.id,
+      name: manifest.name,
+      capabilities: manifest.capabilities
+    }))
   }));
 
   app.post("/api/model-profiles", async (request, reply) => {
@@ -217,6 +222,21 @@ export function createControlPlaneApp(options?: {
     } catch (error) {
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "invalid purpose default"
+      });
+    }
+  });
+
+  app.post("/api/model-profiles/agent-default", async (request, reply) => {
+    const body = (request.body ?? {}) as { agentId?: unknown; profileId?: unknown };
+
+    try {
+      return store.setAgentDefaultModelProfile(
+        typeof body.agentId === "string" ? body.agentId : "",
+        typeof body.profileId === "string" ? body.profileId : null
+      );
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid agent default"
       });
     }
   });
