@@ -17,7 +17,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import { ModelManagementSection, NewsPanel } from "./components/dashboard-page";
+import { ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
 
 const sampleItems: NewsFeedItem[] = [
   {
@@ -114,8 +114,6 @@ describe("ModelManagementSection", () => {
 
   it("renders masked API key state without exposing plaintext and fills provider defaults", async () => {
     const onSave = vi.fn();
-    const onSetAgentDefault = vi.fn();
-
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -168,30 +166,21 @@ describe("ModelManagementSection", () => {
               apiKeySource: "local"
             }
           ],
-          agents: [
-            {
-              id: "history-agent",
-              name: "历史知识",
-              capabilities: ["history.generatePost"]
-            }
-          ],
-          agentDefaults: {
-            "history-agent": "profile-1"
-          },
           onSave,
           onDelete: vi.fn(),
           onTest: vi.fn(),
-          onSetAgentDefault,
           testResult: null
         })
       );
     });
 
     expect(container.textContent).toContain("模型管理");
-    expect(container.textContent).toContain("模块默认模型");
-    expect(container.textContent).toContain("历史知识");
+    expect(container.textContent).not.toContain("模块默认模型");
     expect(container.textContent).toContain("sk-****abcd");
     expect(container.textContent).not.toContain("sk-test-secret-abcd");
+    expect(container.querySelector(".manage-card-grid--models")).not.toBeNull();
+    expect(container.querySelector(".model-profile-card")).not.toBeNull();
+    expect(container.querySelector(".model-profile-row")).toBeNull();
 
     const addButton = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "添加模型"
@@ -199,20 +188,6 @@ describe("ModelManagementSection", () => {
 
     await act(async () => {
       addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    const selects = Array.from(container.querySelectorAll("select")) as HTMLSelectElement[];
-    const agentSelect = selects.find((select) => select.value === "profile-1");
-    expect(agentSelect).toBeTruthy();
-    agentSelect!.value = "";
-
-    await act(async () => {
-      agentSelect!.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    expect(onSetAgentDefault).toHaveBeenCalledWith({
-      agentId: "history-agent",
-      profileId: null
     });
 
     const providerSelect = Array.from(container.querySelectorAll("select")).find(
@@ -227,5 +202,82 @@ describe("ModelManagementSection", () => {
     const inputs = Array.from(container.querySelectorAll("input")) as HTMLInputElement[];
     expect(inputs.some((input) => input.value === "gpt-test")).toBe(true);
     expect(inputs.some((input) => input.value === "https://api.openai.com/v1")).toBe(true);
+  });
+});
+
+describe("ManageModuleCard", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("renders model configuration inside a sub-agent card", async () => {
+    const onAgentDefaultModelChange = vi.fn();
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(ManageModuleCard, {
+          preference: {
+            id: "history",
+            visible: true,
+            showInNavigation: false,
+            size: "smaller",
+            collapsed: false,
+            order: 5
+          },
+          displayName: "历史知识",
+          modelProfiles: [
+            {
+              id: "profile-1",
+              displayName: "DeepSeek History",
+              provider: "deepseek",
+              modelName: "deepseek-chat",
+              baseUrl: "https://api.deepseek.com",
+              apiKeyRef: "secret:profile-1",
+              capabilities: ["chat", "text"],
+              temperature: 0.2,
+              maxTokens: 1200,
+              enabled: true,
+              isDefault: false,
+              purpose: [],
+              createdAt: "2026-05-20T00:00:00.000Z",
+              updatedAt: "2026-05-20T00:00:00.000Z",
+              hasApiKey: true,
+              maskedKey: "sk-****abcd",
+              apiKeySource: "local"
+            }
+          ],
+          agentDefaultProfileId: "",
+          onVisibleChange: vi.fn(),
+          onNavigationChange: vi.fn(),
+          onSizeChange: vi.fn(),
+          onNameChange: vi.fn(),
+          onAgentDefaultModelChange
+        })
+      );
+    });
+
+    expect(container.textContent).toContain("配置模型");
+    const modelSelect = Array.from(container.querySelectorAll("select")).find((select) =>
+      Array.from(select.options).some((option) => option.value === "profile-1")
+    ) as HTMLSelectElement;
+
+    expect(modelSelect).toBeTruthy();
+    modelSelect.value = "profile-1";
+
+    await act(async () => {
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(onAgentDefaultModelChange).toHaveBeenCalledWith("profile-1");
   });
 });

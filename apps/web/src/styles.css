@@ -6875,39 +6875,77 @@ body[data-theme="day"] .todo-scene-hero p {
   }
 }
 
-.model-profile-list {
-  display: grid;
-  gap: 12px;
+.manage-card-grid--models {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
-.model-profile-row {
+.model-profile-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 1fr) minmax(220px, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(7, 11, 20, 0.42);
+  gap: 16px;
+  min-height: 280px;
 }
 
-.model-profile-row p,
-.model-profile-row small {
+.model-profile-card .manage-card__header p {
   margin: 4px 0 0;
   color: rgba(234, 240, 255, 0.62);
 }
 
-.model-profile-row__chips,
-.model-profile-row__status,
-.model-profile-row__actions,
+.model-profile-card__body {
+  display: grid;
+  gap: 12px;
+}
+
+.model-profile-card__endpoint {
+  display: grid;
+  gap: 5px;
+}
+
+.model-profile-card__endpoint span,
+.model-profile-card__status-grid span {
+  color: rgba(234, 240, 255, 0.56);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.model-profile-card__endpoint strong {
+  overflow-wrap: anywhere;
+  color: rgba(246, 248, 255, 0.86);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.model-profile-card__status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.model-profile-card__status-grid div {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.model-profile-card__status-grid strong {
+  color: rgba(246, 248, 255, 0.9);
+  font-size: 0.86rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.model-profile-card__chips,
+.model-profile-card__actions,
 .model-check-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.model-profile-row__chips span,
-.model-profile-row__status span,
+.model-profile-card__chips span,
 .model-check-grid label {
   padding: 6px 9px;
   border-radius: 999px;
@@ -6916,41 +6954,17 @@ body[data-theme="day"] .todo-scene-hero p {
   font-size: 0.78rem;
 }
 
-.model-profile-row__actions button,
+.model-profile-card__meta {
+  align-self: end;
+}
+
+.model-profile-card__actions {
+  align-self: end;
+}
+
+.model-profile-card__actions button,
 .model-drawer button {
   white-space: nowrap;
-}
-
-.model-agent-bindings {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(7, 11, 20, 0.32);
-}
-
-.model-agent-bindings__header h3,
-.model-agent-bindings__header p {
-  margin: 0;
-}
-
-.model-agent-bindings__header p,
-.model-agent-binding small {
-  color: rgba(234, 240, 255, 0.62);
-}
-
-.model-agent-binding {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr);
-  gap: 12px;
-  align-items: center;
-}
-
-.model-agent-binding span {
-  display: grid;
-  gap: 2px;
 }
 
 .model-test-result {
@@ -7008,31 +7022,33 @@ body[data-theme="day"] .todo-scene-hero p {
   flex: 1;
 }
 
-body[data-theme="day"] .model-profile-row,
-body[data-theme="day"] .model-agent-bindings,
 body[data-theme="day"] .model-drawer__panel {
   background: rgba(255, 255, 255, 0.9);
   border-color: rgba(17, 24, 39, 0.1);
 }
 
-body[data-theme="day"] .model-profile-row p,
-body[data-theme="day"] .model-profile-row small,
-body[data-theme="day"] .model-agent-bindings__header p,
-body[data-theme="day"] .model-agent-binding small,
-body[data-theme="day"] .model-profile-row__chips span,
-body[data-theme="day"] .model-profile-row__status span,
+body[data-theme="day"] .model-profile-card .manage-card__header p,
+body[data-theme="day"] .model-profile-card__endpoint span,
+body[data-theme="day"] .model-profile-card__status-grid span,
+body[data-theme="day"] .model-profile-card__chips span,
 body[data-theme="day"] .model-check-grid label {
   color: rgba(41, 52, 74, 0.72);
 }
 
-body[data-theme="day"] .model-profile-row__chips span,
-body[data-theme="day"] .model-profile-row__status span,
+body[data-theme="day"] .model-profile-card__endpoint strong,
+body[data-theme="day"] .model-profile-card__status-grid strong {
+  color: rgba(17, 24, 39, 0.86);
+}
+
+body[data-theme="day"] .model-profile-card__chips span,
+body[data-theme="day"] .model-profile-card__status-grid div,
 body[data-theme="day"] .model-check-grid label {
   background: rgba(17, 24, 39, 0.06);
 }
 
 @media (max-width: 960px) {
-  .model-profile-row {
+  .manage-card-grid--models,
+  .model-profile-card__status-grid {
     grid-template-columns: 1fr;
   }
 }

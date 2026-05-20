@@ -1689,23 +1689,30 @@ function renderHomeModuleContent({
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;
 }
 
-function ManageModuleCard({
+export function ManageModuleCard({
   preference,
   displayName,
+  modelProfiles,
+  agentDefaultProfileId,
   onVisibleChange,
   onNavigationChange,
   onSizeChange,
-  onNameChange
+  onNameChange,
+  onAgentDefaultModelChange
 }: {
   preference: HomeModulePreference;
   displayName: string;
+  modelProfiles?: ModelProfileView[];
+  agentDefaultProfileId?: string;
   onVisibleChange: (visible: boolean) => void;
   onNavigationChange: (visible: boolean) => void;
   onSizeChange: (size: HomeModuleSize) => void;
   onNameChange: (name: string) => void;
+  onAgentDefaultModelChange?: (profileId: string | null) => void;
 }) {
   const definition = getModuleDefinition(preference.id);
   const supportsNavigation = canShowHomeModuleInNavigation(preference.id);
+  const canConfigureModel = Boolean(onAgentDefaultModelChange && modelProfiles);
 
   return (
     <article className="manage-card manage-card--module">
@@ -1759,6 +1766,23 @@ function ManageModuleCard({
             ))}
           </select>
         </label>
+
+        {canConfigureModel ? (
+          <label className="manage-field">
+            <span>配置模型</span>
+            <select
+              value={agentDefaultProfileId ?? ""}
+              onChange={(event) => onAgentDefaultModelChange?.(event.target.value || null)}
+            >
+              <option value="">继承默认</option>
+              {(modelProfiles ?? []).map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.displayName} · {profile.provider}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       <div className="manage-card__meta">
@@ -1777,6 +1801,14 @@ function ManageModuleCard({
 
 const MODEL_CAPABILITIES: ModelCapability[] = ["chat", "text", "embedding", "vision", "tool-use"];
 const MODEL_PURPOSES: ModelPurpose[] = ["general", "summary", "ledger", "todo", "router", "embedding", "vision"];
+const MODULE_AGENT_IDS: Record<string, string> = {
+  ledger: "ledger-agent",
+  todo: "schedule-agent",
+  news: "news-agent",
+  topics: "topic-agent",
+  history: "history-agent",
+  summary: "summary-agent"
+};
 
 function createModelForm(provider?: ModelProviderDefinition, profile?: ModelProfileView): ModelProfileInput {
   return {
@@ -1801,26 +1833,16 @@ function toggleListValue<T extends string>(items: T[], value: T) {
 export function ModelManagementSection({
   providers,
   profiles,
-  agents,
-  agentDefaults,
   onSave,
   onDelete,
   onTest,
-  onSetAgentDefault,
   testResult
 }: {
   providers: ModelProviderDefinition[];
   profiles: ModelProfileView[];
-  agents?: Array<{
-    id: string;
-    name: string;
-    capabilities: string[];
-  }>;
-  agentDefaults?: Record<string, string>;
   onSave: (input: { id?: string; form: ModelProfileInput }) => void;
   onDelete: (id: string) => void;
   onTest: (id: string) => void;
-  onSetAgentDefault?: (input: { agentId: string; profileId: string | null }) => void;
   testResult?: { profileId: string; ok: boolean; message: string } | null;
 }) {
   const [editingProfile, setEditingProfile] = useState<ModelProfileView | null>(null);
@@ -1882,28 +1904,53 @@ export function ModelManagementSection({
         </button>
       </div>
 
-      <div className="model-profile-list">
-        {profiles.map((profile) => (
-          <article key={profile.id} className="model-profile-row">
-            <div>
-              <strong>{profile.displayName}</strong>
-              <p>
-                {profile.provider} · {profile.modelName}
-              </p>
-              <small>{profile.baseUrl || "未设置 Base URL"}</small>
+      <div className="manage-card-grid manage-card-grid--models">
+        {profiles.map((profile, index) => (
+          <article key={profile.id} className="manage-card model-profile-card">
+            <div className="manage-card__header">
+              <span className="manage-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <h3>{profile.displayName}</h3>
+                <p>
+                  {profile.provider} · {profile.modelName}
+                </p>
+              </div>
             </div>
-            <div className="model-profile-row__chips">
+
+            <div className="model-profile-card__body">
+              <div className="model-profile-card__endpoint">
+                <span>Base URL</span>
+                <strong>{profile.baseUrl || "未设置"}</strong>
+              </div>
+
+              <div className="model-profile-card__status-grid">
+                <div>
+                  <span>状态</span>
+                  <strong>{profile.enabled ? "启用" : "停用"}</strong>
+                </div>
+                <div>
+                  <span>默认</span>
+                  <strong>{profile.isDefault ? "是" : "否"}</strong>
+                </div>
+                <div>
+                  <span>API Key</span>
+                  <strong>{profile.hasApiKey ? profile.maskedKey ?? "已配置" : "未配置"}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="model-profile-card__chips" aria-label="模型能力">
               {profile.capabilities.map((capability) => (
                 <span key={capability}>{capability}</span>
               ))}
             </div>
-            <div className="model-profile-row__status">
-              <span>{profile.enabled ? "启用" : "停用"}</span>
-              <span>{profile.isDefault ? "默认" : "非默认"}</span>
-              <span>{profile.hasApiKey ? profile.maskedKey ?? "已配置" : "未配置 Key"}</span>
+
+            <div className="manage-card__meta model-profile-card__meta">
               <span>{profile.purpose.join(" / ") || "未绑定用途"}</span>
+              <span>{profile.apiKeySource === "env" ? "环境变量" : profile.apiKeySource === "local" ? "本地密钥" : "无密钥"}</span>
             </div>
-            <div className="model-profile-row__actions">
+
+            <div className="model-profile-card__actions">
               <button type="button" onClick={() => onTest(profile.id)}>
                 测试
               </button>
@@ -1914,6 +1961,7 @@ export function ModelManagementSection({
                 删除
               </button>
             </div>
+
             {testResult?.profileId === profile.id ? (
               <p className={`model-test-result${testResult.ok ? " is-ok" : " is-error"}`}>
                 {testResult.message}
@@ -1922,39 +1970,6 @@ export function ModelManagementSection({
           </article>
         ))}
       </div>
-
-      {agents && agents.length > 0 ? (
-        <div className="model-agent-bindings" aria-label="模块模型绑定">
-          <div className="model-agent-bindings__header">
-            <h3>模块默认模型</h3>
-            <p>未指定时按用途默认或全局默认模型执行。</p>
-          </div>
-          {agents.map((agent) => (
-            <label key={agent.id} className="model-agent-binding">
-              <span>
-                <strong>{agent.name}</strong>
-                <small>{agent.id}</small>
-              </span>
-              <select
-                value={agentDefaults?.[agent.id] ?? ""}
-                onChange={(event) =>
-                  onSetAgentDefault?.({
-                    agentId: agent.id,
-                    profileId: event.target.value || null
-                  })
-                }
-              >
-                <option value="">继承默认</option>
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.displayName} · {profile.provider}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
-      ) : null}
 
       {drawerOpen ? (
         <div className="model-drawer" role="dialog" aria-label="编辑模型配置">
@@ -2174,7 +2189,7 @@ export function HomeManagePage() {
           <div>
             <p className="eyebrow">Control Center</p>
             <h1>管理配置中心</h1>
-            <p>按模块拆分首页编排与视觉背景，便于继续增加新的配置项，同时保持信息清晰和操作直接。</p>
+            <p>按子智能体拆分首页展示、模型绑定与视觉背景，便于继续增加新的配置项。</p>
           </div>
           <div className="manage-shell__actions">
             <button type="button" onClick={resetLayout}>
@@ -2218,12 +2233,9 @@ export function HomeManagePage() {
             <ModelManagementSection
               providers={providersQuery.data.providers}
               profiles={profilesQuery.data.profiles}
-              agents={profilesQuery.data.agents}
-              agentDefaults={profilesQuery.data.settings.agentDefaults}
               onSave={(input) => saveModelMutation.mutate(input)}
               onDelete={(id) => deleteModelMutation.mutate(id)}
               onTest={(id) => testModelMutation.mutate(id)}
-              onSetAgentDefault={(input) => setAgentDefaultMutation.mutate(input)}
               testResult={modelTestResult}
             />
           ) : (
@@ -2232,12 +2244,12 @@ export function HomeManagePage() {
             </section>
           )}
 
-          <section className="manage-group" aria-labelledby="manage-home-layout-heading">
+          <section className="manage-group" aria-labelledby="manage-sub-agent-heading">
             <div className="manage-group__header">
               <div>
-                <p className="eyebrow">Home Layout</p>
-                <h2 id="manage-home-layout-heading">首页编排</h2>
-                <p>每个模块独立成卡片，统一处理显示、导航和尺寸，后续新增模块也会自然接入这里。</p>
+                <p className="eyebrow">Sub-agent Management</p>
+                <h2 id="manage-sub-agent-heading">子智能体管理</h2>
+                <p>每个子智能体独立成卡片，统一处理显示、导航、尺寸和模型绑定。</p>
               </div>
             </div>
 
@@ -2253,6 +2265,21 @@ export function HomeManagePage() {
                   }
                   onSizeChange={(size) => updateModule(preference.id, { size })}
                   onNameChange={(customName) => updateModule(preference.id, { customName })}
+                  modelProfiles={profilesQuery.data?.profiles}
+                  agentDefaultProfileId={
+                    MODULE_AGENT_IDS[preference.id]
+                      ? profilesQuery.data?.settings.agentDefaults[MODULE_AGENT_IDS[preference.id]]
+                      : undefined
+                  }
+                  onAgentDefaultModelChange={
+                    MODULE_AGENT_IDS[preference.id]
+                      ? (profileId) =>
+                          setAgentDefaultMutation.mutate({
+                            agentId: MODULE_AGENT_IDS[preference.id],
+                            profileId
+                          })
+                      : undefined
+                  }
                 />
               ))}
             </div>
