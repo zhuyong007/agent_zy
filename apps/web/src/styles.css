@@ -6874,3 +6874,181 @@ body[data-theme="day"] .todo-scene-hero p {
     min-height: 72px;
   }
 }
+
+.manage-card-grid--models {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.model-profile-card {
+  display: grid;
+  gap: 16px;
+  min-height: 280px;
+}
+
+.model-profile-card .manage-card__header p {
+  margin: 4px 0 0;
+  color: rgba(234, 240, 255, 0.62);
+}
+
+.model-profile-card__body {
+  display: grid;
+  gap: 12px;
+}
+
+.model-profile-card__endpoint {
+  display: grid;
+  gap: 5px;
+}
+
+.model-profile-card__endpoint span,
+.model-profile-card__status-grid span {
+  color: rgba(234, 240, 255, 0.56);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.model-profile-card__endpoint strong {
+  overflow-wrap: anywhere;
+  color: rgba(246, 248, 255, 0.86);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.model-profile-card__status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.model-profile-card__status-grid div {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.model-profile-card__status-grid strong {
+  color: rgba(246, 248, 255, 0.9);
+  font-size: 0.86rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.model-profile-card__chips,
+.model-profile-card__actions,
+.model-check-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-profile-card__chips span,
+.model-check-grid label {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(234, 240, 255, 0.72);
+  font-size: 0.78rem;
+}
+
+.model-profile-card__meta {
+  align-self: end;
+}
+
+.model-profile-card__actions {
+  align-self: end;
+}
+
+.model-profile-card__actions button,
+.model-drawer button {
+  white-space: nowrap;
+}
+
+.model-test-result {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.84rem;
+}
+
+.model-test-result.is-ok {
+  color: #8ee6b2;
+}
+
+.model-test-result.is-error {
+  color: #ff9b9b;
+}
+
+.model-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(3, 7, 18, 0.54);
+}
+
+.model-drawer__panel {
+  width: min(520px, 100vw);
+  height: 100%;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 24px;
+  background: rgba(11, 18, 32, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.model-drawer__header,
+.model-drawer__numbers,
+.model-key-input {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.model-drawer__header {
+  justify-content: space-between;
+}
+
+.model-drawer__numbers > * {
+  flex: 1;
+}
+
+.model-key-input input {
+  flex: 1;
+}
+
+body[data-theme="day"] .model-drawer__panel {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(17, 24, 39, 0.1);
+}
+
+body[data-theme="day"] .model-profile-card .manage-card__header p,
+body[data-theme="day"] .model-profile-card__endpoint span,
+body[data-theme="day"] .model-profile-card__status-grid span,
+body[data-theme="day"] .model-profile-card__chips span,
+body[data-theme="day"] .model-check-grid label {
+  color: rgba(41, 52, 74, 0.72);
+}
+
+body[data-theme="day"] .model-profile-card__endpoint strong,
+body[data-theme="day"] .model-profile-card__status-grid strong {
+  color: rgba(17, 24, 39, 0.86);
+}
+
+body[data-theme="day"] .model-profile-card__chips span,
+body[data-theme="day"] .model-profile-card__status-grid div,
+body[data-theme="day"] .model-check-grid label {
+  background: rgba(17, 24, 39, 0.06);
+}
+
+@media (max-width: 960px) {
+  .manage-card-grid--models,
+  .model-profile-card__status-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { randomUUID } from "node:crypto";
 
 import { createAgentRegistry } from "@agent-zy/agent-registry";
 import { SUB_AGENT_MANIFESTS } from "@agent-zy/agent-registry/sub-agents";
@@ -9,6 +10,9 @@ import { createAgentWorkerPool } from "./runtime/agent-pool";
 import { createEventBus } from "./services/events";
 import { createLedgerReportService } from "./services/ledger-report-service";
 import { createLedgerSemanticService } from "./services/ledger-semantic-service";
+import { createModelSecretsRepository } from "./services/model-secrets";
+import { getModelProvider, listModelProviders } from "./services/model-providers";
+import { createModelRuntime } from "./services/model-runtime";
 import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
@@ -25,7 +29,13 @@ export function createControlPlaneApp(options?: {
   const registry = createAgentRegistry();
   registry.registerMany(SUB_AGENT_MANIFESTS);
 
-  const store = createControlPlaneStore(options?.dataDir ?? ".agent-zy-data");
+  const dataDir = options?.dataDir ?? ".agent-zy-data";
+  const store = createControlPlaneStore(dataDir);
+  const modelSecrets = createModelSecretsRepository(dataDir);
+  const modelRuntime = createModelRuntime({
+    store,
+    secrets: modelSecrets
+  });
   const ledgerSemanticService = createLedgerSemanticService();
   const ledgerReportService = createLedgerReportService();
   const summaryService = createSummaryService(store);
@@ -33,7 +43,8 @@ export function createControlPlaneApp(options?: {
     model: createHeuristicRouterModel()
   });
   const workerPool = createAgentWorkerPool({
-    eventBus
+    eventBus,
+    modelRuntime
   });
   const orchestrator = createControlPlaneOrchestrator({
     store,
@@ -59,6 +70,178 @@ export function createControlPlaneApp(options?: {
   }));
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
+
+  function serializeModelProfile(profile: ReturnType<typeof store.getState>["modelSettings"]["profiles"][number]) {
+    return {
+      ...profile,
+      ...modelSecrets.getStatus({
+        profileId: profile.id,
+        provider: profile.provider
+      })
+    };
+  }
+
+  function parseModelProfileInput(input: unknown) {
+    const body = (input ?? {}) as Record<string, unknown>;
+    const provider = typeof body.provider === "string" ? body.provider : "modelscope";
+
+    if (!getModelProvider(provider as any)) {
+      throw new Error("unsupported model provider");
+    }
+
+    return {
+      displayName: typeof body.displayName === "string" ? body.displayName : "",
+      provider: provider as any,
+      modelName: typeof body.modelName === "string" ? body.modelName : "",
+      baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : "",
+      apiKeyRef: null,
+      capabilities: Array.isArray(body.capabilities) ? (body.capabilities as any) : [],
+      purpose: Array.isArray(body.purpose) ? (body.purpose as any) : [],
+      temperature: typeof body.temperature === "number" ? body.temperature : null,
+      maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : null,
+      enabled: Boolean(body.enabled),
+      isDefault: Boolean(body.isDefault),
+      apiKey: typeof body.apiKey === "string" && body.apiKey.trim() ? body.apiKey.trim() : null
+    };
+  }
+
+  app.get("/api/model-providers", async () => ({
+    providers: listModelProviders()
+  }));
+
+  app.get("/api/model-profiles", async () => ({
+    profiles: store.getState().modelSettings.profiles.map(serializeModelProfile),
+    settings: store.getState().modelSettings,
+    agents: registry.list().map((manifest) => ({
+      id: manifest.id,
+      name: manifest.name,
+      capabilities: manifest.capabilities
+    }))
+  }));
+
+  app.post("/api/model-profiles", async (request, reply) => {
+    try {
+      const input = parseModelProfileInput(request.body);
+      const profile = store.createModelProfile({
+        id: `model-${randomUUID()}`,
+        displayName: input.displayName,
+        provider: input.provider,
+        modelName: input.modelName,
+        baseUrl: input.baseUrl,
+        apiKeyRef: input.apiKey ? "local" : null,
+        capabilities: input.capabilities,
+        purpose: input.purpose,
+        temperature: input.temperature,
+        maxTokens: input.maxTokens,
+        enabled: input.enabled,
+        isDefault: input.isDefault
+      });
+
+      if (input.apiKey) {
+        modelSecrets.save(profile.id, input.apiKey);
+        store.updateModelProfile(profile.id, {
+          apiKeyRef: `secret:${profile.id}`
+        });
+      }
+
+      return serializeModelProfile(
+        store.getState().modelSettings.profiles.find((item) => item.id === profile.id) ?? profile
+      );
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid model profile"
+      });
+    }
+  });
+
+  app.patch("/api/model-profiles/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    try {
+      const apiKey = typeof body.apiKey === "string" && body.apiKey.trim() ? body.apiKey.trim() : null;
+      const patch = { ...body };
+      delete patch.apiKey;
+      const updated = store.updateModelProfile(params.id, patch as any);
+
+      if (apiKey) {
+        modelSecrets.save(updated.id, apiKey);
+        store.updateModelProfile(updated.id, {
+          apiKeyRef: `secret:${updated.id}`
+        });
+      }
+
+      return serializeModelProfile(
+        store.getState().modelSettings.profiles.find((item) => item.id === params.id) ?? updated
+      );
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "model profile not found"
+      });
+    }
+  });
+
+  app.delete("/api/model-profiles/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const result = store.deleteModelProfile(params.id);
+      modelSecrets.delete(params.id);
+      return result;
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "model profile not found"
+      });
+    }
+  });
+
+  app.post("/api/model-profiles/:id/test", async (request) => {
+    const params = request.params as { id: string };
+
+    return modelRuntime.testConnection(params.id);
+  });
+
+  app.post("/api/model-profiles/default", async (request, reply) => {
+    const body = (request.body ?? {}) as { profileId?: unknown };
+
+    try {
+      return store.setDefaultModelProfile(typeof body.profileId === "string" ? body.profileId : "");
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "model profile not found"
+      });
+    }
+  });
+
+  app.post("/api/model-profiles/purpose-default", async (request, reply) => {
+    const body = (request.body ?? {}) as { purpose?: any; profileId?: unknown };
+
+    try {
+      return store.setPurposeDefault(
+        body.purpose,
+        typeof body.profileId === "string" ? body.profileId : null
+      );
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid purpose default"
+      });
+    }
+  });
+
+  app.post("/api/model-profiles/agent-default", async (request, reply) => {
+    const body = (request.body ?? {}) as { agentId?: unknown; profileId?: unknown };
+
+    try {
+      return store.setAgentDefaultModelProfile(
+        typeof body.agentId === "string" ? body.agentId : "",
+        typeof body.profileId === "string" ? body.profileId : null
+      );
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid agent default"
+      });
+    }
+  });
 
   app.get("/api/home-layout", async () => orchestrator.getHomeLayout());
 

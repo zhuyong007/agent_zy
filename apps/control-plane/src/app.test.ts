@@ -581,6 +581,166 @@ describe("control-plane app", () => {
     });
   });
 
+  it("manages model profiles without exposing API keys", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-model-profile-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const createResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/model-profiles",
+        payload: {
+          displayName: "OpenAI Mini",
+          provider: "openai",
+          modelName: "gpt-4.1-mini",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: "sk-test-secret-abcd",
+          capabilities: ["chat", "text"],
+          purpose: ["general"],
+          temperature: 0.2,
+          maxTokens: 1200,
+          enabled: true,
+          isDefault: true
+        }
+      });
+
+      expect(createResponse.statusCode).toBe(200);
+      expect(JSON.stringify(createResponse.json())).not.toContain("sk-test-secret-abcd");
+      expect(createResponse.json()).toMatchObject({
+        displayName: "OpenAI Mini",
+        hasApiKey: true,
+        maskedKey: "sk-****abcd",
+        apiKeySource: "local"
+      });
+
+      const listResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/model-profiles"
+      });
+
+      expect(listResponse.statusCode).toBe(200);
+      expect(JSON.stringify(listResponse.json())).not.toContain("sk-test-secret-abcd");
+      expect(listResponse.json().profiles).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            displayName: "OpenAI Mini",
+            hasApiKey: true,
+            maskedKey: "sk-****abcd"
+          })
+        ])
+      );
+
+      const profileId = createResponse.json().id;
+      const deleteResponse = await isolatedApp.inject({
+        method: "DELETE",
+        url: `/api/model-profiles/${profileId}`
+      });
+
+      expect(deleteResponse.statusCode).toBe(200);
+      expect(readFileSync(join(isolatedDataDir, "secrets", "model-secrets.json"), "utf8")).not.toContain(
+        "sk-test-secret-abcd"
+      );
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("exposes model providers without secrets", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/model-providers"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "modelscope",
+          requiresApiKey: true
+        }),
+        expect.objectContaining({
+          id: "ollama",
+          requiresApiKey: false
+        })
+      ])
+    );
+    expect(JSON.stringify(response.json())).not.toContain("API_KEY");
+  });
+
+  it("sets an agent default model profile for a sub-agent module", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-agent-model-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const createResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/model-profiles",
+        payload: {
+          displayName: "DeepSeek for history",
+          provider: "deepseek",
+          modelName: "deepseek-chat",
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "sk-agent-secret-abcd",
+          capabilities: ["chat", "text"],
+          purpose: [],
+          enabled: true,
+          isDefault: false
+        }
+      });
+      const profileId = createResponse.json().id;
+
+      const bindResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/model-profiles/agent-default",
+        payload: {
+          agentId: "history-agent",
+          profileId
+        }
+      });
+
+      expect(bindResponse.statusCode).toBe(200);
+      expect(bindResponse.json().agentDefaults).toMatchObject({
+        "history-agent": profileId
+      });
+
+      const listResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/model-profiles"
+      });
+
+      expect(listResponse.json().agents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "history-agent",
+            name: expect.any(String)
+          })
+        ])
+      );
+      expect(listResponse.json().settings.agentDefaults).toMatchObject({
+        "history-agent": profileId
+      });
+      expect(JSON.stringify(listResponse.json())).not.toContain("sk-agent-secret-abcd");
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("exposes a notification cancellation endpoint", async () => {
     const response = await app.inject({
       method: "DELETE",

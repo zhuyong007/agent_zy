@@ -183,7 +183,16 @@ function createDashboard(): DashboardData {
         yearlyCount: 0
       }
     },
-    agents: []
+    agents: [],
+    modelSettingsDashboard: {
+      defaultProfile: null,
+      enabledCount: 0,
+      totalCount: 0,
+      configuredPurposeCount: 0,
+      purposeCount: 7,
+      configuredAgentCount: 0,
+      missingApiKeyCount: 0
+    }
   };
 }
 

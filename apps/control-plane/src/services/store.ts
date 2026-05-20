@@ -16,6 +16,10 @@ import type {
   LedgerSemanticRecord,
   HistoryPushState,
   LifeStageRecord,
+  ModelProfile,
+  ModelProviderId,
+  ModelPurpose,
+  ModelSettingsState,
   NotificationRecord,
   NewsState,
   SummaryDashboard,
@@ -32,6 +36,7 @@ import type { AgentExecutionResult, AgentManifest } from "@agent-zy/agent-sdk";
 import { groupTasksByStatus } from "@agent-zy/task-core";
 
 import { createLedgerRepository } from "./ledger-repository";
+import { getModelProvider } from "./model-providers";
 
 function isEnoentError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -209,7 +214,72 @@ function createInitialState(): AppState {
     },
     nightlyReview: {
       lastTriggeredDate: null
-    }
+    },
+    modelSettings: createInitialModelSettingsState()
+  };
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function createInitialModelSettingsState(): ModelSettingsState {
+  const createdAt = nowIso();
+
+  if (process.env.MODELSCOPE_API_KEY) {
+    const profile: ModelProfile = {
+      id: "modelscope-default",
+      displayName: "ModelScope 默认模型",
+      provider: "modelscope",
+      modelName: process.env.MODELSCOPE_MODEL ?? "Qwen/Qwen3-235B-A22B",
+      baseUrl: process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1",
+      apiKeyRef: "env:MODELSCOPE_API_KEY",
+      capabilities: ["chat", "text", "vision"],
+      temperature: 0.7,
+      maxTokens: 2000,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general", "summary", "vision"],
+      createdAt,
+      updatedAt: createdAt
+    };
+
+    return {
+      profiles: [profile],
+      defaultProfileId: profile.id,
+      purposeDefaults: {
+        general: profile.id,
+        summary: profile.id,
+        vision: profile.id
+      },
+      agentDefaults: {},
+      lastUpdatedAt: createdAt
+    };
+  }
+
+  return {
+    profiles: [
+      {
+        id: "modelscope-example",
+        displayName: "ModelScope 示例配置",
+        provider: "modelscope",
+        modelName: process.env.MODELSCOPE_MODEL ?? "Qwen/Qwen3-235B-A22B",
+        baseUrl: process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1",
+        apiKeyRef: null,
+        capabilities: ["chat", "text", "vision"],
+        temperature: 0.7,
+        maxTokens: 2000,
+        enabled: false,
+        isDefault: false,
+        purpose: ["general", "vision"],
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    defaultProfileId: null,
+    purposeDefaults: {},
+    agentDefaults: {},
+    lastUpdatedAt: createdAt
   };
 }
 
@@ -585,6 +655,130 @@ function normalizeHistoryPushState(
   };
 }
 
+const MODEL_PURPOSES: ModelPurpose[] = [
+  "general",
+  "summary",
+  "ledger",
+  "todo",
+  "router",
+  "embedding",
+  "vision"
+];
+
+function isModelProviderId(value: unknown): value is ModelProviderId {
+  return (
+    value === "modelscope" ||
+    value === "deepseek" ||
+    value === "openai" ||
+    value === "doubao" ||
+    value === "ollama" ||
+    value === "openai-compatible"
+  );
+}
+
+function isModelPurpose(value: unknown): value is ModelPurpose {
+  return MODEL_PURPOSES.includes(value as ModelPurpose);
+}
+
+function normalizeModelProfile(profile: Partial<ModelProfile>, fallbackIndex: number): ModelProfile {
+  const now = nowIso();
+  const provider = isModelProviderId(profile.provider) ? profile.provider : "modelscope";
+  const providerDefinition = getModelProvider(provider);
+  const capabilities = (profile.capabilities ?? []).filter((capability) =>
+    providerDefinition?.supportedCapabilities.includes(capability)
+  );
+
+  return {
+    id: typeof profile.id === "string" && profile.id ? profile.id : `model-profile-${fallbackIndex}`,
+    displayName:
+      typeof profile.displayName === "string" && profile.displayName.trim()
+        ? profile.displayName.trim()
+        : providerDefinition?.name ?? "模型配置",
+    provider,
+    modelName:
+      typeof profile.modelName === "string" && profile.modelName.trim()
+        ? profile.modelName.trim()
+        : providerDefinition?.defaultModels[0] ?? "",
+    baseUrl:
+      typeof profile.baseUrl === "string" ? profile.baseUrl : providerDefinition?.defaultBaseUrl ?? "",
+    apiKeyRef: typeof profile.apiKeyRef === "string" ? profile.apiKeyRef : null,
+    capabilities: capabilities.length > 0 ? capabilities : providerDefinition?.supportedCapabilities.slice(0, 2) ?? ["chat"],
+    temperature: typeof profile.temperature === "number" ? profile.temperature : null,
+    maxTokens: typeof profile.maxTokens === "number" ? profile.maxTokens : null,
+    enabled: Boolean(profile.enabled),
+    isDefault: Boolean(profile.isDefault),
+    purpose: (profile.purpose ?? []).filter(isModelPurpose),
+    createdAt: typeof profile.createdAt === "string" ? profile.createdAt : now,
+    updatedAt: typeof profile.updatedAt === "string" ? profile.updatedAt : now
+  };
+}
+
+function normalizeModelSettingsState(
+  modelSettings: Partial<ModelSettingsState> | undefined
+): ModelSettingsState {
+  if (!modelSettings?.profiles || modelSettings.profiles.length === 0) {
+    return createInitialModelSettingsState();
+  }
+
+  const profiles = modelSettings.profiles.map(normalizeModelProfile);
+  const defaultProfileId =
+    typeof modelSettings.defaultProfileId === "string" &&
+    profiles.some((profile) => profile.id === modelSettings.defaultProfileId && profile.enabled)
+      ? modelSettings.defaultProfileId
+      : profiles.find((profile) => profile.isDefault && profile.enabled)?.id ?? null;
+
+  return {
+    profiles: profiles.map((profile) => ({
+      ...profile,
+      isDefault: profile.id === defaultProfileId
+    })),
+    defaultProfileId,
+    purposeDefaults: Object.fromEntries(
+      Object.entries(modelSettings.purposeDefaults ?? {}).filter(
+        ([purpose, profileId]) =>
+          isModelPurpose(purpose) &&
+          typeof profileId === "string" &&
+          profiles.some((profile) => profile.id === profileId)
+      )
+    ),
+    agentDefaults: Object.fromEntries(
+      Object.entries(modelSettings.agentDefaults ?? {}).filter(
+        ([agentId, profileId]) =>
+          typeof agentId === "string" &&
+          agentId.trim().length > 0 &&
+          typeof profileId === "string" &&
+          profiles.some((profile) => profile.id === profileId)
+      )
+    ),
+    lastUpdatedAt: modelSettings.lastUpdatedAt ?? null
+  };
+}
+
+function buildModelSettingsDashboard(modelSettings: ModelSettingsState) {
+  const defaultProfile =
+    modelSettings.profiles.find((profile) => profile.id === modelSettings.defaultProfileId) ?? null;
+
+  return {
+    defaultProfile: defaultProfile
+      ? {
+          id: defaultProfile.id,
+          displayName: defaultProfile.displayName,
+          provider: defaultProfile.provider,
+          modelName: defaultProfile.modelName
+        }
+      : null,
+    enabledCount: modelSettings.profiles.filter((profile) => profile.enabled).length,
+    totalCount: modelSettings.profiles.length,
+    configuredPurposeCount: Object.keys(modelSettings.purposeDefaults).length,
+    purposeCount: MODEL_PURPOSES.length,
+    configuredAgentCount: Object.keys(modelSettings.agentDefaults).length,
+    missingApiKeyCount: modelSettings.profiles.filter((profile) => {
+      const provider = getModelProvider(profile.provider);
+      return Boolean(profile.enabled && provider?.requiresApiKey && !profile.apiKeyRef);
+    }).length
+  };
+}
+
 function bootstrapLegacyLedgerFact(entry: LedgerEntry): LedgerFactRecord {
   const note = entry.note.trim();
 
@@ -632,7 +826,11 @@ function normalizeAppState(state: AppState): AppState {
     news,
     topics: normalizeTopicState(state.topics),
     summary: normalizeSummaryState(state.summary),
-    historyPush: normalizeHistoryPushState(state.historyPush)
+    historyPush: normalizeHistoryPushState(state.historyPush),
+    nightlyReview: state.nightlyReview ?? {
+      lastTriggeredDate: null
+    },
+    modelSettings: normalizeModelSettingsState(state.modelSettings)
   };
 }
 
@@ -653,6 +851,12 @@ export interface ControlPlaneStore {
   getLedgerStages(): LifeStageRecord[];
   upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
   setSummaryState(summary: SummaryState): SummaryState;
+  createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
+  updateModelProfile(id: string, patch: Partial<ModelProfile>): ModelProfile;
+  deleteModelProfile(id: string): { ok: true };
+  setDefaultModelProfile(id: string): ModelSettingsState;
+  setPurposeDefault(purpose: ModelPurpose, profileId: string | null): ModelSettingsState;
+  setAgentDefaultModelProfile(agentId: string, profileId: string | null): ModelSettingsState;
   setNightlyReviewDate(date: string): void;
   getDashboard(
     manifests: AgentManifest[],
@@ -801,6 +1005,153 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       return structuredClone(state.summary);
     },
+    createModelProfile(profile) {
+      const now = nowIso();
+      const normalized = normalizeModelProfile(
+        {
+          ...profile,
+          createdAt: now,
+          updatedAt: now
+        },
+        state.modelSettings.profiles.length + 1
+      );
+      state.modelSettings.profiles = state.modelSettings.profiles.filter(
+        (item) => item.id !== normalized.id && item.id !== "modelscope-example"
+      );
+      state.modelSettings.profiles.unshift(normalized);
+
+      if (normalized.isDefault) {
+        state.modelSettings.defaultProfileId = normalized.id;
+        state.modelSettings.profiles = state.modelSettings.profiles.map((item) => ({
+          ...item,
+          isDefault: item.id === normalized.id
+        }));
+      }
+
+      for (const purpose of normalized.purpose) {
+        state.modelSettings.purposeDefaults[purpose] = normalized.id;
+      }
+
+      state.modelSettings.lastUpdatedAt = now;
+      state.modelSettings = normalizeModelSettingsState(state.modelSettings);
+      persist();
+
+      return structuredClone(normalized);
+    },
+    updateModelProfile(id, patch) {
+      const index = state.modelSettings.profiles.findIndex((profile) => profile.id === id);
+
+      if (index < 0) {
+        throw new Error("model profile not found");
+      }
+
+      const now = nowIso();
+      const next = normalizeModelProfile(
+        {
+          ...state.modelSettings.profiles[index],
+          ...patch,
+          id,
+          updatedAt: now
+        },
+        index
+      );
+
+      state.modelSettings.profiles[index] = next;
+
+      if (next.isDefault) {
+        state.modelSettings.defaultProfileId = next.id;
+        state.modelSettings.profiles = state.modelSettings.profiles.map((profile) => ({
+          ...profile,
+          isDefault: profile.id === next.id
+        }));
+      }
+
+      for (const purpose of next.purpose) {
+        state.modelSettings.purposeDefaults[purpose] = next.id;
+      }
+
+      state.modelSettings.lastUpdatedAt = now;
+      state.modelSettings = normalizeModelSettingsState(state.modelSettings);
+      persist();
+
+      return structuredClone(next);
+    },
+    deleteModelProfile(id) {
+      state.modelSettings.profiles = state.modelSettings.profiles.filter((profile) => profile.id !== id);
+
+      if (state.modelSettings.defaultProfileId === id) {
+        state.modelSettings.defaultProfileId = null;
+      }
+
+      for (const [purpose, profileId] of Object.entries(state.modelSettings.purposeDefaults)) {
+        if (profileId === id) {
+          delete state.modelSettings.purposeDefaults[purpose as ModelPurpose];
+        }
+      }
+
+      for (const [agentId, profileId] of Object.entries(state.modelSettings.agentDefaults)) {
+        if (profileId === id) {
+          delete state.modelSettings.agentDefaults[agentId];
+        }
+      }
+
+      state.modelSettings.lastUpdatedAt = nowIso();
+      state.modelSettings = normalizeModelSettingsState(state.modelSettings);
+      persist();
+
+      return { ok: true };
+    },
+    setDefaultModelProfile(id) {
+      const profile = state.modelSettings.profiles.find((item) => item.id === id);
+
+      if (!profile) {
+        throw new Error("model profile not found");
+      }
+
+      state.modelSettings.defaultProfileId = id;
+      state.modelSettings.profiles = state.modelSettings.profiles.map((item) => ({
+        ...item,
+        isDefault: item.id === id
+      }));
+      state.modelSettings.lastUpdatedAt = nowIso();
+      persist();
+
+      return structuredClone(state.modelSettings);
+    },
+    setPurposeDefault(purpose, profileId) {
+      if (profileId === null) {
+        delete state.modelSettings.purposeDefaults[purpose];
+      } else if (state.modelSettings.profiles.some((profile) => profile.id === profileId)) {
+        state.modelSettings.purposeDefaults[purpose] = profileId;
+      } else {
+        throw new Error("model profile not found");
+      }
+
+      state.modelSettings.lastUpdatedAt = nowIso();
+      persist();
+
+      return structuredClone(state.modelSettings);
+    },
+    setAgentDefaultModelProfile(agentId, profileId) {
+      const normalizedAgentId = agentId.trim();
+
+      if (!normalizedAgentId) {
+        throw new Error("agentId is required");
+      }
+
+      if (profileId === null) {
+        delete state.modelSettings.agentDefaults[normalizedAgentId];
+      } else if (state.modelSettings.profiles.some((profile) => profile.id === profileId)) {
+        state.modelSettings.agentDefaults[normalizedAgentId] = profileId;
+      } else {
+        throw new Error("model profile not found");
+      }
+
+      state.modelSettings.lastUpdatedAt = nowIso();
+      persist();
+
+      return structuredClone(state.modelSettings);
+    },
     setNightlyReviewDate(date) {
       state.nightlyReview.lastTriggeredDate = date;
       persist();
@@ -847,6 +1198,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)
         },
+        modelSettingsDashboard: buildModelSettingsDashboard(state.modelSettings),
         agents: manifests.map((manifest) => {
           const runtimeView = runtimeViews.find((item) => item.id === manifest.id);
 

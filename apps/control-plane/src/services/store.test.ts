@@ -803,4 +803,56 @@ describe("control-plane store", () => {
       Date.now = realDateNow;
     }
   });
+
+  it("bootstraps model settings from ModelScope environment variables", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    process.env.MODELSCOPE_API_KEY = "ms-env-secret";
+    process.env.MODELSCOPE_BASE_URL = "https://modelscope.example/v1";
+    process.env.MODELSCOPE_MODEL = "Qwen/Test";
+
+    try {
+      const store = createControlPlaneStore(dataDir);
+      const state = store.getState();
+
+      expect(state.modelSettings.profiles).toEqual([
+        expect.objectContaining({
+          id: "modelscope-default",
+          provider: "modelscope",
+          modelName: "Qwen/Test",
+          baseUrl: "https://modelscope.example/v1",
+          apiKeyRef: "env:MODELSCOPE_API_KEY",
+          enabled: true,
+          isDefault: true,
+          purpose: expect.arrayContaining(["general", "vision"])
+        })
+      ]);
+      expect(state.modelSettings.defaultProfileId).toBe("modelscope-default");
+      expect(store.getDashboard([], []).modelSettingsDashboard?.enabledCount).toBe(1);
+    } finally {
+      delete process.env.MODELSCOPE_API_KEY;
+      delete process.env.MODELSCOPE_BASE_URL;
+      delete process.env.MODELSCOPE_MODEL;
+    }
+  });
+
+  it("creates a disabled ModelScope example when no model profile exists", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    delete process.env.MODELSCOPE_API_KEY;
+
+    const store = createControlPlaneStore(dataDir);
+    const state = store.getState();
+
+    expect(state.modelSettings.profiles).toEqual([
+      expect.objectContaining({
+        id: "modelscope-example",
+        provider: "modelscope",
+        enabled: false,
+        isDefault: false,
+        apiKeyRef: null
+      })
+    ]);
+    expect(state.modelSettings.defaultProfileId).toBeNull();
+  });
 });
