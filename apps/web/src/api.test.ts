@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { generateHistory, openExternalUrl } from "./api";
+import { generateHistory, openExternalUrl, restartProject } from "./api";
 
 describe("generateHistory", () => {
   afterEach(() => {
@@ -88,6 +88,33 @@ describe("openExternalUrl", () => {
         body: JSON.stringify({
           url: "https://example.com/news-1"
         })
+      })
+    );
+  });
+});
+
+describe("restartProject", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts to the local restart endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        ok: true
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await restartProject();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/system/restart"),
+      expect.objectContaining({
+        method: "POST"
       })
     );
   });

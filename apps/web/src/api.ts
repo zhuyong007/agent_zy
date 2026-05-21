@@ -477,6 +477,18 @@ export async function openExternalUrl(url: string): Promise<{ ok: true }> {
   return response.json();
 }
 
+export async function restartProject(): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/system/restart`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to restart project"));
+  }
+
+  return response.json();
+}
+
 export async function sendChat(message: string): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",

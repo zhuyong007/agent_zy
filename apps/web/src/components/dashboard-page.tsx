@@ -48,6 +48,7 @@ import {
   openExternalUrl,
   openDashboardStream,
   recordLedger,
+  restartProject,
   refreshNews,
   saveHomeLayout,
   sendChat,
@@ -551,7 +552,9 @@ export function CommandRail({
   rightMeta: _rightMeta,
   clockLine,
   showNavigation = true,
-  navigationLayout
+  navigationLayout,
+  onRestartProject,
+  isRestarting = false
 }: {
   activeSection: RailSection;
   expanded: boolean;
@@ -562,6 +565,8 @@ export function CommandRail({
   clockLine: string;
   showNavigation?: boolean;
   navigationLayout?: readonly HomeModulePreference[];
+  onRestartProject?: () => void;
+  isRestarting?: boolean;
 }) {
   const [dateTimePart, weekdayPart] = clockLine.split(" · ");
   const timeLabel = dateTimePart?.slice(11, 16) ?? clockLine;
@@ -606,6 +611,17 @@ export function CommandRail({
           <strong>{timeLabel}</strong>
           <span>{dateLabel}</span>
         </div>
+        {onRestartProject ? (
+          <button
+            type="button"
+            className="command-restart"
+            onClick={onRestartProject}
+            disabled={isRestarting}
+            aria-label="重启项目"
+          >
+            {isRestarting ? "重启中" : "重启"}
+          </button>
+        ) : null}
         <div className="theme-switcher theme-switcher--inline" role="group" aria-label="切换主题">
           {themeOptions.map((theme) => (
             <button
@@ -2525,6 +2541,9 @@ export function DashboardPage() {
       );
     }
   });
+  const restartMutation = useMutation({
+    mutationFn: restartProject
+  });
 
   useEffect(() => {
     return openDashboardStream((data) => {
@@ -2567,6 +2586,8 @@ export function DashboardPage() {
         onThemeChange={setThemeKey}
         clockLine={clockLine}
         navigationLayout={layout}
+        onRestartProject={() => restartMutation.mutate()}
+        isRestarting={restartMutation.isPending}
         rightMeta={[
           { label: "agents", value: String(dashboard.agents.length) },
           { label: "tasks", value: String(dashboard.recentTasks.length) },

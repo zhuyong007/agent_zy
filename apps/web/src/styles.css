@@ -231,39 +231,6 @@ textarea {
   background-clip: padding-box;
 }
 
-.wallpaper-scroll-controls {
-  position: fixed;
-  z-index: 10000;
-  display: grid;
-  gap: 6px;
-  width: 34px;
-  padding: 5px;
-  border: 1px solid rgba(var(--accent-rgb), 0.24);
-  border-radius: 10px;
-  background: rgba(7, 13, 22, 0.72);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-}
-
-.wallpaper-scroll-controls[hidden] {
-  display: none;
-}
-
-.wallpaper-scroll-controls button {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  color: var(--accent-contrast);
-  background: var(--filter-active-gradient);
-  cursor: pointer;
-  font: 700 0.84rem/1 "Segoe UI", sans-serif;
-}
-
 .workspace {
   display: grid;
   grid-template-rows: var(--rail-height) minmax(0, 1fr);
@@ -458,6 +425,27 @@ textarea {
   transition:
     border-left-color 140ms ease,
     transform 180ms ease;
+}
+
+.command-restart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+  border-radius: 10px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.06);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.command-restart:disabled {
+  cursor: default;
+  opacity: 0.62;
 }
 
 .command-rail.is-expanded .command-route__toggle span {

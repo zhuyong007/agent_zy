@@ -17,7 +17,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import { ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
+import { CommandRail, ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
 
 const sampleItems: NewsFeedItem[] = [
   {
@@ -148,6 +148,51 @@ describe("NewsPanel", () => {
         })
       })
     );
+  });
+});
+
+describe("CommandRail", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("renders a restart button beside the clock when provided", async () => {
+    const onRestartProject = vi.fn();
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CommandRail, {
+          activeSection: "home",
+          expanded: true,
+          onToggle: () => undefined,
+          themeKey: "night",
+          onThemeChange: () => undefined,
+          rightMeta: [],
+          clockLine: "2026-05-21 21:20:00 · 星期四 · 农历四月初五",
+          onRestartProject
+        })
+      );
+    });
+
+    const restartButton = container.querySelector('button[aria-label="重启项目"]');
+
+    expect(restartButton).not.toBeNull();
+
+    await act(async () => {
+      restartButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onRestartProject).toHaveBeenCalledTimes(1);
   });
 });
 

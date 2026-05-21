@@ -123,6 +123,37 @@ describe("control-plane app", () => {
     }
   });
 
+  it("dispatches a detached project restart request", async () => {
+    const restartProject = vi.fn();
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-restart-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false,
+      restartProject
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/system/restart"
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toEqual({
+        ok: true
+      });
+      expect(restartProject).toHaveBeenCalledTimes(1);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("records ledger facts through the ledger-agent path and exposes them in dashboard recent facts", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-record-test-"));
     const isolatedApp = createControlPlaneApp({

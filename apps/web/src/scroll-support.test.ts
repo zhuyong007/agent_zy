@@ -7,7 +7,6 @@ import {
   findScrollablePointerTarget,
   findScrollableWheelTarget,
   scrollElementByPointer,
-  scrollElementByControl,
   scrollElementByWheel
 } from "./scroll-support";
 
@@ -72,17 +71,4 @@ describe("wallpaper scroll support", () => {
     scrollable.remove();
   });
 
-  it("scrolls the target element from explicit controls", () => {
-    const { scrollable } = makeScrollable();
-
-    expect(scrollElementByControl(scrollable, "down")).toBe(true);
-    expect(scrollable.scrollTop).toBeGreaterThan(0);
-
-    const afterDown = scrollable.scrollTop;
-
-    expect(scrollElementByControl(scrollable, "up")).toBe(true);
-    expect(scrollable.scrollTop).toBeLessThan(afterDown);
-
-    scrollable.remove();
-  });
 });

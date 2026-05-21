@@ -18,11 +18,13 @@ import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
 import { normalizeExternalUrl, openExternalUrlInBrowser, type ExternalUrlOpener } from "./services/browser-opener";
+import { restartProjectWithScript, type ProjectRestarter } from "./services/system-restart";
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
   startSchedulers?: boolean;
   openExternalUrl?: ExternalUrlOpener;
+  restartProject?: ProjectRestarter;
 }) {
   const app = Fastify();
   const eventBus = createEventBus();
@@ -68,6 +70,14 @@ export function createControlPlaneApp(options?: {
   app.get("/api/health", async () => ({
     ok: true
   }));
+
+  app.post("/api/system/restart", async (_request, reply) => {
+    await (options?.restartProject ?? restartProjectWithScript)();
+
+    return reply.code(202).send({
+      ok: true
+    });
+  });
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
 
