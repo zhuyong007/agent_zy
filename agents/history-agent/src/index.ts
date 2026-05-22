@@ -203,6 +203,12 @@ function validateCard(value: unknown): HistoryPostCard | null {
     return null;
   }
 
+  const promptLength = Array.from(prompt).length;
+
+  if (promptLength < 100 || promptLength > 200) {
+    throw new Error("每张图的生图提示词必须是 100 到 200 个中文字符");
+  }
+
   return {
     title,
     imageText,
@@ -345,7 +351,7 @@ async function generateWithModelRuntime(topic: string, requestedAt: string): Pro
     purpose: "vision",
     systemPrompt:
       "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
-    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字，prompt 是中文生图提示词。`
+    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，每张图的 prompt 必须为 100 到 200 个中文字符，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格。`
   });
   const rawContent = result.text;
   const normalizedPayloadInput = normalizePayloadInput(rawContent);

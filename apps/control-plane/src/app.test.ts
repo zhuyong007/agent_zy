@@ -7,6 +7,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { createControlPlaneApp } from "./app";
 import { DEFAULT_NEWS_INTERVAL_MS } from "./services/scheduler";
 
+function longHistoryImagePrompt(topic: string) {
+  return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
+}
+
 describe("control-plane app", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-test-"));
   const app = createControlPlaneApp({
@@ -486,12 +490,12 @@ describe("control-plane app", () => {
         {
           title: "先讲出发背景",
           imageText: "汉朝为什么一定要向西走？",
-          prompt: "中国古代使者，丝路地图，知识卡片风格"
+          prompt: longHistoryImagePrompt("中国古代使者与丝路地图")
         },
         {
           title: "再讲长期影响",
           imageText: "打开的不是一条路，而是一整套交流网络",
-          prompt: "丝绸之路商队，地图与文明交流，竖版海报"
+          prompt: longHistoryImagePrompt("丝绸之路商队与文明交流")
         }
       ],
       xiaohongshuCaption: "今天用两张图讲清张骞出使西域为什么是历史转折点。"

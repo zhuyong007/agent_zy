@@ -371,10 +371,26 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
   return response.json();
 }
 
-export async function generateHistory(reason = "manual"): Promise<DashboardData> {
+export type HistoryGenerateInput = {
+  reason?: string;
+  topic?: string;
+};
+
+export async function generateHistory(input: HistoryGenerateInput | string = "manual"): Promise<DashboardData> {
+  const request =
+    typeof input === "string"
+      ? {
+          reason: input
+        }
+      : {
+          reason: input.reason ?? "manual",
+          topic: input.topic?.trim() || undefined
+        };
+
   console.info("[history-generate] request:start", {
     endpoint: `${API_BASE}/api/history/generate`,
-    reason
+    reason: request.reason,
+    hasTopic: Boolean(request.topic)
   });
 
   const response = await fetch(`${API_BASE}/api/history/generate`, {
@@ -382,9 +398,7 @@ export async function generateHistory(reason = "manual"): Promise<DashboardData>
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      reason
-    })
+    body: JSON.stringify(request)
   });
 
   console.info("[history-generate] request:response", {
@@ -394,7 +408,10 @@ export async function generateHistory(reason = "manual"): Promise<DashboardData>
 
   if (response.status === 404) {
     console.warn("[history-generate] dedicated endpoint missing; falling back to chat route");
-    const chatResponse = await sendChat("请生成今天的历史知识点小红书推文策划");
+    const chatPrompt = request.topic
+      ? `请围绕「${request.topic}」生成历史知识点小红书推文策划`
+      : "请生成今天的历史知识点小红书推文策划";
+    const chatResponse = await sendChat(chatPrompt);
 
     console.info("[history-generate] fallback:chat-response", {
       agentId: chatResponse.route.agentId,

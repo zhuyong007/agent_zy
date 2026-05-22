@@ -82,6 +82,10 @@ function createRequest(state = createState()): AgentExecutionRequest {
   };
 }
 
+function longImagePrompt(topic: string) {
+  return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
+}
+
 function mockModelRuntimeText(textFactory: string | ((prompt: string) => string)) {
   (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
     generateText: vi.fn(async (input: { prompt: string }) => {
@@ -126,17 +130,17 @@ describe("history agent", () => {
         {
           title: "一张地图讲清路线",
           imageText: "从长安到那烂陀：一次跨越万里的求知",
-          prompt: "竖版小红书封面，唐代僧人远行，地图路线，中文标题留白"
+          prompt: longImagePrompt("玄奘西行路线")
         },
         {
           title: "一张图讲清背景",
           imageText: "为什么他要冒险出发？",
-          prompt: "唐代长安与佛经卷轴，知识传播主题，温暖色调"
+          prompt: longImagePrompt("唐代长安与佛经卷轴")
         },
         {
           title: "一张图讲清影响",
           imageText: "带回的不只是经书，还有世界知识",
-          prompt: "古代书房，卷轴、地图、星象元素，小红书知识卡片"
+          prompt: longImagePrompt("古代书房与世界知识")
         }
       ],
       xiaohongshuCaption: "今天讲一个改变知识流动的历史瞬间：玄奘西行。"
@@ -190,7 +194,7 @@ describe("history agent", () => {
       cards: Array.from({ length: 6 }, (_, index) => ({
         title: `第 ${index + 1} 张`,
         imageText: `文字 ${index + 1}`,
-        prompt: `提示词 ${index + 1}`
+        prompt: longImagePrompt(`超长选题第 ${index + 1} 张`)
       })),
       xiaohongshuCaption: "不应通过"
     });
@@ -215,7 +219,7 @@ describe("history agent", () => {
             {
               title: "先讲留下了什么",
               imageText: "郑和下西洋，留下的不只是船队规模",
-              prompt: "明代宝船，海上航线，知识卡片"
+              prompt: longImagePrompt("明代宝船与海上航线")
             }
           ],
           xiaohongshuCaption: "今天用一张图讲清郑和下西洋真正留下了什么。"
@@ -245,7 +249,7 @@ describe("history agent", () => {
           {
             title: "先讲为什么精密",
             imageText: "精密历法来自长期观测，而不是神秘传说",
-            prompt: "玛雅文明，天文观测，知识海报"
+            prompt: longImagePrompt("玛雅文明与天文观测")
           }
         ],
         xiaohongshuCaption: "今天讲清玛雅历法为什么会精密到令人惊讶。"
@@ -295,7 +299,7 @@ describe("history agent", () => {
           {
             title: "一张图讲清",
             imageText: `${topic} 图片文案`,
-            prompt: `${topic} 提示词`
+            prompt: longImagePrompt(topic)
           }
         ],
         xiaohongshuCaption: `${topic} 正文`
@@ -307,6 +311,39 @@ describe("history agent", () => {
 
     expect(result.status).toBe("completed");
     expect(result.notifications?.[0]?.payload?.topic).not.toBe("玄奘取经为什么重要");
+  });
+
+  it("uses a custom topic from task metadata", async () => {
+    const restore = mockModelRuntimeText((prompt) => {
+      const topicMatch = prompt.match(/「(.+?)」/);
+      const topic = topicMatch?.[1] ?? "未知主题";
+
+      return JSON.stringify({
+        topic,
+        summary: `${topic} 的摘要`,
+        cardCount: 1,
+        cards: [
+          {
+            title: "一张图讲清",
+            imageText: `${topic} 图片文案`,
+            prompt: longImagePrompt(topic)
+          }
+        ],
+        xiaohongshuCaption: `${topic} 正文`
+      });
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        localDate: "2026-05-07",
+        topic: "商鞅变法为什么能改变秦国"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]?.payload?.topic).toBe("商鞅变法为什么能改变秦国");
   });
 
   it("falls back to the least recently generated topic when all topics are archived", async () => {
@@ -408,7 +445,7 @@ describe("history agent", () => {
           {
             title: "一张图讲清",
             imageText: `${topic} 图片文案`,
-            prompt: `${topic} 提示词`
+            prompt: longImagePrompt(topic)
           }
         ],
         xiaohongshuCaption: `${topic} 正文`
@@ -433,7 +470,7 @@ describe("history agent", () => {
         {
           title: "一张图讲清路线",
           imageText: "从长安到那烂陀：一次跨越万里的求知",
-          prompt: "竖版小红书封面，唐代僧人远行，地图路线，中文标题留白"
+          prompt: longImagePrompt("玄奘西行路线")
         }
       ],
       xiaohongshuCaption: "今天讲一个改变知识流动的历史瞬间：玄奘西行。"

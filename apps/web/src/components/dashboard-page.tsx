@@ -930,6 +930,7 @@ function HistoryPanel({
   size: HomeModuleSize;
 }) {
   const queryClient = useQueryClient();
+  const [topicInput, setTopicInput] = useState("");
   const historyNotifications = getHistoryNotifications(notifications);
   const latestNotification = historyNotifications[0];
   const latestPayload = latestNotification?.payload;
@@ -939,12 +940,17 @@ function HistoryPanel({
   const archiveCount = historyNotifications.length;
   const canGenerateInline = size === "max" || size === "large" || size === "medium";
   const historyGenerateMutation = useMutation({
-    mutationFn: () => generateHistory("manual"),
+    mutationFn: (topic?: string) =>
+      generateHistory({
+        reason: "manual",
+        topic
+      }),
     onSuccess: (dashboard) => {
       console.info("[history-panel] generate:onSuccess", {
         notifications: dashboard.notifications.length
       });
       queryClient.setQueryData(["dashboard"], dashboard);
+      setTopicInput("");
     },
     onError: (error) => {
       console.error("[history-panel] generate:onError", error);
@@ -962,17 +968,27 @@ function HistoryPanel({
         <div className="history-panel__actions">
           <span>{latestPayload ? `更新 ${formatTime(latestPayload.generatedAt)}` : "等待推送"}</span>
           {canGenerateInline ? (
-            <button
-              type="button"
-              className="history-panel__generate"
-              onClick={() => {
-                console.info("[history-panel] generate:click");
-                historyGenerateMutation.mutate();
+            <form
+              className="history-panel__topic-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                console.info("[history-panel] generate:submit", {
+                  hasTopic: Boolean(topicInput.trim())
+                });
+                historyGenerateMutation.mutate(topicInput.trim() || undefined);
               }}
-              disabled={historyGenerateMutation.isPending}
             >
-              {historyGenerateMutation.isPending ? "生成中..." : "主动生成"}
-            </button>
+              <input
+                type="text"
+                value={topicInput}
+                onChange={(event) => setTopicInput(event.target.value)}
+                placeholder="输入主题"
+                disabled={historyGenerateMutation.isPending}
+              />
+              <button type="submit" className="history-panel__generate" disabled={historyGenerateMutation.isPending}>
+                {historyGenerateMutation.isPending ? "生成中..." : "生成"}
+              </button>
+            </form>
           ) : null}
         </div>
       </div>

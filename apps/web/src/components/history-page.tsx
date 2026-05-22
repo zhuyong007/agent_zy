@@ -25,6 +25,7 @@ export function HistoryPage() {
   const [themeKey, setThemeKey] = useThemePreference();
   const [railExpanded, setRailExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [topicInput, setTopicInput] = useState("");
   const { layout } = useHomeLayoutPreferences();
 
   const dashboardQuery = useQuery({
@@ -32,7 +33,11 @@ export function HistoryPage() {
     queryFn: fetchDashboard
   });
   const historyGenerateMutation = useMutation({
-    mutationFn: () => generateHistory("manual"),
+    mutationFn: (topic?: string) =>
+      generateHistory({
+        reason: "manual",
+        topic
+      }),
     onSuccess: (nextDashboard) => {
       console.info("[history-page] generate:onSuccess", {
         notifications: nextDashboard.notifications.length
@@ -42,6 +47,7 @@ export function HistoryPage() {
 
       const nextNotifications = getHistoryNotifications(nextDashboard.notifications);
       setSelectedId(nextNotifications[0]?.id ?? null);
+      setTopicInput("");
     },
     onError: (error) => {
       console.error("[history-page] generate:onError", error);
@@ -110,17 +116,27 @@ export function HistoryPage() {
             <div className="history-stage__meta">
               <span>{formatDateTime(selectedPayload?.generatedAt)}</span>
               <strong>{selectedPayload ? `${selectedPayload.cardCount} 张图文结构` : "等待生成"}</strong>
-              <button
-                type="button"
-                className="history-generate-button"
-                onClick={() => {
-                  console.info("[history-page] generate:click");
-                  historyGenerateMutation.mutate();
+              <form
+                className="history-topic-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  console.info("[history-page] generate:submit", {
+                    hasTopic: Boolean(topicInput.trim())
+                  });
+                  historyGenerateMutation.mutate(topicInput.trim() || undefined);
                 }}
-                disabled={historyGenerateMutation.isPending}
               >
-                {historyGenerateMutation.isPending ? "生成中..." : "立即生成"}
-              </button>
+                <input
+                  type="text"
+                  value={topicInput}
+                  onChange={(event) => setTopicInput(event.target.value)}
+                  placeholder="输入主题，例如：商鞅变法"
+                  disabled={historyGenerateMutation.isPending}
+                />
+                <button type="submit" className="history-generate-button" disabled={historyGenerateMutation.isPending}>
+                  {historyGenerateMutation.isPending ? "生成中..." : "立即生成"}
+                </button>
+              </form>
             </div>
           </header>
 
