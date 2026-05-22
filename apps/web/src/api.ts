@@ -476,6 +476,36 @@ export async function refreshNews(input: NewsRefreshInput = {}): Promise<NewsSta
   return response.json();
 }
 
+export async function openExternalUrl(url: string): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/open-url`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      url
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to open external URL"));
+  }
+
+  return response.json();
+}
+
+export async function restartProject(): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/system/restart`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to restart project"));
+  }
+
+  return response.json();
+}
+
 export async function sendChat(message: string): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",

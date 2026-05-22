@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { generateHistory } from "./api";
+import { generateHistory, openExternalUrl, restartProject } from "./api";
 
 describe("generateHistory", () => {
   afterEach(() => {
@@ -83,5 +83,62 @@ describe("generateHistory", () => {
       reason: "manual",
       topic: "商鞅变法"
     });
+  });
+});
+
+describe("openExternalUrl", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the URL to the local browser bridge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await openExternalUrl("https://example.com/news-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/open-url"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          url: "https://example.com/news-1"
+        })
+      })
+    );
+  });
+});
+
+describe("restartProject", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts to the local restart endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        ok: true
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await restartProject();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/system/restart"),
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
   });
 });

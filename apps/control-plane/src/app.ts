@@ -17,10 +17,14 @@ import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
+import { normalizeExternalUrl, openExternalUrlInBrowser, type ExternalUrlOpener } from "./services/browser-opener";
+import { restartProjectWithScript, type ProjectRestarter } from "./services/system-restart";
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
   startSchedulers?: boolean;
+  openExternalUrl?: ExternalUrlOpener;
+  restartProject?: ProjectRestarter;
 }) {
   const app = Fastify();
   const eventBus = createEventBus();
@@ -66,6 +70,14 @@ export function createControlPlaneApp(options?: {
   app.get("/api/health", async () => ({
     ok: true
   }));
+
+  app.post("/api/system/restart", async (_request, reply) => {
+    await (options?.restartProject ?? restartProjectWithScript)();
+
+    return reply.code(202).send({
+      ok: true
+    });
+  });
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
 
@@ -260,6 +272,25 @@ export function createControlPlaneApp(options?: {
   });
 
   app.get("/api/news", async () => orchestrator.getNews());
+
+  app.post("/api/open-url", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      url?: unknown;
+    };
+    const url = normalizeExternalUrl(body.url);
+
+    if (!url) {
+      return reply.code(400).send({
+        message: "url must be an http or https URL"
+      });
+    }
+
+    await (options?.openExternalUrl ?? openExternalUrlInBrowser)(url);
+
+    return {
+      ok: true
+    };
+  });
 
   app.get("/api/topics", async () => orchestrator.getTopics());
 

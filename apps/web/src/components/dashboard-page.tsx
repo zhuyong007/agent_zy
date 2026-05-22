@@ -45,8 +45,10 @@ import {
   fetchModelProfiles,
   fetchModelProviders,
   generateHistory,
+  openExternalUrl,
   openDashboardStream,
   recordLedger,
+  restartProject,
   refreshNews,
   saveHomeLayout,
   sendChat,
@@ -550,7 +552,9 @@ export function CommandRail({
   rightMeta: _rightMeta,
   clockLine,
   showNavigation = true,
-  navigationLayout
+  navigationLayout,
+  onRestartProject,
+  isRestarting = false
 }: {
   activeSection: RailSection;
   expanded: boolean;
@@ -561,6 +565,8 @@ export function CommandRail({
   clockLine: string;
   showNavigation?: boolean;
   navigationLayout?: readonly HomeModulePreference[];
+  onRestartProject?: () => void;
+  isRestarting?: boolean;
 }) {
   const [dateTimePart, weekdayPart] = clockLine.split(" · ");
   const timeLabel = dateTimePart?.slice(11, 16) ?? clockLine;
@@ -605,6 +611,17 @@ export function CommandRail({
           <strong>{timeLabel}</strong>
           <span>{dateLabel}</span>
         </div>
+        {onRestartProject ? (
+          <button
+            type="button"
+            className="command-restart"
+            onClick={onRestartProject}
+            disabled={isRestarting}
+            aria-label="重启项目"
+          >
+            {isRestarting ? "重启中" : "重启"}
+          </button>
+        ) : null}
         <div className="theme-switcher theme-switcher--inline" role="group" aria-label="切换主题">
           {themeOptions.map((theme) => (
             <button
@@ -710,7 +727,19 @@ export function NewsPanel({
           <div className={`news-mini-timeline news-mini-timeline--${size}`}>
             {showDate ? <div className="news-mini-timeline__date">{dateLabel}</div> : null}
             {timelineItems.map((item) => (
-              <Link key={item.id} to="/news" className="news-mini-timeline__item">
+              <a
+                key={item.id}
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="news-mini-timeline__item"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openExternalUrl(item.url).catch(() => {
+                    window.open(item.url, "_blank", "noopener,noreferrer");
+                  });
+                }}
+              >
                 <time>{formatTime(item.publishedAt)}</time>
                 <span className="news-mini-timeline__dot" aria-hidden="true" />
                 <div className="news-mini-timeline__card">
@@ -726,7 +755,7 @@ export function NewsPanel({
                     </div>
                   ) : null}
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         ) : (
@@ -1523,6 +1552,7 @@ function HomeModuleShell({
   sortableStyle,
   dragAttributes,
   dragListeners,
+  setActivatorNodeRef,
   preview = false,
   isDragging = false
 }: {
@@ -1535,6 +1565,7 @@ function HomeModuleShell({
   sortableStyle?: CSSProperties;
   dragAttributes?: DraggableAttributes;
   dragListeners?: DraggableSyntheticListeners;
+  setActivatorNodeRef?: (node: HTMLElement | null) => void;
   preview?: boolean;
   isDragging?: boolean;
 }) {
@@ -1550,10 +1581,14 @@ function HomeModuleShell({
         isDragging ? " is-dragging" : ""
       }${preview ? " home-module--drag-overlay" : ""}`}
       style={moduleStyle}
-      {...(dragAttributes ?? {})}
-      {...(dragListeners ?? {})}
     >
-      <div className="home-module__meta" aria-hidden="true">
+      <div
+        ref={setActivatorNodeRef}
+        className="home-module__meta"
+        aria-hidden="true"
+        {...(dragAttributes ?? {})}
+        {...(dragListeners ?? {})}
+      >
         <strong>{title}</strong>
       </div>
       <div className="home-module__body">
@@ -1600,6 +1635,7 @@ function SortableHomeModuleShell({
   const {
     attributes,
     listeners,
+    setActivatorNodeRef,
     setNodeRef,
     transform,
     transition,
@@ -1622,6 +1658,7 @@ function SortableHomeModuleShell({
       sortableStyle={sortableStyle}
       dragAttributes={attributes}
       dragListeners={listeners}
+      setActivatorNodeRef={setActivatorNodeRef}
       isDragging={isDragging}
     >
       {children}
@@ -2520,6 +2557,9 @@ export function DashboardPage() {
       );
     }
   });
+  const restartMutation = useMutation({
+    mutationFn: restartProject
+  });
 
   useEffect(() => {
     return openDashboardStream((data) => {
@@ -2530,6 +2570,15 @@ export function DashboardPage() {
   }, [queryClient]);
 
   const todoWorkspace = useTodoWorkspaceDashboard(dashboardQuery.data);
+
+  if (dashboardQuery.isError) {
+    return (
+      <div className="loading-shell">
+        首页工作台加载失败：
+        {dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "请求控制台接口失败"}
+      </div>
+    );
+  }
 
   if (dashboardQuery.isLoading || !dashboardQuery.data) {
     return <div className="loading-shell">正在连接控制台并加载首页工作台...</div>;
@@ -2553,6 +2602,8 @@ export function DashboardPage() {
         onThemeChange={setThemeKey}
         clockLine={clockLine}
         navigationLayout={layout}
+        onRestartProject={() => restartMutation.mutate()}
+        isRestarting={restartMutation.isPending}
         rightMeta={[
           { label: "agents", value: String(dashboard.agents.length) },
           { label: "tasks", value: String(dashboard.recentTasks.length) },
