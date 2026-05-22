@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { win32 } from "node:path";
 
 export type ExternalUrlOpener = (url: string) => void | Promise<void>;
 export type BrowserCommand = {
@@ -42,9 +42,12 @@ function findExecutableInPath(
   const exists = options.exists ?? existsSync;
   const pathExts = (options.pathExt || ".EXE").split(";").filter(Boolean);
 
-  for (const directory of (options.pathValue ?? "").split(delimiter).filter(Boolean)) {
+  for (const directory of (options.pathValue ?? "").split(win32.delimiter).filter(Boolean)) {
     for (const extension of pathExts) {
-      const candidate = join(directory, executable.endsWith(extension.toLowerCase()) ? executable : `${executable}${extension}`);
+      const candidate = win32.join(
+        directory,
+        executable.endsWith(extension.toLowerCase()) ? executable : `${executable}${extension}`
+      );
 
       if (exists(candidate)) {
         return candidate;
@@ -71,9 +74,9 @@ export function getWindowsBrowserCommand(options: WindowsBrowserCommandOptions =
   }
 
   const candidates = [
-    options.localAppData ? join(options.localAppData, "Google", "Chrome", "Application", "chrome.exe") : null,
-    options.programFiles ? join(options.programFiles, "Google", "Chrome", "Application", "chrome.exe") : null,
-    options.programFilesX86 ? join(options.programFilesX86, "Google", "Chrome", "Application", "chrome.exe") : null
+    options.localAppData ? win32.join(options.localAppData, "Google", "Chrome", "Application", "chrome.exe") : null,
+    options.programFiles ? win32.join(options.programFiles, "Google", "Chrome", "Application", "chrome.exe") : null,
+    options.programFilesX86 ? win32.join(options.programFilesX86, "Google", "Chrome", "Application", "chrome.exe") : null
   ].filter((path): path is string => Boolean(path));
 
   const chromePath = candidates.find((path) => exists(path));

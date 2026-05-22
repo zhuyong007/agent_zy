@@ -135,6 +135,7 @@ body[data-theme="day"] .edge-panel--news.edge-panel--ops,
 body[data-theme="day"] .edge-panel--todo.edge-panel--ops,
 body[data-theme="day"] .ledger-panel,
 body[data-theme="day"] .topic-module,
+body[data-theme="day"] .cinematic-panel,
 body[data-theme="day"] .console-shell--ops {
   background: rgba(255, 255, 255, 0.74);
   box-shadow:
@@ -7126,5 +7127,495 @@ body[data-theme="day"] .model-check-grid label {
   .manage-card-grid--models,
   .model-profile-card__status-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+.cinematic-panel {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(var(--accent-rgb), 0.1), transparent 42%),
+    var(--panel);
+  box-shadow: var(--glass-shadow);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease;
+}
+
+.cinematic-panel:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+}
+
+.cinematic-panel__header,
+.cinematic-panel__quick,
+.cinematic-panel__meta,
+.cinematic-panel__project,
+.cinematic-export-actions,
+.cinematic-project-controls,
+.cinematic-prompt-block > div,
+.cinematic-generate-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.cinematic-panel__header,
+.cinematic-prompt-block > div,
+.cinematic-generate-actions {
+  justify-content: space-between;
+}
+
+.cinematic-panel__header h2,
+.cinematic-section-heading h1,
+.cinematic-hero h2,
+.cinematic-shot-detail h2,
+.cinematic-prompt-block h3,
+.cinematic-generate-form__lead p {
+  margin: 0;
+}
+
+.cinematic-panel__header h2 {
+  font-size: clamp(20px, 2vw, 28px);
+}
+
+.cinematic-panel__quick {
+  min-width: 0;
+}
+
+.cinematic-panel__quick input,
+.cinematic-generate-form textarea,
+.cinematic-generate-form input,
+.cinematic-project-controls input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(4, 10, 20, 0.36);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+body[data-theme="day"] .cinematic-panel__quick input,
+body[data-theme="day"] .cinematic-generate-form textarea,
+body[data-theme="day"] .cinematic-generate-form input,
+body[data-theme="day"] .cinematic-project-controls input {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.cinematic-panel__quick input:focus,
+.cinematic-generate-form textarea:focus,
+.cinematic-generate-form input:focus,
+.cinematic-project-controls input:focus {
+  border-color: var(--line-strong);
+  background: var(--manage-control);
+}
+
+.cinematic-panel button,
+.cinematic-generate-form button,
+.cinematic-export-actions button,
+.cinematic-prompt-block button,
+.cinematic-copy-all {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--text);
+  padding: 9px 12px;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.cinematic-panel button:hover,
+.cinematic-generate-form button:hover,
+.cinematic-export-actions button:hover,
+.cinematic-prompt-block button:hover,
+.cinematic-copy-all:hover {
+  transform: translateY(-1px);
+  background: rgba(var(--accent-rgb), 0.16);
+}
+
+.cinematic-panel button:disabled,
+.cinematic-generate-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.cinematic-generate-actions__ghost {
+  background: transparent !important;
+  border-color: var(--line) !important;
+}
+
+.cinematic-panel__inspiration,
+.cinematic-panel__latest,
+.cinematic-panel__prompt,
+.cinematic-shot-detail,
+.cinematic-hero,
+.cinematic-project-controls,
+.cinematic-shot-item,
+.cinematic-project-card,
+.cinematic-prompt-block {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--manage-surface);
+  padding: 14px;
+}
+
+.cinematic-panel__inspiration span,
+.cinematic-panel__latest span,
+.cinematic-panel__prompt span,
+.cinematic-project-card span,
+.cinematic-shot-item span,
+.cinematic-shot-detail span,
+.cinematic-shot-meta span,
+.cinematic-generate-form__lead span,
+.cinematic-field span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cinematic-panel__inspiration {
+  display: grid;
+  gap: 6px;
+}
+
+.cinematic-panel__latest {
+  min-height: 0;
+}
+
+.cinematic-panel__latest h3,
+.cinematic-panel__latest p,
+.cinematic-panel__prompt p,
+.cinematic-project-card p,
+.cinematic-shot-item p,
+.cinematic-prompt-block p {
+  margin: 8px 0 0;
+}
+
+.cinematic-panel__latest p,
+.cinematic-panel__prompt p,
+.cinematic-project-card p,
+.cinematic-shot-item p,
+.cinematic-prompt-block p,
+.cinematic-hero p,
+.cinematic-generate-form__lead p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.cinematic-panel__prompt p {
+  max-height: 8.4em;
+  overflow: hidden;
+}
+
+.cinematic-panel__projects,
+.cinematic-project-list,
+.cinematic-shot-list {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.cinematic-panel__project,
+.cinematic-project-card,
+.cinematic-shot-item {
+  width: 100%;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.cinematic-panel__project {
+  justify-content: space-between;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--manage-control-soft);
+  padding: 10px;
+}
+
+.cinematic-panel__project strong,
+.cinematic-panel__latest h3,
+.cinematic-project-card strong,
+.cinematic-shot-item strong {
+  overflow-wrap: anywhere;
+}
+
+.cinematic-panel--max {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.cinematic-panel--large {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+}
+
+.cinematic-panel--medium {
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.cinematic-panel--medium .cinematic-panel__header,
+.cinematic-panel--medium .cinematic-panel__quick {
+  grid-column: 1 / -1;
+}
+
+.cinematic-panel--medium .cinematic-panel__projects {
+  grid-column: 1 / -1;
+  grid-row: 4;
+}
+
+.cinematic-panel--medium .cinematic-panel__latest {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.cinematic-panel--medium .cinematic-panel__prompt {
+  display: none;
+}
+
+.cinematic-panel--smaller {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  padding: 16px;
+}
+
+.cinematic-panel--smaller .cinematic-panel__projects,
+.cinematic-panel--smaller .cinematic-panel__prompt {
+  display: none;
+}
+
+.cinematic-panel--small {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.cinematic-panel--small .cinematic-panel__header {
+  gap: 6px;
+}
+
+.cinematic-panel--small .eyebrow,
+.cinematic-panel--small .panel-link,
+.cinematic-panel--small .cinematic-panel__projects,
+.cinematic-panel--small .cinematic-panel__prompt {
+  display: none;
+}
+
+.cinematic-panel--small .cinematic-panel__header h2 {
+  font-size: 18px;
+}
+
+.cinematic-panel--small .cinematic-panel__quick {
+  gap: 6px;
+}
+
+.cinematic-panel--small .cinematic-panel__quick input,
+.cinematic-panel--small .cinematic-panel__quick button {
+  padding: 8px 9px;
+  font-size: 12px;
+}
+
+.cinematic-panel--small .cinematic-panel__latest {
+  padding: 10px;
+}
+
+.cinematic-panel--small .cinematic-panel__latest h3 {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.cinematic-panel--small .cinematic-panel__meta {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.cinematic-workspace {
+  min-height: 100vh;
+}
+
+.cinematic-board {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.35fr) minmax(340px, 1fr);
+  gap: 16px;
+  align-items: start;
+  animation: cinematic-rise 360ms ease both;
+}
+
+.cinematic-projects,
+.cinematic-structure,
+.cinematic-detail {
+  min-height: calc(100vh - 120px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-rgb), 0.06), transparent 34%),
+    var(--panel);
+  box-shadow: var(--glass-shadow);
+  padding: 18px;
+}
+
+.cinematic-projects,
+.cinematic-structure {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.cinematic-detail {
+  position: sticky;
+  top: 92px;
+}
+
+.cinematic-section-heading h1 {
+  font-size: clamp(28px, 3vw, 44px);
+  line-height: 1.05;
+}
+
+.cinematic-generate-form {
+  display: grid;
+  gap: 12px;
+  padding-block: 4px 8px;
+}
+
+.cinematic-generate-form__lead {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cinematic-generate-form textarea {
+  min-height: 116px;
+  resize: vertical;
+}
+
+.cinematic-field,
+.cinematic-generate-form label,
+.cinematic-project-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.cinematic-optional-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.cinematic-project-card,
+.cinematic-shot-item {
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.cinematic-project-card:hover,
+.cinematic-shot-item:hover {
+  transform: translateX(2px);
+  border-color: var(--line-strong);
+}
+
+.cinematic-project-card.is-active,
+.cinematic-shot-item.is-active {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.cinematic-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+}
+
+.cinematic-export-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.cinematic-project-controls {
+  grid-template-columns: 1fr 1fr 120px;
+}
+
+.cinematic-shot-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.cinematic-shot-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cinematic-shot-meta div {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--manage-control-soft);
+}
+
+.cinematic-copy-all {
+  width: 100%;
+}
+
+@keyframes cinematic-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1180px) {
+  .cinematic-board {
+    grid-template-columns: 1fr;
+  }
+
+  .cinematic-detail {
+    position: static;
+  }
+
+  .cinematic-projects,
+  .cinematic-structure,
+  .cinematic-detail {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .cinematic-hero,
+  .cinematic-project-controls,
+  .cinematic-shot-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .cinematic-export-actions,
+  .cinematic-panel__quick {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

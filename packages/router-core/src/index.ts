@@ -10,7 +10,12 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
   schedule: ["日程", "待办", "安排", "计划", "今天", "晚上", "完成"],
   news: ["热点", "新闻", "热搜", "分析", "快讯"],
   topics: ["选题", "自媒体", "内容", "视频", "公众号", "爆款"],
-  summary: ["总结", "复盘", "日志", "记录", "每日总结", "周总结", "月总结", "年总结"]
+  summary: ["总结", "复盘", "日志", "记录", "每日总结", "周总结", "月总结", "年总结"],
+  cinematic_storyboard: ["电影感", "分镜", "镜头", "视频提示词", "视频文案", "构图", "光影", "氛围"],
+  cinematic_prompt_generation: ["提示词", "视频提示词", "Runway", "Sora", "Kling", "可灵"],
+  video_structure_analysis: ["视频结构", "节奏", "转场", "高潮", "留白"],
+  shot_design: ["镜头设计", "景别", "摄影机", "焦段", "运动镜头"],
+  visual_mood_design: ["情绪", "氛围", "色彩", "美术风格", "电影语言"]
 };
 
 function scoreManifest(manifest: AgentManifest, input: RouteInput): number {

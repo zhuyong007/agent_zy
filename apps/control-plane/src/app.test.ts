@@ -11,6 +11,40 @@ function longHistoryImagePrompt(topic: string) {
   return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
 }
 
+function longCinematicPrompt(label: string) {
+  return `${label}，夜色压低城市天际线，潮湿街面反射冷蓝霓虹和红色刹车灯，镜头以 50mm 焦段从玻璃雨痕后的前景缓慢推进。前景雨滴失焦，中景人物停在便利店门口，背景高楼窗口像沉默的网格，浅景深让城市边缘轻微化开。空气里有水汽、低频车流和细小胶片颗粒，摄影机移动像克制呼吸，人物没有夸张动作，只用肩膀下沉和迟疑停步表达疲惫。构图把人物压在画面右下角，左侧保留大片空街，孤独被空间放大。`;
+}
+
+function createCinematicFixture() {
+  return {
+    id: "cinematic-app-fixture",
+    title: "凌晨两点的城市",
+    concept: "孤独感的城市夜晚",
+    mood: "孤独、压抑、清醒",
+    script: "城市从不睡觉，只是把孤独留给凌晨两点的人。",
+    style: "冷蓝霓虹、低饱和胶片感",
+    pace: "缓慢推进，结尾留白",
+    targetShotCount: 4,
+    tags: ["城市", "夜晚", "孤独"],
+    storyboard: Array.from({ length: 4 }, (_, index) => ({
+      id: `shot-${index + 1}`,
+      title: `镜头 ${index + 1}`,
+      purpose: "建立城市孤独感",
+      duration: "5 秒",
+      cameraMovement: "缓慢推进",
+      shotType: "环境人物镜头",
+      composition: "人物偏右，大面积负空间",
+      transition: "溶接",
+      audioHint: "低频环境音",
+      emotionalBeat: "压抑到清醒",
+      prompt: {
+        zh: longCinematicPrompt(`镜头 ${index + 1}`),
+        en: `Shot ${index + 1}, cinematic rainy neon city night, slow push in through wet glass, shallow depth of field, solitary figure near the edge of frame, negative space, subtle film grain, low frequency city ambience, restrained emotional rhythm.`
+      }
+    }))
+  };
+}
+
 describe("control-plane app", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-test-"));
   const app = createControlPlaneApp({
@@ -31,6 +65,7 @@ describe("control-plane app", () => {
     delete process.env.MODELSCOPE_BASE_URL;
     delete process.env.MODELSCOPE_MODEL;
     delete process.env.HISTORY_POST_FIXTURE_JSON;
+    delete process.env.CINEMATIC_PROJECT_FIXTURE_JSON;
     vi.unstubAllGlobals();
   });
 
@@ -210,6 +245,59 @@ describe("control-plane app", () => {
       expect(dashboardResponse.json().ledger.summary.todayIncome).toBeGreaterThan(0);
     } finally {
       vi.useRealTimers();
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("generates cinematic projects and exposes them in dashboard summary", async () => {
+    process.env.CINEMATIC_PROJECT_FIXTURE_JSON = JSON.stringify(createCinematicFixture());
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-cinematic-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const generateResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/cinematic/generate",
+        payload: {
+          concept: "孤独感的城市夜晚",
+          targetShotCount: 4
+        }
+      });
+
+      expect(generateResponse.statusCode).toBe(200);
+      expect(generateResponse.json()).toMatchObject({
+        projects: [
+          expect.objectContaining({
+            id: "cinematic-app-fixture",
+            title: "凌晨两点的城市"
+          })
+        ],
+        recentProjectIds: ["cinematic-app-fixture"]
+      });
+
+      const dashboardResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/dashboard"
+      });
+
+      expect(dashboardResponse.statusCode).toBe(200);
+      expect(dashboardResponse.json().cinematic.dashboard).toMatchObject({
+        projectCount: 1,
+        totalShotCount: 4,
+        latestProject: expect.objectContaining({
+          title: "凌晨两点的城市"
+        })
+      });
+    } finally {
       await isolatedApp.close();
       rmSync(isolatedDataDir, {
         recursive: true,

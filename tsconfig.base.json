@@ -27,6 +27,12 @@
       "@agent-zy/router-core": [
         "packages/router-core/src/index.ts"
       ],
+      "@agent-zy/cinematic-agent/manifest": [
+        "agents/cinematic-agent/src/manifest.ts"
+      ],
+      "@agent-zy/cinematic-agent": [
+        "agents/cinematic-agent/src/index.ts"
+      ],
       "@agent-zy/ledger-agent/manifest": [
         "agents/ledger-agent/src/manifest.ts"
       ],

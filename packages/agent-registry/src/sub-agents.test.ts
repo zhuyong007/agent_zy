@@ -14,6 +14,7 @@ describe("sub-agent route config", () => {
       "news-agent",
       "topic-agent",
       "history-agent",
+      "cinematic-agent",
       "summary-agent"
     ]);
   });
@@ -32,6 +33,7 @@ describe("sub-agent route config", () => {
       "ledger",
       "topics",
       "history",
+      "cinematic",
       "summary"
     ]);
   });

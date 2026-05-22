@@ -1,4 +1,5 @@
 import type { AgentManifest } from "@agent-zy/agent-sdk";
+import { manifest as cinematicManifest } from "@agent-zy/cinematic-agent/manifest";
 import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
 import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
@@ -88,6 +89,18 @@ export const SUB_AGENT_ROUTES = [
     }
   },
   {
+    agentId: "cinematic-agent",
+    manifest: cinematicManifest,
+    homeModule: {
+      id: "cinematic",
+      label: "电影镜头",
+      description: "电影感分镜、视频文案和镜头提示词",
+      defaultSize: "large",
+      defaultVisible: true,
+      order: 6
+    }
+  },
+  {
     agentId: "summary-agent",
     manifest: summaryManifest,
     homeModule: {
@@ -96,7 +109,7 @@ export const SUB_AGENT_ROUTES = [
       description: "每日、每周、每月、每年个人复盘",
       defaultSize: "smaller",
       defaultVisible: true,
-      order: 6
+      order: 7
     }
   }
 ] as const satisfies readonly SubAgentRouteConfig[];

@@ -5,6 +5,9 @@ import { SUB_AGENT_HOME_MODULE_DEFINITIONS } from "@agent-zy/agent-registry/sub-
 import type {
   AppState,
   ChatMessage,
+  CinematicDashboardSummary,
+  CinematicProject,
+  CinematicState,
   DashboardData,
   HomeModuleId,
   HomeModulePreference,
@@ -104,6 +107,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "ledger",
   "todo",
   "history",
+  "cinematic",
   "summary"
 ]);
 
@@ -208,6 +212,7 @@ function createInitialState(): AppState {
       strategy: "manual-curation",
       lastError: null
     },
+    cinematic: createEmptyCinematicState(),
     summary: createEmptySummaryState(),
     historyPush: {
       lastTriggeredDate: null
@@ -294,6 +299,16 @@ function createEmptySummaryState(): SummaryState {
   };
 }
 
+function createEmptyCinematicState(): CinematicState {
+  return {
+    projects: [],
+    recentProjectIds: [],
+    lastGeneratedAt: null,
+    status: "idle",
+    lastError: null
+  };
+}
+
 function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
   return {
     todayIncomeCents: 0,
@@ -302,6 +317,93 @@ function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
     recentFacts: [],
     coachTip: null,
     pendingReviewCount: 0
+  };
+}
+
+function normalizeStoryboardShot(shot: CinematicProject["storyboard"][number], index: number) {
+  return {
+    id: typeof shot.id === "string" && shot.id ? shot.id : `shot-${index + 1}`,
+    title: typeof shot.title === "string" ? shot.title : `镜头 ${index + 1}`,
+    purpose: typeof shot.purpose === "string" ? shot.purpose : "",
+    duration: typeof shot.duration === "string" ? shot.duration : "",
+    cameraMovement: typeof shot.cameraMovement === "string" ? shot.cameraMovement : "",
+    shotType: typeof shot.shotType === "string" ? shot.shotType : "",
+    composition: typeof shot.composition === "string" ? shot.composition : "",
+    transition: typeof shot.transition === "string" ? shot.transition : "",
+    audioHint: typeof shot.audioHint === "string" ? shot.audioHint : "",
+    emotionalBeat: typeof shot.emotionalBeat === "string" ? shot.emotionalBeat : "",
+    prompt: {
+      zh: typeof shot.prompt?.zh === "string" ? shot.prompt.zh : "",
+      en: typeof shot.prompt?.en === "string" ? shot.prompt.en : ""
+    }
+  };
+}
+
+function normalizeCinematicProject(project: Partial<CinematicProject>, index: number): CinematicProject {
+  const now = nowIso();
+  const storyboard = Array.isArray(project.storyboard)
+    ? project.storyboard.map(normalizeStoryboardShot)
+    : [];
+
+  return {
+    id: typeof project.id === "string" && project.id ? project.id : `cinematic-${index}`,
+    title: typeof project.title === "string" && project.title ? project.title : "未命名电影分镜",
+    concept: typeof project.concept === "string" ? project.concept : "",
+    mood: typeof project.mood === "string" ? project.mood : "",
+    script: typeof project.script === "string" ? project.script : "",
+    storyboard,
+    createdAt: typeof project.createdAt === "string" ? project.createdAt : now,
+    updatedAt: typeof project.updatedAt === "string" ? project.updatedAt : now,
+    tags: Array.isArray(project.tags)
+      ? project.tags.filter((tag): tag is string => typeof tag === "string")
+      : [],
+    style: typeof project.style === "string" ? project.style : "",
+    pace: typeof project.pace === "string" ? project.pace : "",
+    targetShotCount:
+      typeof project.targetShotCount === "number" && Number.isInteger(project.targetShotCount) && project.targetShotCount > 0
+        ? project.targetShotCount
+        : storyboard.length
+  };
+}
+
+function normalizeCinematicState(cinematic: Partial<CinematicState> | undefined): CinematicState {
+  const projects = (cinematic?.projects ?? [])
+    .map(normalizeCinematicProject)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const recentProjectIds = [
+    ...(cinematic?.recentProjectIds ?? []),
+    ...projects.map((project) => project.id)
+  ]
+    .filter((id, index, ids): id is string => typeof id === "string" && projectIds.has(id) && ids.indexOf(id) === index)
+    .slice(0, 12);
+
+  return {
+    projects,
+    recentProjectIds,
+    lastGeneratedAt: cinematic?.lastGeneratedAt ?? projects[0]?.updatedAt ?? null,
+    status: cinematic?.status === "generating" ? "generating" : "idle",
+    lastError: cinematic?.lastError ?? null
+  };
+}
+
+function buildCinematicDashboard(cinematic: CinematicState): CinematicDashboardSummary {
+  const projectById = new Map(cinematic.projects.map((project) => [project.id, project]));
+  const recentProjects = cinematic.recentProjectIds
+    .map((id) => projectById.get(id))
+    .filter((project): project is CinematicProject => Boolean(project))
+    .slice(0, 4);
+  const latestProject = recentProjects[0] ?? cinematic.projects[0] ?? null;
+
+  return {
+    projectCount: cinematic.projects.length,
+    recentProjects,
+    latestProject,
+    lastGeneratedAt: cinematic.lastGeneratedAt,
+    totalShotCount: cinematic.projects.reduce((count, project) => count + project.storyboard.length, 0),
+    todayInspiration: latestProject
+      ? `${latestProject.mood} · ${latestProject.style || latestProject.title}`
+      : "把一个情绪变成镜头：先找光，再找沉默。"
   };
 }
 
@@ -825,6 +927,7 @@ function normalizeAppState(state: AppState): AppState {
     ledger: normalizeLedgerState(state.ledger),
     news,
     topics: normalizeTopicState(state.topics),
+    cinematic: normalizeCinematicState(state.cinematic),
     summary: normalizeSummaryState(state.summary),
     historyPush: normalizeHistoryPushState(state.historyPush),
     nightlyReview: state.nightlyReview ?? {
@@ -850,6 +953,7 @@ export interface ControlPlaneStore {
   getLedgerReports(): LedgerReportRecord[];
   getLedgerStages(): LifeStageRecord[];
   upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
+  setCinematicState(cinematic: CinematicState): CinematicState;
   setSummaryState(summary: SummaryState): SummaryState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
   updateModelProfile(id: string, patch: Partial<ModelProfile>): ModelProfile;
@@ -948,6 +1052,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         state.topics = result.domainUpdates.topics;
       }
 
+      if (result.domainUpdates?.cinematic) {
+        state.cinematic = result.domainUpdates.cinematic;
+      }
+
       if (result.domainUpdates?.summary) {
         state.summary = result.domainUpdates.summary;
       }
@@ -998,6 +1106,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       ledgerRepository.writeReports(nextReports);
 
       return report;
+    },
+    setCinematicState(cinematic) {
+      state.cinematic = normalizeCinematicState(cinematic);
+      persist();
+
+      return structuredClone(state.cinematic);
     },
     setSummaryState(summary) {
       state.summary = normalizeSummaryState(summary);
@@ -1194,6 +1308,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         },
         news: state.news,
         topics: state.topics,
+        cinematic: {
+          ...state.cinematic,
+          dashboard: buildCinematicDashboard(state.cinematic)
+        },
         summary: {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)

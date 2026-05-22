@@ -163,6 +163,21 @@ function createDashboard(): DashboardData {
       strategy: "manual-curation",
       lastError: null
     },
+    cinematic: {
+      projects: [],
+      recentProjectIds: [],
+      lastGeneratedAt: null,
+      status: "idle",
+      lastError: null,
+      dashboard: {
+        projectCount: 0,
+        recentProjects: [],
+        latestProject: null,
+        lastGeneratedAt: null,
+        totalShotCount: 0,
+        todayInspiration: "把一个情绪变成镜头"
+      }
+    },
     summary: {
       entries: [],
       drafts: [],

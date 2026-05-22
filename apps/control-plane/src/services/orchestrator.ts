@@ -3,6 +3,8 @@ import { nanoid } from "nanoid";
 import type {
   ChatMessage,
   ChatResponse,
+  CinematicProject,
+  CinematicState,
   DashboardData,
   HomeModulePreference,
   LedgerFactRecord,
@@ -69,6 +71,10 @@ export interface ControlPlaneOrchestrator {
   refreshNews(meta?: Record<string, unknown>): Promise<NewsState>;
   getTopics(): TopicState;
   generateTopics(meta?: Record<string, unknown>): Promise<TopicState>;
+  getCinematic(): CinematicState;
+  createCinematicProject(input: unknown): CinematicProject;
+  updateCinematicProject(id: string, input: unknown): CinematicProject;
+  generateCinematicProject(input?: Record<string, unknown>): Promise<CinematicState>;
   generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
   listSummaries(query?: SummaryListQuery): { entries: SummaryEntry[] };
   getSummary(id: string): SummaryEntry | null;
@@ -281,6 +287,81 @@ export function createControlPlaneOrchestrator(options: {
     return input.agentId === "ledger-agent" && resolveLedgerReportKind(input.meta) !== null;
   }
 
+  function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  }
+
+  function asString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function normalizeShotInput(value: unknown, index: number): CinematicProject["storyboard"][number] {
+    const record = asRecord(value);
+    const prompt = asRecord(record.prompt);
+
+    return {
+      id: asString(record.id) || `shot-${index + 1}`,
+      title: asString(record.title) || `镜头 ${index + 1}`,
+      purpose: asString(record.purpose),
+      duration: asString(record.duration),
+      cameraMovement: asString(record.cameraMovement),
+      shotType: asString(record.shotType),
+      composition: asString(record.composition),
+      transition: asString(record.transition),
+      audioHint: asString(record.audioHint),
+      emotionalBeat: asString(record.emotionalBeat),
+      prompt: {
+        zh: asString(prompt.zh),
+        en: asString(prompt.en)
+      }
+    };
+  }
+
+  function createProjectFromInput(input: unknown): CinematicProject {
+    const record = asRecord(input);
+    const now = new Date().toISOString();
+    const storyboard = Array.isArray(record.storyboard)
+      ? record.storyboard.map(normalizeShotInput)
+      : [];
+
+    return {
+      id: asString(record.id) || `cinematic-${nanoid()}`,
+      title: asString(record.title) || asString(record.concept) || "未命名电影分镜",
+      concept: asString(record.concept),
+      mood: asString(record.mood),
+      script: asString(record.script),
+      storyboard,
+      createdAt: asString(record.createdAt) || now,
+      updatedAt: now,
+      tags: Array.isArray(record.tags)
+        ? record.tags.map(asString).filter(Boolean).slice(0, 12)
+        : [],
+      style: asString(record.style),
+      pace: asString(record.pace),
+      targetShotCount:
+        typeof record.targetShotCount === "number" && Number.isInteger(record.targetShotCount) && record.targetShotCount > 0
+          ? record.targetShotCount
+          : storyboard.length || 6
+    };
+  }
+
+  function upsertCinematicProject(project: CinematicProject): CinematicState {
+    const current = options.store.getState().cinematic;
+    const projects = [project, ...current.projects.filter((item) => item.id !== project.id)].slice(0, 50);
+    const projectIds = new Set(projects.map((item) => item.id));
+    const recentProjectIds = [project.id, ...current.recentProjectIds.filter((id) => id !== project.id)]
+      .filter((id) => projectIds.has(id))
+      .slice(0, 12);
+
+    return options.store.setCinematicState({
+      projects,
+      recentProjectIds,
+      lastGeneratedAt: current.lastGeneratedAt,
+      status: "idle",
+      lastError: null
+    });
+  }
+
   function resolveReportNow(meta?: Record<string, unknown>) {
     const candidate = meta?.now;
 
@@ -475,6 +556,50 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return options.store.getState().topics;
+    },
+    getCinematic() {
+      return options.store.getState().cinematic;
+    },
+    createCinematicProject(input) {
+      const project = createProjectFromInput(input);
+      const next = upsertCinematicProject(project);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+
+      return next.projects.find((item) => item.id === project.id) ?? project;
+    },
+    updateCinematicProject(id, input) {
+      const current = options.store.getState().cinematic;
+      const existing = current.projects.find((project) => project.id === id);
+
+      if (!existing) {
+        throw new Error("cinematic project not found");
+      }
+
+      const patch = asRecord(input);
+      const updated = createProjectFromInput({
+        ...existing,
+        ...patch,
+        id,
+        createdAt: existing.createdAt,
+        storyboard: Array.isArray(patch.storyboard) ? patch.storyboard : existing.storyboard
+      });
+      const next = upsertCinematicProject(updated);
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+
+      return next.projects.find((project) => project.id === id) ?? updated;
+    },
+    async generateCinematicProject(input = {}) {
+      await this.runSystemTask({
+        agentId: "cinematic-agent",
+        trigger: "system",
+        summary: "生成电影镜头设计",
+        meta: {
+          ...input,
+          action: "generate"
+        }
+      });
+
+      return options.store.getState().cinematic;
     },
     async generateHistory(meta = {}) {
       console.info("[history-generate] orchestrator:start", {

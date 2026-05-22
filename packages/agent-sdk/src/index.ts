@@ -3,6 +3,7 @@ import type {
   HistoryPostPayload,
   LedgerFactRecord,
   LedgerSemanticRecord,
+  CinematicState,
   HistoryPushState,
   LedgerState,
   NewsState,
@@ -105,6 +106,7 @@ export interface AgentExecutionResult {
     schedule?: ScheduleState;
     news?: NewsState;
     topics?: TopicState;
+    cinematic?: CinematicState;
     summary?: SummaryState;
     historyPush?: HistoryPushState;
   };

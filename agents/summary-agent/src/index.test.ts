@@ -43,6 +43,13 @@ function createState(): AppState {
       strategy: "manual-curation",
       lastError: null
     },
+    cinematic: {
+      projects: [],
+      recentProjectIds: [],
+      lastGeneratedAt: null,
+      status: "idle",
+      lastError: null
+    },
     summary: {
       entries: [],
       drafts: [],

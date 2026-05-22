@@ -294,6 +294,36 @@ export function createControlPlaneApp(options?: {
 
   app.get("/api/topics", async () => orchestrator.getTopics());
 
+  app.get("/api/cinematic", async () => orchestrator.getCinematic());
+
+  app.post("/api/cinematic/projects", async (request, reply) => {
+    try {
+      return orchestrator.createCinematicProject(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid cinematic project"
+      });
+    }
+  });
+
+  app.patch("/api/cinematic/projects/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return orchestrator.updateCinematicProject(params.id, request.body);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "cinematic project not found"
+      });
+    }
+  });
+
+  app.post("/api/cinematic/generate", async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    return orchestrator.generateCinematicProject(body);
+  });
+
   app.get("/api/summaries", async (request) => {
     const query = request.query as Record<string, string | undefined>;
 

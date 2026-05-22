@@ -56,6 +56,13 @@ function createState(state?: {
     },
     news: createNewsState(state?.news),
     topics: createTopicState(state?.topics),
+    cinematic: {
+      projects: [],
+      recentProjectIds: [],
+      lastGeneratedAt: null,
+      status: "idle",
+      lastError: null
+    },
     summary: {
       entries: [],
       drafts: [],

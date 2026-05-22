@@ -58,6 +58,13 @@ describe("control-plane orchestrator ledger report routing", () => {
               strategy: "manual-curation",
               lastError: null
             },
+            cinematic: {
+              projects: [],
+              recentProjectIds: [],
+              lastGeneratedAt: null,
+              status: "idle",
+              lastError: null
+            },
             summary: {
               entries: [],
               drafts: [],
@@ -103,6 +110,9 @@ describe("control-plane orchestrator ledger report routing", () => {
           return report;
         },
         setHomeLayout() {},
+        setCinematicState(cinematic: any) {
+          return cinematic;
+        },
         setSummaryState(summary: any) {
           return summary;
         },

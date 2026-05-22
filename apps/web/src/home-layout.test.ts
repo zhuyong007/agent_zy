@@ -52,6 +52,7 @@ describe("home-layout", () => {
       "ledger",
       "topics",
       "history",
+      "cinematic",
       "summary"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
@@ -61,6 +62,7 @@ describe("home-layout", () => {
       "small",
       "smaller",
       "smaller",
+      "large",
       "smaller"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.visible)).toEqual([
@@ -70,6 +72,7 @@ describe("home-layout", () => {
       true,
       true,
       false,
+      true,
       true
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
@@ -79,6 +82,7 @@ describe("home-layout", () => {
       true,
       true,
       false,
+      true,
       true
     ]);
     expect(DEFAULT_HOME_LAYOUT.every((item) => !item.collapsed)).toBe(true);
@@ -98,6 +102,15 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "history")).toMatchObject({
       visible: false,
       showInNavigation: false
+    });
+  });
+
+  test("shows cinematic module in top navigation by default", () => {
+    expect(canShowHomeModuleInNavigation("cinematic")).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "cinematic")).toMatchObject({
+      visible: true,
+      showInNavigation: true,
+      size: "large"
     });
   });
 
@@ -282,9 +295,10 @@ describe("home-layout", () => {
       "todo",
       "ledger",
       "history",
+      "cinematic",
       "summary"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {

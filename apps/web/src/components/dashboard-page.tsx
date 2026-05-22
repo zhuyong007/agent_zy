@@ -44,6 +44,7 @@ import {
   fetchHomeLayout,
   fetchModelProfiles,
   fetchModelProviders,
+  generateCinematic,
   generateHistory,
   openExternalUrl,
   openDashboardStream,
@@ -109,7 +110,16 @@ import {
 } from "../history-view";
 import { getTodoModuleSummary, TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
 
-export type RailSection = "home" | "manage" | "news" | "topics" | "history" | "ledger" | "todo" | "summary";
+export type RailSection =
+  | "home"
+  | "manage"
+  | "news"
+  | "topics"
+  | "history"
+  | "cinematic"
+  | "ledger"
+  | "todo"
+  | "summary";
 type NewsFilter = "all" | NewsCategory;
 
 const railItems: Array<{
@@ -124,9 +134,10 @@ const railItems: Array<{
   { key: "news", label: "热点情报", stamp: "02", to: "/news", moduleId: "news" },
   { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
   { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
-  { key: "ledger", label: "记账", stamp: "05", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "06", to: "/todo", moduleId: "todo" },
-  { key: "summary", label: "总结", stamp: "07", to: "/summaries", moduleId: "summary" }
+  { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
+  { key: "ledger", label: "记账", stamp: "06", to: "/ledger", moduleId: "ledger" },
+  { key: "todo", label: "待办", stamp: "07", to: "/todo", moduleId: "todo" },
+  { key: "summary", label: "总结", stamp: "08", to: "/summaries", moduleId: "summary" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -303,6 +314,10 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
   if (id === "history") {
     const historyCount = dashboard.notifications.filter((item) => item.kind === "history-post" && item.payload).length;
     return `${formatShortCount(historyCount)} 条知识卡`;
+  }
+
+  if (id === "cinematic") {
+    return `${formatShortCount(dashboard.cinematic.dashboard.projectCount)} 个镜头项目`;
   }
 
   if (id === "summary") {
@@ -1092,6 +1107,112 @@ function HistoryPanel({
   );
 }
 
+export function CinematicPanel({
+  dashboard,
+  size
+}: {
+  dashboard: DashboardData;
+  size: HomeModuleSize;
+}) {
+  const queryClient = useQueryClient();
+  const [concept, setConcept] = useState("");
+  const summary = dashboard.cinematic.dashboard;
+  const latest = summary.latestProject;
+  const compact = size === "small";
+  const minimal = size === "small";
+  const showList = size === "max" || size === "large" || size === "medium";
+  const showPrompt = size === "max" || size === "large";
+  const showInspiration = size !== "small";
+  const generateMutation = useMutation({
+    mutationFn: (nextConcept: string) =>
+      generateCinematic({
+        concept: nextConcept
+      }),
+    onSuccess: async () => {
+      setConcept("");
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard"]
+      });
+    }
+  });
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextConcept = concept.trim();
+
+    if (generateMutation.isPending) {
+      return;
+    }
+
+    generateMutation.mutate(nextConcept);
+  }
+
+  return (
+    <section className={`cinematic-panel cinematic-panel--${size}`}>
+      <div className="cinematic-panel__header">
+        <div>
+          <p className="eyebrow">Cinematic Shot Design</p>
+          <h2>电影镜头</h2>
+        </div>
+        <Link to="/cinematic" className="panel-link">
+          分镜台
+        </Link>
+      </div>
+      <form className="cinematic-panel__quick" onSubmit={handleSubmit}>
+        <input
+          value={concept}
+          onChange={(event) => setConcept(event.target.value)}
+          placeholder={compact ? "留空自动生成" : "输入概念；留空则由 AI 自行判断"}
+          disabled={generateMutation.isPending}
+          aria-label="快速生成电影分镜"
+        />
+        <button type="submit" disabled={generateMutation.isPending}>
+          {generateMutation.isPending ? "生成中" : "生成"}
+        </button>
+      </form>
+      {showInspiration ? <div className="cinematic-panel__inspiration">
+        <span>今日灵感</span>
+        <strong>{summary.todayInspiration}</strong>
+      </div> : null}
+      {latest ? (
+        <article className="cinematic-panel__latest">
+          <span>{latest.mood}</span>
+          <h3>{latest.title}</h3>
+          {!minimal ? <p>{latest.script}</p> : null}
+          <div className="cinematic-panel__meta">
+            <b>{latest.storyboard.length} 镜头</b>
+            <b>{latest.pace || "情绪递进"}</b>
+          </div>
+        </article>
+      ) : (
+        <div className="edge-empty">还没有电影分镜项目。</div>
+      )}
+      {showList && summary.recentProjects.length > 0 ? (
+        <div className="cinematic-panel__projects" aria-label="最近分镜项目">
+          {summary.recentProjects.slice(0, size === "max" ? 4 : 3).map((project) => (
+            <Link key={project.id} to="/cinematic" className="cinematic-panel__project">
+              <span>{project.storyboard.length} shots</span>
+              <strong>{project.title}</strong>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+      {showPrompt && latest?.storyboard[0] ? (
+        <div className="cinematic-panel__prompt">
+          <span>首镜提示词</span>
+          <p>{latest.storyboard[0].prompt.zh}</p>
+        </div>
+      ) : null}
+      {generateMutation.isError ? (
+        <div className="news-error">
+          错误：
+          {generateMutation.error instanceof Error ? generateMutation.error.message : "电影分镜生成失败"}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function SummaryPanel({
   dashboard,
   size
@@ -1735,6 +1856,10 @@ function renderHomeModuleContent({
     return <HistoryPanel notifications={dashboard.notifications} size={size} />;
   }
 
+  if (id === "cinematic") {
+    return <CinematicPanel dashboard={dashboard} size={size} />;
+  }
+
   if (id === "summary") {
     return <SummaryPanel dashboard={dashboard} size={size} />;
   }
@@ -1860,6 +1985,7 @@ const MODULE_AGENT_IDS: Record<string, string> = {
   news: "news-agent",
   topics: "topic-agent",
   history: "history-agent",
+  cinematic: "cinematic-agent",
   summary: "summary-agent"
 };
 

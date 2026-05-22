@@ -1,5 +1,7 @@
 import type {
   ChatResponse,
+  CinematicProject,
+  CinematicState,
   DashboardData,
   HomeModulePreference,
   LedgerFactRecord,
@@ -213,6 +215,74 @@ export async function fetchTopics(): Promise<TopicState> {
 
   if (!response.ok) {
     throw new Error("Failed to fetch topics");
+  }
+
+  return response.json();
+}
+
+export async function fetchCinematic(): Promise<CinematicState> {
+  const response = await fetch(`${API_BASE}/api/cinematic`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch cinematic projects");
+  }
+
+  return response.json();
+}
+
+export type CinematicGenerateInput = {
+  concept: string;
+  style?: string;
+  pace?: string;
+  targetShotCount?: number;
+};
+
+export async function generateCinematic(input: CinematicGenerateInput): Promise<CinematicState> {
+  const response = await fetch(`${API_BASE}/api/cinematic/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to generate cinematic storyboard"));
+  }
+
+  return response.json();
+}
+
+export async function createCinematicProject(input: Partial<CinematicProject>): Promise<CinematicProject> {
+  const response = await fetch(`${API_BASE}/api/cinematic/projects`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to create cinematic project"));
+  }
+
+  return response.json();
+}
+
+export async function updateCinematicProject(
+  id: string,
+  input: Partial<CinematicProject>
+): Promise<CinematicProject> {
+  const response = await fetch(`${API_BASE}/api/cinematic/projects/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to update cinematic project"));
   }
 
   return response.json();

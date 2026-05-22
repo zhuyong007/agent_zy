@@ -361,6 +361,55 @@ export interface HistoryPushState {
   lastTriggeredDate: string | null;
 }
 
+export interface StoryboardShot {
+  id: string;
+  title: string;
+  purpose: string;
+  duration: string;
+  cameraMovement: string;
+  shotType: string;
+  composition: string;
+  transition: string;
+  audioHint: string;
+  emotionalBeat: string;
+  prompt: {
+    zh: string;
+    en: string;
+  };
+}
+
+export interface CinematicProject {
+  id: string;
+  title: string;
+  concept: string;
+  mood: string;
+  script: string;
+  storyboard: StoryboardShot[];
+  createdAt: string;
+  updatedAt: string;
+  tags: string[];
+  style: string;
+  pace: string;
+  targetShotCount: number;
+}
+
+export interface CinematicState {
+  projects: CinematicProject[];
+  recentProjectIds: string[];
+  lastGeneratedAt: string | null;
+  status: "idle" | "generating";
+  lastError: string | null;
+}
+
+export interface CinematicDashboardSummary {
+  projectCount: number;
+  recentProjects: CinematicProject[];
+  latestProject: CinematicProject | null;
+  lastGeneratedAt: string | null;
+  totalShotCount: number;
+  todayInspiration: string;
+}
+
 export type ModelProviderId =
   | "modelscope"
   | "deepseek"
@@ -472,6 +521,7 @@ export interface AppState {
   schedule: ScheduleState;
   news: NewsState;
   topics: TopicState;
+  cinematic: CinematicState;
   summary: SummaryState;
   historyPush: HistoryPushState;
   nightlyReview: NightlyReviewState;
@@ -502,6 +552,9 @@ export interface DashboardData {
   };
   news: NewsState;
   topics: TopicState;
+  cinematic: CinematicState & {
+    dashboard: CinematicDashboardSummary;
+  };
   summary: SummaryState & {
     dashboard: SummaryDashboard;
   };

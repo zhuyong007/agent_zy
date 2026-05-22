@@ -8,6 +8,7 @@ import {
 import { QueryClient } from "@tanstack/react-query";
 
 import { DashboardPage, HomeManagePage } from "./components/dashboard-page";
+import { CinematicPage } from "./components/cinematic-page";
 import { HistoryPage } from "./components/history-page";
 import { LedgerPage } from "./components/ledger-page";
 import { NewsPage } from "./components/news-page";
@@ -52,6 +53,12 @@ const historyRoute = createRoute({
   component: HistoryPage
 });
 
+const cinematicRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cinematic",
+  component: CinematicPage
+});
+
 const manageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/manage",
@@ -82,6 +89,7 @@ const routeTree = rootRoute.addChildren([
   newsRoute,
   topicsRoute,
   historyRoute,
+  cinematicRoute,
   ledgerRoute,
   todoRoute,
   summaryRoute

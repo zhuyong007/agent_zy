@@ -3,8 +3,9 @@
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import type { NewsFeedItem } from "@agent-zy/shared-types";
+import type { DashboardData, NewsFeedItem } from "@agent-zy/shared-types";
 
 vi.mock("@tanstack/react-router", async () => {
   const react = await import("react");
@@ -17,7 +18,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import { CommandRail, ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
+import { CinematicPanel, CommandRail, ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
 
 const sampleItems: NewsFeedItem[] = [
   {
@@ -31,6 +32,115 @@ const sampleItems: NewsFeedItem[] = [
     category: "ai-models"
   }
 ];
+
+function createCinematicDashboard(): DashboardData {
+  const project = {
+    id: "cinematic-1",
+    title: "凌晨两点的城市",
+    concept: "孤独感的城市夜晚",
+    mood: "孤独",
+    script: "城市从不睡觉，只是把孤独留给凌晨两点的人。",
+    storyboard: [
+      {
+        id: "shot-1",
+        title: "雨后街口",
+        purpose: "建立孤独空间",
+        duration: "5 秒",
+        cameraMovement: "缓慢推进",
+        shotType: "环境人物镜头",
+        composition: "人物偏右，大面积负空间",
+        transition: "溶接",
+        audioHint: "低频城市环境音",
+        emotionalBeat: "压抑",
+        prompt: {
+          zh: "雨后街口，冷蓝霓虹，镜头缓慢推进，人物被压在画面边缘。",
+          en: "Rainy neon city street, slow cinematic push in, lonely figure at the edge of frame."
+        }
+      }
+    ],
+    createdAt: "2026-05-22T08:00:00.000Z",
+    updatedAt: "2026-05-22T08:00:00.000Z",
+    tags: ["城市"],
+    style: "冷蓝霓虹",
+    pace: "缓慢",
+    targetShotCount: 4
+  };
+
+  return {
+    tasks: { todo: [], inProgress: [], waitingFeedback: [], done: [] },
+    recentTasks: [],
+    messages: [],
+    notifications: [],
+    homeLayout: [],
+    ledger: {
+      entries: [],
+      modules: [],
+      summary: { todayExpense: 0, todayIncome: 0, balance: 0 },
+      dashboard: {
+        todayIncomeCents: 0,
+        todayExpenseCents: 0,
+        rolling7dNetCents: 0,
+        recentFacts: [],
+        coachTip: null,
+        pendingReviewCount: 0
+      }
+    },
+    schedule: { items: [], pendingReview: null, todayItems: [] },
+    news: {
+      feed: { count: 0, hasNext: false, nextCursor: null, items: [] },
+      daily: null,
+      dailyArchive: [],
+      lastFetchedAt: null,
+      lastUpdatedAt: null,
+      lastError: null,
+      status: "idle"
+    },
+    topics: {
+      dimensions: [],
+      current: [],
+      currentByDimension: [],
+      history: [],
+      lastGeneratedAt: null,
+      status: "idle",
+      strategy: "manual-curation",
+      lastError: null
+    },
+    cinematic: {
+      projects: [project],
+      recentProjectIds: [project.id],
+      lastGeneratedAt: project.updatedAt,
+      status: "idle",
+      lastError: null,
+      dashboard: {
+        projectCount: 1,
+        recentProjects: [project],
+        latestProject: project,
+        lastGeneratedAt: project.updatedAt,
+        totalShotCount: 1,
+        todayInspiration: "孤独 · 冷蓝霓虹"
+      }
+    },
+    summary: {
+      entries: [],
+      drafts: [],
+      lastUpdatedAt: null,
+      settings: { defaultSummaryType: "daily" },
+      dashboard: {
+        todaySummaryStatus: "missing",
+        weekSummaryStatus: "missing",
+        latestSummary: null,
+        recentKeywords: [],
+        recentMoodTags: [],
+        totalCount: 0,
+        dailyCount: 0,
+        weeklyCount: 0,
+        monthlyCount: 0,
+        yearlyCount: 0
+      }
+    },
+    agents: []
+  };
+}
 
 describe("NewsPanel", () => {
   let container: HTMLDivElement;
@@ -193,6 +303,44 @@ describe("CommandRail", () => {
     });
 
     expect(onRestartProject).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CinematicPanel", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("renders cinematic dashboard summary and quick generation entry", async () => {
+    const queryClient = new QueryClient();
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(CinematicPanel, {
+            dashboard: createCinematicDashboard(),
+            size: "large"
+          })
+        )
+      );
+    });
+
+    expect(container.textContent).toContain("电影镜头");
+    expect(container.textContent).toContain("今日灵感");
+    expect(container.textContent).toContain("凌晨两点的城市");
+    expect(container.querySelector('input[aria-label="快速生成电影分镜"]')).not.toBeNull();
   });
 });
 
