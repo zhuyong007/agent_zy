@@ -8,6 +8,7 @@ import { createHeuristicRouterModel, createHybridRouter } from "@agent-zy/router
 
 import { createAgentWorkerPool } from "./runtime/agent-pool";
 import { createEventBus } from "./services/events";
+import { createHistoryXhsService, type HistoryXhsService } from "./services/history-xhs-service";
 import { createLedgerReportService } from "./services/ledger-report-service";
 import { createLedgerSemanticService } from "./services/ledger-semantic-service";
 import { createModelSecretsRepository } from "./services/model-secrets";
@@ -25,8 +26,10 @@ export function createControlPlaneApp(options?: {
   startSchedulers?: boolean;
   openExternalUrl?: ExternalUrlOpener;
   restartProject?: ProjectRestarter;
+  historyXhsService?: HistoryXhsService;
 }) {
   const app = Fastify();
+  const startedAt = new Date().toISOString();
   const eventBus = createEventBus();
   const registry = createAgentRegistry();
   registry.registerMany(SUB_AGENT_MANIFESTS);
@@ -41,6 +44,7 @@ export function createControlPlaneApp(options?: {
   const ledgerSemanticService = createLedgerSemanticService();
   const ledgerReportService = createLedgerReportService();
   const summaryService = createSummaryService(store);
+  const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
   });
@@ -56,7 +60,8 @@ export function createControlPlaneApp(options?: {
     eventBus,
     ledgerSemanticService,
     ledgerReportService,
-    summaryService
+    summaryService,
+    historyXhsService
   });
   const scheduler = createControlPlaneScheduler({
     orchestrator,
@@ -78,6 +83,11 @@ export function createControlPlaneApp(options?: {
       ok: true
     });
   });
+
+  app.get("/api/system/status", async () => ({
+    ok: true,
+    startedAt
+  }));
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
 
@@ -420,6 +430,8 @@ export function createControlPlaneApp(options?: {
     });
     return orchestrator.generateHistory(body);
   });
+
+  app.post("/api/history/xhs/sync", async () => orchestrator.syncHistoryXhs());
 
   app.post("/api/news/refresh", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;

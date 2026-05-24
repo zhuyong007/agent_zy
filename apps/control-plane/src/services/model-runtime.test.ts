@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createModelRuntime } from "./model-runtime";
+import { createModelRuntime, DEFAULT_MODEL_RETRIES, DEFAULT_MODEL_TIMEOUT_MS } from "./model-runtime";
 import { createModelSecretsRepository } from "./model-secrets";
 import { createControlPlaneStore } from "./store";
 
@@ -16,6 +16,11 @@ describe("model runtime", () => {
     for (const dataDir of tempDirs.splice(0)) {
       rmSync(dataDir, { recursive: true, force: true });
     }
+  });
+
+  it("uses a long default timeout for generation-sized model calls", () => {
+    expect(DEFAULT_MODEL_TIMEOUT_MS).toBe(120_000);
+    expect(DEFAULT_MODEL_RETRIES).toBe(0);
   });
 
   function setupRuntime() {

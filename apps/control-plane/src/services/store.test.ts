@@ -251,6 +251,63 @@ describe("control-plane store", () => {
     });
   });
 
+  it("persists history xiaohongshu analytics in state.json", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+
+    store.setHistoryXhsState({
+      posts: [
+        {
+          id: "note-1",
+          title: "张骞出使西域",
+          publishedAt: "2026-05-20T08:00:00.000Z",
+          url: "https://www.xiaohongshu.com/explore/note-1",
+          views: 1200,
+          likes: 88,
+          collects: 19,
+          comments: 7,
+          shares: 3
+        }
+      ],
+      overview: {
+        postCount: 0,
+        totalViews: 0,
+        totalLikes: 0,
+        totalCollects: 0,
+        totalComments: 0,
+        totalShares: 0,
+        engagementRate: null
+      },
+      lastSyncedAt: "2026-05-24T08:00:00.000Z",
+      status: "idle",
+      lastError: null,
+      sourceUrl: "https://creator.xiaohongshu.com/statistics/data-analysis"
+    });
+
+    const reloadedStore = createControlPlaneStore(dataDir);
+
+    expect(reloadedStore.getState().historyXhs).toMatchObject({
+      overview: {
+        postCount: 1,
+        totalViews: 1200,
+        totalLikes: 88,
+        totalCollects: 19,
+        totalComments: 7,
+        totalShares: 3
+      },
+      posts: [
+        expect.objectContaining({
+          id: "note-1",
+          title: "张骞出使西域"
+        })
+      ],
+      lastSyncedAt: "2026-05-24T08:00:00.000Z",
+      status: "idle"
+    });
+    expect(reloadedStore.getDashboard([], []).historyXhs?.overview.totalViews).toBe(1200);
+  });
+
   it("bootstraps legacy ledger entries into dedicated facts during store initialization", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);
@@ -829,6 +886,46 @@ describe("control-plane store", () => {
       ]);
       expect(state.modelSettings.defaultProfileId).toBe("modelscope-default");
       expect(store.getDashboard([], []).modelSettingsDashboard?.enabledCount).toBe(1);
+    } finally {
+      delete process.env.MODELSCOPE_API_KEY;
+      delete process.env.MODELSCOPE_BASE_URL;
+      delete process.env.MODELSCOPE_MODEL;
+    }
+  });
+
+  it("migrates an existing disabled ModelScope example when environment credentials are added later", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    delete process.env.MODELSCOPE_API_KEY;
+
+    const initialStore = createControlPlaneStore(dataDir);
+    initialStore.updateModelProfile("modelscope-example", {
+      enabled: true,
+      purpose: ["general", "vision"]
+    });
+    initialStore.setPurposeDefault("vision", "modelscope-example");
+
+    process.env.MODELSCOPE_API_KEY = "ms-env-secret";
+    process.env.MODELSCOPE_BASE_URL = "https://modelscope.example/v1";
+    process.env.MODELSCOPE_MODEL = "Qwen/Test";
+
+    try {
+      const store = createControlPlaneStore(dataDir);
+      const state = store.getState();
+
+      expect(state.modelSettings.profiles).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: "modelscope-default",
+          provider: "modelscope",
+          modelName: "Qwen/Test",
+          baseUrl: "https://modelscope.example/v1",
+          apiKeyRef: "env:MODELSCOPE_API_KEY",
+          enabled: true,
+          isDefault: true
+        })
+      ]));
+      expect(state.modelSettings.defaultProfileId).toBe("modelscope-default");
+      expect(state.modelSettings.purposeDefaults.vision).toBe("modelscope-default");
     } finally {
       delete process.env.MODELSCOPE_API_KEY;
       delete process.env.MODELSCOPE_BASE_URL;

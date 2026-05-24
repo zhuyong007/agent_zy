@@ -48,7 +48,6 @@ export interface ControlPlaneScheduler {
 }
 
 export const DEFAULT_NEWS_INTERVAL_MS = 30 * 60 * 1000;
-export const DEFAULT_HISTORY_PUSH_HOUR = 7;
 
 export function createControlPlaneScheduler(options: {
   orchestrator: ControlPlaneOrchestrator;
@@ -58,8 +57,6 @@ export function createControlPlaneScheduler(options: {
   const newsIntervalMs = options.newsIntervalMs ?? DEFAULT_NEWS_INTERVAL_MS;
   let newsTimer: NodeJS.Timeout | null = null;
   let reviewTimer: NodeJS.Timeout | null = null;
-  let historyTimer: NodeJS.Timeout | null = null;
-  let historyAttemptedDate: string | null = null;
   let weeklyLedgerAttemptedKey: string | null = null;
   let monthlyLedgerAttemptedKey: string | null = null;
 
@@ -92,29 +89,6 @@ export function createControlPlaneScheduler(options: {
         }
       });
       options.store.setNightlyReviewDate(currentDate);
-    }
-  }
-
-  async function maybeTriggerHistoryPush() {
-    const now = new Date();
-    const currentDate = localDate(now);
-    const state = options.store.getState();
-
-    if (
-      now.getHours() === DEFAULT_HISTORY_PUSH_HOUR &&
-      state.historyPush.lastTriggeredDate !== currentDate &&
-      historyAttemptedDate !== currentDate
-    ) {
-      historyAttemptedDate = currentDate;
-      await options.orchestrator.runSystemTask({
-        agentId: "history-agent",
-        trigger: "schedule",
-        summary: "生成每日历史知识点",
-        meta: {
-          action: "generate",
-          localDate: currentDate
-        }
-      });
     }
   }
 
@@ -222,12 +196,6 @@ export function createControlPlaneScheduler(options: {
         }, 60_000);
       }
 
-      if (!historyTimer) {
-        void maybeTriggerHistoryPush();
-        historyTimer = setInterval(() => {
-          void maybeTriggerHistoryPush();
-        }, 60_000);
-      }
     },
     stop() {
       if (newsTimer) {
@@ -238,10 +206,6 @@ export function createControlPlaneScheduler(options: {
       if (reviewTimer) {
         clearInterval(reviewTimer);
         reviewTimer = null;
-      }
-      if (historyTimer) {
-        clearInterval(historyTimer);
-        historyTimer = null;
       }
     }
   };

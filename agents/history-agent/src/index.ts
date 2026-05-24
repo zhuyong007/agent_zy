@@ -188,6 +188,49 @@ function hasPayloadShape(value: unknown): boolean {
   return Boolean(record?.topic || record?.summary || record?.cards || record?.xiaohongshuCaption);
 }
 
+function countChineseCharacters(value: string): number {
+  return Array.from(value.matchAll(/[\u3400-\u9fff]/gu)).length;
+}
+
+function trimToChineseCharacterLimit(value: string, maxLength: number): string {
+  let chineseCharacterCount = 0;
+  let result = "";
+
+  for (const character of Array.from(value)) {
+    if (/[\u3400-\u9fff]/u.test(character)) {
+      chineseCharacterCount += 1;
+    }
+
+    if (chineseCharacterCount > maxLength) {
+      break;
+    }
+
+    result += character;
+  }
+
+  return result.trim();
+}
+
+function removePromptLengthNotes(prompt: string): string {
+  return prompt
+    .replace(/[，,。；;\s]*(?:约|大约|控制在|保持在|不少于|不超过|限制在|长度为)?\s*\d+\s*(?:到|-|~|至)\s*\d+\s*(?:个)?(?:中文)?(?:字|字符)/gu, "")
+    .replace(/[，,。；;\s]*(?:约|大约|控制在|保持在|不少于|不超过|限制在|长度为)?\s*\d+\s*(?:个)?(?:中文)?(?:字|字符)/gu, "")
+    .replace(/[，,。；;\s]*(?:字数|字符数|长度)\s*(?:要求|限制|控制)?\s*[:：]?\s*\d+\s*(?:到|-|~|至)?\s*\d*\s*(?:个)?(?:中文)?(?:字|字符)?/gu, "")
+    .trim();
+}
+
+function repairImagePrompt(prompt: string): string {
+  const filler =
+    "。图片描述：竖版小红书历史知识卡片，主体清晰居中，时代场景准确，构图稳定，光线柔和，色彩克制，材质细腻。图中文字以文字形式展示相关背景、关键人物、影响意义等大概知识范围，不必写详细知识";
+  let repaired = removePromptLengthNotes(prompt);
+
+  while (countChineseCharacters(repaired) < 100) {
+    repaired += filler;
+  }
+
+  return trimToChineseCharacterLimit(repaired, 200);
+}
+
 function validateCard(value: unknown): HistoryPostCard | null {
   const record = asRecord(value);
 
@@ -197,16 +240,17 @@ function validateCard(value: unknown): HistoryPostCard | null {
 
   const title = asString(record.title);
   const imageText = asString(record.imageText);
-  const prompt = asString(record.prompt);
+  const rawPrompt = asString(record.prompt);
 
-  if (!title || !imageText || !prompt) {
+  if (!title || !imageText || !rawPrompt) {
     return null;
   }
 
-  const promptLength = Array.from(prompt).length;
+  const prompt = repairImagePrompt(rawPrompt);
+  const promptLength = countChineseCharacters(prompt);
 
   if (promptLength < 100 || promptLength > 200) {
-    throw new Error("每张图的生图提示词必须是 100 到 200 个中文字符");
+    throw new Error("每张图的生图提示词必须是100到200个中文字符");
   }
 
   return {
@@ -337,7 +381,36 @@ function normalizePayloadInput(value: unknown): unknown {
   return value;
 }
 
-async function generateWithModelRuntime(topic: string, requestedAt: string): Promise<HistoryPostPayload> {
+function buildHistoryXhsAnalyticsPrompt(state: AgentExecutionRequest["state"]): string {
+  const posts = state.historyXhs?.posts ?? [];
+
+  if (posts.length === 0) {
+    return "";
+  }
+
+  const overview = state.historyXhs?.overview;
+  const topPostLines = [...posts]
+    .sort((left, right) => {
+      const leftScore = left.views + left.likes * 8 + left.collects * 10 + left.comments * 12 + left.shares * 16;
+      const rightScore = right.views + right.likes * 8 + right.collects * 10 + right.comments * 12 + right.shares * 16;
+
+      return rightScore - leftScore;
+    })
+    .slice(0, 5)
+    .map(
+      (post, index) =>
+        `${index + 1}. ${post.title}：浏览${post.views}，点赞${post.likes}，收藏${post.collects}，评论${post.comments}，分享${post.shares}`
+    )
+    .join("\n");
+
+  return `\n小红书真实发布数据参考：已同步作品 ${overview?.postCount ?? posts.length} 篇，总浏览 ${overview?.totalViews ?? 0}，总点赞 ${overview?.totalLikes ?? 0}，总收藏 ${overview?.totalCollects ?? 0}，总评论 ${overview?.totalComments ?? 0}，总分享 ${overview?.totalShares ?? 0}。\n表现较好的作品：\n${topPostLines}\n请先自行判断样本量和数据质量是否足够；如果足够，再参考真实数据调整选题角度、标题钩子、卡片节奏和正文表达；如果不足，只把这些数据作为轻量背景，不要机械迎合单个作品。`;
+}
+
+async function generateWithModelRuntime(
+  topic: string,
+  requestedAt: string,
+  analyticsPrompt: string
+): Promise<HistoryPostPayload> {
   const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
 
   if (fixture) {
@@ -349,9 +422,11 @@ async function generateWithModelRuntime(topic: string, requestedAt: string): Pro
   });
   const result = await getModelClient().generateText({
     purpose: "vision",
-    systemPrompt:
+    systemPrompt: analyticsPrompt
+      ? `中文历史知识编辑，只输出严格 JSON，不要输出 Markdown。${analyticsPrompt}`
+      :
       "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
-    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，每张图的 prompt 必须为 100 到 200 个中文字符，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格。`
+    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字形式展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。`
   });
   const rawContent = result.text;
   const normalizedPayloadInput = normalizePayloadInput(rawContent);
@@ -388,7 +463,11 @@ export const agent = defineAgent({
     });
 
     try {
-      const payload = await generateWithModelRuntime(topic, input.requestedAt);
+      const payload = await generateWithModelRuntime(
+        topic,
+        input.requestedAt,
+        buildHistoryXhsAnalyticsPrompt(input.state)
+      );
       const nextArchive = recordGeneratedTopic(archive, payload.topic, input.requestedAt);
       writeTopicArchive(archivePath, nextArchive);
 

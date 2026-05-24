@@ -27,6 +27,60 @@ function formatDateTime(timestamp?: string | null) {
   });
 }
 
+export function buildStoryboardVideoPrompt(project: CinematicProject) {
+  const shotLines = project.storyboard
+    .map(
+      (shot, index) => [
+        `第 ${index + 1} 张分镜图：${shot.title}`,
+        `用途：${shot.purpose}`,
+        `时长：${shot.duration}`,
+        `镜头运动：${shot.cameraMovement}`,
+        `构图：${shot.composition}`,
+        `转场：${shot.transition}`,
+        `镜头衔接：${shot.handoff || "延续上一镜的动作、光线和空间方向，自然进入下一镜。"}`,
+        `情绪：${shot.emotionalBeat}`,
+        `声音参考：${shot.audioHint}`
+      ].join("\n")
+    )
+    .join("\n\n");
+  const continuityLines = project.continuity
+    ? [
+        `连续动作线：${project.continuity.actionLine}`,
+        `空间连续性：${project.continuity.spatialLine}`,
+        `情绪递进线：${project.continuity.emotionalLine}`,
+        `视觉连续性：${project.continuity.visualLine}`,
+        `声音连续性：${project.continuity.audioLine}`
+      ].join("\n")
+    : [
+        `连续动作线：请把每张分镜图视为同一场戏中连续发生的动作节点，而不是独立画面。`,
+        `空间连续性：延续分镜图里的场景方位、主体位置、前景/中景/背景关系和光线方向。`,
+        `情绪递进线：让情绪从“${project.storyboard[0]?.emotionalBeat || project.mood}”逐步推进到“${project.storyboard.at(-1)?.emotionalBeat || project.mood}”。`,
+        `视觉连续性：延续${project.style || "分镜图"}的色彩、材质、天气、景深和镜头质感。`,
+        `声音连续性：用环境声、动作声或音乐尾音把镜头自然连起来。`
+      ].join("\n");
+
+  return `请根据按顺序上传的 ${project.storyboard.length} 张分镜图生成一条连贯视频。
+
+核心要求：
+- 把这些分镜图当作连续关键帧，严格按上传顺序串联，不要打乱镜头。
+- 不要重新设计角色、服装、场景空间或主体构图；保持人物身份、环境位置、光影方向、色彩气质和画面比例连续。
+- 镜头之间用自然的摄影机运动、动作延续、光影变化或转场连接，避免突然跳切、角色变脸、服装变化、场景漂移。
+- 整体风格：${project.style || "延续分镜图的电影感风格"}。
+- 整体节奏：${project.pace || "按照情绪递进自然推进"}。
+- 核心情绪：${project.mood}。
+- 生成的是视频，不要输出字幕、水印、解释文字或额外画面元素。
+
+连续性导演设计：
+
+${continuityLines}
+
+分镜顺序与运动设计：
+
+${shotLines}
+
+最终视频应像同一场戏的连续片段：画面、人物、空间和情绪保持统一，只让时间、镜头运动和情绪发生变化。`;
+}
+
 export function buildCinematicMarkdown(project: CinematicProject) {
   const shots = project.storyboard
     .map(
@@ -62,6 +116,10 @@ ${shot.prompt.en}`
 ## 短视频文案
 
 ${project.script}
+
+## 分镜串联视频提示词
+
+${buildStoryboardVideoPrompt(project)}
 
 ${shots}
 `;
@@ -191,6 +249,34 @@ function ShotDetail({ shot }: { shot: StoryboardShot | null }) {
         {copied === "both" ? "中英提示词已复制" : "一键复制提示词"}
       </button>
     </article>
+  );
+}
+
+function StoryboardVideoPromptPanel({ project }: { project: CinematicProject | null }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!project) {
+    return null;
+  }
+
+  const prompt = buildStoryboardVideoPrompt(project);
+
+  async function handleCopy() {
+    await copyText(prompt);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <section className="cinematic-prompt-block cinematic-prompt-block--video">
+      <div>
+        <h3>分镜串联视频提示词</h3>
+        <button type="button" onClick={() => void handleCopy()}>
+          {copied ? "已复制" : "复制"}
+        </button>
+      </div>
+      <p>{prompt}</p>
+    </section>
   );
 }
 
@@ -478,6 +564,7 @@ export function CinematicPage() {
         </section>
 
         <aside className="cinematic-detail">
+          <StoryboardVideoPromptPanel project={selectedProject} />
           <ShotDetail shot={selectedShot} />
         </aside>
       </section>

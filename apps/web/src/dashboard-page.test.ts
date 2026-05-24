@@ -510,6 +510,14 @@ describe("ManageModuleCard", () => {
     });
 
     expect(container.textContent).toContain("配置模型");
+    expect(container.querySelector(".manage-card--interactive")).not.toBeNull();
+
+    const sizeSelect = Array.from(container.querySelectorAll("select")).find(
+      (select) => (select as HTMLSelectElement).value === "smaller"
+    ) as HTMLSelectElement;
+
+    expect(sizeSelect).toBeTruthy();
+
     const modelSelect = Array.from(container.querySelectorAll("select")).find((select) =>
       Array.from(select.options).some((option) => option.value === "profile-1")
     ) as HTMLSelectElement;

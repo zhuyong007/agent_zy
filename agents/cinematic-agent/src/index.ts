@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { defineAgent, getModelClient } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
-import type { CinematicProject, CinematicState, StoryboardShot } from "@agent-zy/shared-types";
+import type { CinematicContinuity, CinematicProject, CinematicState, StoryboardShot } from "@agent-zy/shared-types";
 
 import { buildCinematicPrompt, CINEMATIC_SYSTEM_PROMPT } from "./prompts";
 import type { CinematicGenerationInput } from "./types";
@@ -119,6 +119,7 @@ function validateShot(value: unknown, index: number): StoryboardShot {
   const transition = asString(record.transition);
   const audioHint = asString(record.audioHint);
   const emotionalBeat = asString(record.emotionalBeat);
+  const handoff = asString(record.handoff);
 
   if (
     !title ||
@@ -130,6 +131,7 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     !transition ||
     !audioHint ||
     !emotionalBeat ||
+    !handoff ||
     !zhPrompt ||
     !enPrompt
   ) {
@@ -147,11 +149,36 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     transition,
     audioHint,
     emotionalBeat,
+    handoff,
     prompt: {
       zh: zhPrompt,
       en: enPrompt
     }
   };
+}
+
+function validateContinuity(value: unknown): CinematicContinuity | undefined {
+  const record = asRecord(value);
+
+  if (!record) {
+    return undefined;
+  }
+
+  const continuity = {
+    actionLine: asString(record.actionLine),
+    spatialLine: asString(record.spatialLine),
+    emotionalLine: asString(record.emotionalLine),
+    visualLine: asString(record.visualLine),
+    audioLine: asString(record.audioLine)
+  };
+
+  return continuity.actionLine &&
+    continuity.spatialLine &&
+    continuity.emotionalLine &&
+    continuity.visualLine &&
+    continuity.audioLine
+    ? (continuity as CinematicContinuity)
+    : undefined;
 }
 
 function validateProject(value: unknown, input: CinematicGenerationInput, requestedAt: string): CinematicProject {
@@ -168,6 +195,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
   const storyboard = Array.isArray(record.storyboard)
     ? record.storyboard.map(validateShot)
     : [];
+  const continuity = validateContinuity(record.continuity);
   const style = asString(record.style) ?? input.style ?? "电影感镜头设计";
   const pace = asString(record.pace) ?? input.pace ?? "情绪递进";
   const targetShotCount = asPositiveInteger(record.targetShotCount) ?? input.targetShotCount ?? storyboard.length;
@@ -180,6 +208,10 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     throw new Error("电影分镜至少需要 4 个镜头，才能形成完整情绪递进");
   }
 
+  if (!continuity) {
+    throw new Error("cinematic project is missing continuity design");
+  }
+
   return {
     id: asString(record.id) ?? `cinematic-${randomUUID()}`,
     title,
@@ -187,6 +219,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     mood,
     script,
     storyboard,
+    continuity,
     createdAt: asString(record.createdAt) ?? requestedAt,
     updatedAt: requestedAt,
     tags: asStringArray(record.tags).slice(0, 12),

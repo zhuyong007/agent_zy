@@ -1,6 +1,35 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { generateHistory, openExternalUrl, restartProject } from "./api";
+import {
+  fetchSystemStatus,
+  generateCinematic,
+  generateHistory,
+  openExternalUrl,
+  resolveApiBase,
+  restartProject,
+  syncHistoryXhsAnalytics,
+  testModelProfile
+} from "./api";
+
+describe("resolveApiBase", () => {
+  it("uses the current page host when no API URL is configured", () => {
+    expect(resolveApiBase(undefined, { protocol: "http:", hostname: "192.168.1.20" })).toBe(
+      "http://192.168.1.20:4378"
+    );
+  });
+
+  it("rewrites loopback API URL overrides for remote web access", () => {
+    expect(resolveApiBase("http://127.0.0.1:4378", { protocol: "http:", hostname: "192.168.1.20" })).toBe(
+      "http://192.168.1.20:4378"
+    );
+  });
+
+  it("keeps non-loopback API URL overrides", () => {
+    expect(resolveApiBase("https://api.example.com", { protocol: "http:", hostname: "192.168.1.20" })).toBe(
+      "https://api.example.com"
+    );
+  });
+});
 
 describe("generateHistory", () => {
   afterEach(() => {
@@ -86,6 +115,94 @@ describe("generateHistory", () => {
   });
 });
 
+describe("generateCinematic", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("surfaces backend generation failures to the caller", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        message: "未找到可用模型配置"
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateCinematic({ concept: "" })).rejects.toThrow("未找到可用模型配置");
+  });
+});
+
+describe("testModelProfile", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns backend test failures as a visible model test result", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        message: "model test endpoint failed"
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(testModelProfile("profile-1")).resolves.toEqual({
+      ok: false,
+      message: "model test endpoint failed"
+    });
+  });
+});
+
+describe("syncHistoryXhsAnalytics", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts to the history xiaohongshu sync endpoint and refreshes dashboard", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          posts: [],
+          overview: {
+            totalViews: 1200
+          },
+          lastSyncedAt: "2026-05-24T08:00:00.000Z",
+          status: "idle",
+          lastError: null,
+          sourceUrl: "https://creator.xiaohongshu.com/statistics/data-analysis"
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          notifications: [],
+          homeLayout: [],
+          recentTasks: []
+        })
+      });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const dashboard = await syncHistoryXhsAnalytics();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/history/xhs/sync");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST"
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/dashboard");
+    expect(dashboard.historyXhs?.overview.totalViews).toBe(1200);
+  });
+});
+
 describe("openExternalUrl", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -137,8 +254,37 @@ describe("restartProject", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/system/restart"),
       expect.objectContaining({
-        method: "POST"
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: "{}"
       })
     );
+  });
+});
+
+describe("fetchSystemStatus", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reads the backend process start marker", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        startedAt: "2026-05-24T10:00:00.000Z"
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchSystemStatus()).resolves.toEqual({
+      ok: true,
+      startedAt: "2026-05-24T10:00:00.000Z"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/system/status"));
   });
 });

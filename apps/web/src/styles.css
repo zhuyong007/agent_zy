@@ -449,6 +449,60 @@ textarea {
   opacity: 0.62;
 }
 
+.restart-toast {
+  position: fixed;
+  right: 24px;
+  top: calc(var(--workspace-padding) + var(--rail-height) + 12px);
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(360px, calc(100vw - 48px));
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(10, 16, 26, 0.9);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+}
+
+.restart-toast div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.restart-toast strong {
+  font-size: 0.88rem;
+}
+
+.restart-toast span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.restart-toast button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 9px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.07);
+  cursor: pointer;
+  font-size: 0.76rem;
+}
+
+.restart-toast--success {
+  border-color: rgba(var(--accent-rgb), 0.38);
+}
+
+.restart-toast--error {
+  border-color: rgba(239, 156, 166, 0.42);
+}
+
 .command-rail.is-expanded .command-route__toggle span {
   transform: rotate(180deg);
 }
@@ -2862,6 +2916,7 @@ body[data-theme="day"] .summary-list button {
 .history-stage-card span,
 .history-stage__meta span,
 .history-stage__metrics span,
+.history-xhs-panel span,
 .history-archive__item span {
   color: rgba(228, 207, 167, 0.68);
   font-size: 0.68rem;
@@ -2886,6 +2941,7 @@ body[data-theme="day"] .summary-list button {
 .history-panel__item p,
 .history-panel__caption p,
 .history-stage__hero > div > p,
+.history-xhs-panel p,
 .history-stage-card p,
 .history-caption-card p,
 .history-archive__item p {
@@ -2899,14 +2955,16 @@ body[data-theme="day"] .summary-list button {
 }
 
 .history-panel__stats,
-.history-stage__metrics {
+.history-stage__metrics,
+.history-xhs-panel__metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .history-panel__stats div,
-.history-stage__metrics div {
+.history-stage__metrics div,
+.history-xhs-panel__metrics div {
   display: grid;
   gap: 6px;
   padding: 11px 12px;
@@ -2918,13 +2976,15 @@ body[data-theme="day"] .summary-list button {
 }
 
 .history-panel__stats strong,
-.history-stage__metrics strong {
+.history-stage__metrics strong,
+.history-xhs-panel__metrics strong {
   font-size: 0.94rem;
   line-height: 1.35;
 }
 
 .history-panel__list,
 .history-stage__cards,
+.history-xhs-panel__posts,
 .history-archive__list {
   display: grid;
   gap: 10px;
@@ -2932,6 +2992,7 @@ body[data-theme="day"] .summary-list button {
 
 .history-panel__item,
 .history-stage-card,
+.history-xhs-panel__posts article,
 .history-archive__item {
   padding: 12px 13px;
   border: 1px solid rgba(191, 156, 93, 0.12);
@@ -2960,6 +3021,75 @@ body[data-theme="day"] .summary-list button {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.history-stage-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-xhs-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.history-xhs-panel__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-xhs-panel__footer a {
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.history-xhs-panel__posts {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.history-xhs-panel__posts article {
+  display: grid;
+  gap: 6px;
+}
+
+.history-copy-button,
+.history-archive__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.16);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--control-bg);
+  cursor: pointer;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.history-copy-button:hover,
+.history-archive__delete:hover {
+  border-color: rgba(var(--accent-rgb), 0.34);
+  transform: translateY(-1px);
+}
+
+.history-archive__delete:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
 .history-panel__item strong,
@@ -3208,12 +3338,28 @@ body[data-theme="day"] .summary-list button {
 .history-archive__item {
   width: 100%;
   color: var(--text);
-  text-align: left;
-  cursor: pointer;
   transition:
     border-color 140ms ease,
     transform 140ms ease,
     background-color 140ms ease;
+}
+
+.history-archive__select {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.history-archive__delete {
+  justify-self: start;
+  margin-top: 8px;
 }
 
 .history-archive__item:hover,
@@ -4883,6 +5029,11 @@ body[data-theme="day"] .summary-list button {
   transform: translateY(-1px);
 }
 
+.manage-card--interactive:hover,
+.manage-card--interactive:focus-within {
+  transform: none;
+}
+
 .manage-card--background-workspace {
   display: grid;
   gap: 14px;
@@ -5110,11 +5261,16 @@ body[data-theme="day"] .manage-field input[type="text"] {
 }
 
 .manage-field select {
+  position: relative;
+  z-index: 2;
+  appearance: auto;
+  -webkit-appearance: menulist;
   width: 100%;
   min-height: 36px;
   border-radius: 8px;
   padding: 0 10px;
   outline: none;
+  pointer-events: auto;
 }
 
 .background-stage {
@@ -5718,6 +5874,8 @@ body[data-theme="day"] .topic-score {
 @media (max-width: 720px) {
   .history-panel__stats,
   .history-stage__metrics,
+  .history-xhs-panel__metrics,
+  .history-xhs-panel__posts,
   .history-stage__cards {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -7481,6 +7639,8 @@ body[data-theme="day"] .cinematic-project-controls input {
 .cinematic-detail {
   position: sticky;
   top: 92px;
+  display: grid;
+  gap: 14px;
 }
 
 .cinematic-section-heading h1 {
@@ -7558,6 +7718,12 @@ body[data-theme="day"] .cinematic-project-controls input {
 .cinematic-shot-detail {
   display: grid;
   gap: 14px;
+}
+
+.cinematic-prompt-block--video p {
+  max-height: 18em;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .cinematic-shot-meta {

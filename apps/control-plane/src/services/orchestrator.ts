@@ -6,6 +6,7 @@ import type {
   CinematicProject,
   CinematicState,
   DashboardData,
+  HistoryXhsState,
   HomeModulePreference,
   LedgerFactRecord,
   LedgerSemanticRecord,
@@ -24,6 +25,7 @@ import type { HybridRouter } from "@agent-zy/router-core";
 
 import type { AgentWorkerPool } from "../runtime/agent-pool";
 import type { EventBus } from "./events";
+import type { HistoryXhsService } from "./history-xhs-service";
 import type { LedgerReportService } from "./ledger-report-service";
 import type { LedgerSemanticService } from "./ledger-semantic-service";
 import type { ControlPlaneStore } from "./store";
@@ -76,6 +78,7 @@ export interface ControlPlaneOrchestrator {
   updateCinematicProject(id: string, input: unknown): CinematicProject;
   generateCinematicProject(input?: Record<string, unknown>): Promise<CinematicState>;
   generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
+  syncHistoryXhs(): Promise<HistoryXhsState>;
   listSummaries(query?: SummaryListQuery): { entries: SummaryEntry[] };
   getSummary(id: string): SummaryEntry | null;
   createSummary(input: unknown): SummaryEntry;
@@ -120,6 +123,7 @@ export function createControlPlaneOrchestrator(options: {
   ledgerSemanticService: LedgerSemanticService;
   ledgerReportService: LedgerReportService;
   summaryService: SummaryService;
+  historyXhsService: HistoryXhsService;
 }): ControlPlaneOrchestrator {
   function persistLedgerMetadata(input: {
     taskId: string;
@@ -298,6 +302,7 @@ export function createControlPlaneOrchestrator(options: {
   function normalizeShotInput(value: unknown, index: number): CinematicProject["storyboard"][number] {
     const record = asRecord(value);
     const prompt = asRecord(record.prompt);
+    const handoff = asString(record.handoff);
 
     return {
       id: asString(record.id) || `shot-${index + 1}`,
@@ -310,11 +315,25 @@ export function createControlPlaneOrchestrator(options: {
       transition: asString(record.transition),
       audioHint: asString(record.audioHint),
       emotionalBeat: asString(record.emotionalBeat),
+      ...(handoff ? { handoff } : {}),
       prompt: {
         zh: asString(prompt.zh),
         en: asString(prompt.en)
       }
     };
+  }
+
+  function normalizeContinuityInput(value: unknown): CinematicProject["continuity"] | undefined {
+    const record = asRecord(value);
+    const continuity = {
+      actionLine: asString(record.actionLine),
+      spatialLine: asString(record.spatialLine),
+      emotionalLine: asString(record.emotionalLine),
+      visualLine: asString(record.visualLine),
+      audioLine: asString(record.audioLine)
+    };
+
+    return Object.values(continuity).some(Boolean) ? continuity : undefined;
   }
 
   function createProjectFromInput(input: unknown): CinematicProject {
@@ -331,6 +350,7 @@ export function createControlPlaneOrchestrator(options: {
       mood: asString(record.mood),
       script: asString(record.script),
       storyboard,
+      ...(normalizeContinuityInput(record.continuity) ? { continuity: normalizeContinuityInput(record.continuity) } : {}),
       createdAt: asString(record.createdAt) || now,
       updatedAt: now,
       tags: Array.isArray(record.tags)
@@ -589,7 +609,7 @@ export function createControlPlaneOrchestrator(options: {
       return next.projects.find((project) => project.id === id) ?? updated;
     },
     async generateCinematicProject(input = {}) {
-      await this.runSystemTask({
+      const task = await this.runSystemTask({
         agentId: "cinematic-agent",
         trigger: "system",
         summary: "生成电影镜头设计",
@@ -598,6 +618,10 @@ export function createControlPlaneOrchestrator(options: {
           action: "generate"
         }
       });
+
+      if (task.status === "failed") {
+        throw new Error(task.resultSummary ?? "cinematic generation failed");
+      }
 
       return options.store.getState().cinematic;
     },
@@ -623,6 +647,14 @@ export function createControlPlaneOrchestrator(options: {
       });
 
       return this.getDashboard();
+    },
+    async syncHistoryXhs() {
+      const synced = await options.historyXhsService.sync();
+      const next = options.store.setHistoryXhsState(synced);
+
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+
+      return next;
     },
     listSummaries(query) {
       return options.summaryService.list(query);

@@ -361,6 +361,37 @@ export interface HistoryPushState {
   lastTriggeredDate: string | null;
 }
 
+export interface HistoryXhsPostMetrics {
+  id: string;
+  title: string;
+  publishedAt: string | null;
+  url: string | null;
+  views: number;
+  likes: number;
+  collects: number;
+  comments: number;
+  shares: number;
+}
+
+export interface HistoryXhsOverview {
+  postCount: number;
+  totalViews: number;
+  totalLikes: number;
+  totalCollects: number;
+  totalComments: number;
+  totalShares: number;
+  engagementRate: number | null;
+}
+
+export interface HistoryXhsState {
+  posts: HistoryXhsPostMetrics[];
+  overview: HistoryXhsOverview;
+  lastSyncedAt: string | null;
+  status: "idle" | "syncing" | "failed";
+  lastError: string | null;
+  sourceUrl: string;
+}
+
 export interface StoryboardShot {
   id: string;
   title: string;
@@ -372,10 +403,19 @@ export interface StoryboardShot {
   transition: string;
   audioHint: string;
   emotionalBeat: string;
+  handoff?: string;
   prompt: {
     zh: string;
     en: string;
   };
+}
+
+export interface CinematicContinuity {
+  actionLine: string;
+  spatialLine: string;
+  emotionalLine: string;
+  visualLine: string;
+  audioLine: string;
 }
 
 export interface CinematicProject {
@@ -385,6 +425,7 @@ export interface CinematicProject {
   mood: string;
   script: string;
   storyboard: StoryboardShot[];
+  continuity?: CinematicContinuity;
   createdAt: string;
   updatedAt: string;
   tags: string[];
@@ -524,6 +565,7 @@ export interface AppState {
   cinematic: CinematicState;
   summary: SummaryState;
   historyPush: HistoryPushState;
+  historyXhs?: HistoryXhsState;
   nightlyReview: NightlyReviewState;
   modelSettings: ModelSettingsState;
 }
@@ -558,6 +600,7 @@ export interface DashboardData {
   summary: SummaryState & {
     dashboard: SummaryDashboard;
   };
+  historyXhs?: HistoryXhsState;
   modelSettingsDashboard?: ModelSettingsDashboard;
   agents: AgentRuntimeView[];
 }

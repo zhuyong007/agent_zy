@@ -25,6 +25,12 @@ describe("sub-agent route config", () => {
     }
   });
 
+  it("keeps history generation user-triggered only", () => {
+    const historyManifest = SUB_AGENT_MANIFESTS.find((manifest) => manifest.id === "history-agent");
+
+    expect(historyManifest?.triggers).toEqual(["user"]);
+  });
+
   it("provides a management module for every configured sub-agent", () => {
     expect(SUB_AGENT_ROUTES.every((route) => route.homeModule)).toBe(true);
     expect(SUB_AGENT_HOME_MODULE_DEFINITIONS.map((definition) => definition.id)).toEqual([

@@ -7,7 +7,7 @@ describe("control-plane scheduler history push", () => {
     vi.useRealTimers();
   });
 
-  it("runs the history agent once at 07:00 local time for each date", async () => {
+  it("does not run the history agent automatically at 07:00 local time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 4, 7, 6, 59, 0));
     const tasks: Array<{ agentId: string; meta?: Record<string, unknown> }> = [];
@@ -43,19 +43,12 @@ describe("control-plane scheduler history push", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(tasks.filter((task) => task.agentId === "history-agent")).toEqual([
-      expect.objectContaining({
-        meta: expect.objectContaining({
-          action: "generate",
-          localDate: "2026-05-07"
-        })
-      })
-    ]);
+    expect(tasks.filter((task) => task.agentId === "history-agent")).toHaveLength(0);
 
     vi.setSystemTime(new Date(2026, 4, 8, 7, 0, 0));
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(tasks.filter((task) => task.agentId === "history-agent")).toHaveLength(2);
+    expect(tasks.filter((task) => task.agentId === "history-agent")).toHaveLength(0);
     scheduler.stop();
   });
 });

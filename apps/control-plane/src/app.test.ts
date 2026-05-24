@@ -26,6 +26,13 @@ function createCinematicFixture() {
     pace: "缓慢推进，结尾留白",
     targetShotCount: 4,
     tags: ["城市", "夜晚", "孤独"],
+    continuity: {
+      actionLine: "The figure keeps moving through the same rainy city block until reaching the final doorway.",
+      spatialLine: "Every shot preserves the wet street, storefront light, and right-edge character position as a connected route.",
+      emotionalLine: "The feeling shifts from isolation to a quiet decision without breaking the restrained mood.",
+      visualLine: "Cold neon reflections, wet glass, shallow focus, and film grain stay consistent across the sequence.",
+      audioLine: "Low city ambience and rain continue under each shot, with only subtle volume changes."
+    },
     storyboard: Array.from({ length: 4 }, (_, index) => ({
       id: `shot-${index + 1}`,
       title: `镜头 ${index + 1}`,
@@ -37,6 +44,7 @@ function createCinematicFixture() {
       transition: "溶接",
       audioHint: "低频环境音",
       emotionalBeat: "压抑到清醒",
+      handoff: `Shot ${index + 1} ends on a matching rain reflection that leads directly into shot ${index + 2}.`,
       prompt: {
         zh: longCinematicPrompt(`镜头 ${index + 1}`),
         en: `Shot ${index + 1}, cinematic rainy neon city night, slow push in through wet glass, shallow depth of field, solitary figure near the edge of frame, negative space, subtle film grain, low frequency city ambience, restrained emotional rhythm.`
@@ -193,6 +201,35 @@ describe("control-plane app", () => {
     }
   });
 
+  it("reports the current backend process start marker", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-status-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/system/status"
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true,
+        startedAt: expect.any(String)
+      });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("records ledger facts through the ledger-agent path and exposes them in dashboard recent facts", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-ledger-record-test-"));
     const isolatedApp = createControlPlaneApp({
@@ -297,6 +334,35 @@ describe("control-plane app", () => {
           title: "凌晨两点的城市"
         })
       });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("reports cinematic generation task failures instead of returning an empty state", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-cinematic-failure-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const generateResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/cinematic/generate",
+        payload: {
+          concept: ""
+        }
+      });
+
+      expect(generateResponse.statusCode).toBe(500);
+      expect(generateResponse.json().message).toContain("未找到可用模型配置");
     } finally {
       await isolatedApp.close();
       rmSync(isolatedDataDir, {
@@ -702,6 +768,81 @@ describe("control-plane app", () => {
         })
       ])
     });
+  });
+
+  it("syncs history xiaohongshu analytics", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-xhs-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false,
+      historyXhsService: {
+        async sync() {
+          return {
+            posts: [
+              {
+                id: "note-1",
+                title: "张骞出使西域",
+                publishedAt: "2026-05-20T08:00:00.000Z",
+                url: "https://www.xiaohongshu.com/explore/note-1",
+                views: 1200,
+                likes: 88,
+                collects: 19,
+                comments: 7,
+                shares: 3
+              }
+            ],
+            overview: {
+              postCount: 1,
+              totalViews: 1200,
+              totalLikes: 88,
+              totalCollects: 19,
+              totalComments: 7,
+              totalShares: 3,
+              engagementRate: 117 / 1200
+            },
+            lastSyncedAt: "2026-05-24T08:00:00.000Z",
+            status: "idle",
+            lastError: null,
+            sourceUrl: "https://creator.xiaohongshu.com/statistics/data-analysis"
+          };
+        }
+      }
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/history/xhs/sync"
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        overview: {
+          totalViews: 1200,
+          totalLikes: 88
+        },
+        posts: [
+          expect.objectContaining({
+            title: "张骞出使西域"
+          })
+        ]
+      });
+
+      const dashboard = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/dashboard"
+      });
+
+      expect(dashboard.json().historyXhs.overview.totalViews).toBe(1200);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
   });
 
   it("manages model profiles without exposing API keys", async () => {

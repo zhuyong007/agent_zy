@@ -22,6 +22,13 @@ function createFixture(overrides: Partial<CinematicProject> = {}) {
     script: "城市从不睡觉，只是把孤独留给凌晨两点的人。",
     style: "冷蓝霓虹与低饱和胶片感",
     pace: "缓慢建立，轻微递进，结尾留白",
+    continuity: {
+      actionLine: "人物从便利店门口走向街角，动作始终克制缓慢。",
+      spatialLine: "所有镜头发生在同一条雨后街道，便利店、积水和街角霓虹保持方位连续。",
+      emotionalLine: "情绪从被城市压住的孤独，过渡到短暂停步后的清醒。",
+      visualLine: "冷蓝霓虹、湿润路面反光和低饱和胶片颗粒贯穿全片。",
+      audioLine: "低频城市环境音延续，脚步踏水声作为镜头之间的连接。"
+    },
     targetShotCount: 4,
     tags: ["城市", "夜晚", "孤独", "霓虹"],
     createdAt: "2026-05-22T00:00:00.000Z",
@@ -37,6 +44,7 @@ function createFixture(overrides: Partial<CinematicProject> = {}) {
       transition: "声音先行的溶接",
       audioHint: "低频城市环境音、远处车流",
       emotionalBeat: "从压抑进入清醒",
+      handoff: "镜头结尾停在积水倒影，下一镜从同一片倒影抬起进入人物背影。",
       prompt: {
         zh: longZhPrompt(`镜头 ${index + 1}`),
         en: longEnPrompt(`Shot ${index + 1}`)
@@ -154,9 +162,14 @@ describe("cinematic agent", () => {
       title: "凌晨两点的城市",
       concept: "孤独感的城市夜晚",
       mood: "孤独、压抑、清醒",
-      targetShotCount: 4
+      targetShotCount: 4,
+      continuity: expect.objectContaining({
+        actionLine: expect.stringContaining("便利店门口"),
+        spatialLine: expect.stringContaining("同一条雨后街道")
+      })
     });
     expect(project?.storyboard).toHaveLength(4);
+    expect(project?.storyboard[0]?.handoff).toContain("积水倒影");
     expect(project?.storyboard[0]?.prompt.zh.length).toBeGreaterThan(300);
     expect(project?.storyboard[0]?.prompt.en).toContain("cinematic");
     expect(result.domainUpdates?.cinematic?.recentProjectIds).toEqual(["cinematic-fixture"]);
