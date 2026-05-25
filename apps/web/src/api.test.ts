@@ -155,6 +155,16 @@ describe("testModelProfile", () => {
       ok: false,
       message: "model test endpoint failed"
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/model-profiles/profile-1/test"),
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: "{}"
+      })
+    );
   });
 });
 

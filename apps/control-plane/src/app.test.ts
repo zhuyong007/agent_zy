@@ -854,6 +854,7 @@ describe("control-plane app", () => {
     await isolatedApp.ready();
 
     try {
+      process.env.OPENAI_API_KEY = "sk-env-secret-0000";
       const createResponse = await isolatedApp.inject({
         method: "POST",
         url: "/api/model-profiles",
@@ -893,7 +894,8 @@ describe("control-plane app", () => {
           expect.objectContaining({
             displayName: "OpenAI Mini",
             hasApiKey: true,
-            maskedKey: "sk-****abcd"
+            maskedKey: "sk-****abcd",
+            apiKeySource: "local"
           })
         ])
       );
@@ -909,6 +911,7 @@ describe("control-plane app", () => {
         "sk-test-secret-abcd"
       );
     } finally {
+      delete process.env.OPENAI_API_KEY;
       await isolatedApp.close();
       rmSync(isolatedDataDir, {
         recursive: true,

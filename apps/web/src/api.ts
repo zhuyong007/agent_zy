@@ -202,7 +202,11 @@ export async function deleteModelProfile(id: string): Promise<{ ok: true }> {
 export async function testModelProfile(id: string): Promise<{ ok: boolean; latencyMs?: number; message: string }> {
   try {
     const response = await fetch(`${API_BASE}/api/model-profiles/${id}/test`, {
-      method: "POST"
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: "{}"
     });
 
     if (!response.ok) {

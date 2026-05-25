@@ -1,6 +1,7 @@
 import type { ModelProviderDefinition, ModelProviderId } from "@agent-zy/shared-types";
 
-const MODEL_PROVIDERS: ModelProviderDefinition[] = [
+function buildModelProviders(): ModelProviderDefinition[] {
+  return [
   {
     id: "modelscope",
     name: "ModelScope / 魔搭",
@@ -19,7 +20,7 @@ const MODEL_PROVIDERS: ModelProviderDefinition[] = [
     requiresApiKey: true,
     authType: "bearer",
     supportedCapabilities: ["chat", "text"],
-    defaultModels: ["deepseek-chat", "deepseek-reasoner"],
+    defaultModels: [process.env.DEEPSEEK_MODEL ?? "deepseek-chat", "deepseek-reasoner"],
     docsHint: "DeepSeek OpenAI-compatible API。",
     compatibleMode: "openai"
   },
@@ -30,7 +31,7 @@ const MODEL_PROVIDERS: ModelProviderDefinition[] = [
     requiresApiKey: true,
     authType: "bearer",
     supportedCapabilities: ["chat", "text", "embedding", "vision", "tool-use"],
-    defaultModels: ["gpt-4.1-mini", "gpt-4.1", "text-embedding-3-small"],
+    defaultModels: [process.env.OPENAI_MODEL ?? "gpt-4.1-mini", "gpt-4.1", "text-embedding-3-small"],
     docsHint: "OpenAI Responses / Chat Completions compatible configuration.",
     compatibleMode: "openai"
   },
@@ -41,7 +42,7 @@ const MODEL_PROVIDERS: ModelProviderDefinition[] = [
     requiresApiKey: true,
     authType: "bearer",
     supportedCapabilities: ["chat", "text", "vision"],
-    defaultModels: ["doubao-seed-1-6"],
+    defaultModels: [process.env.DOUBAO_MODEL ?? "doubao-seed-1-6"],
     docsHint: "豆包 OpenAI-compatible endpoint；请按控制台配置 Base URL。",
     compatibleMode: "openai"
   },
@@ -52,7 +53,7 @@ const MODEL_PROVIDERS: ModelProviderDefinition[] = [
     requiresApiKey: false,
     authType: "none",
     supportedCapabilities: ["chat", "text", "embedding"],
-    defaultModels: ["llama3.1", "qwen2.5"],
+    defaultModels: [process.env.OLLAMA_MODEL ?? "llama3.1", "qwen2.5"],
     docsHint: "本地 Ollama 服务，默认不需要 API Key。",
     compatibleMode: "ollama"
   },
@@ -63,14 +64,15 @@ const MODEL_PROVIDERS: ModelProviderDefinition[] = [
     requiresApiKey: true,
     authType: "bearer",
     supportedCapabilities: ["chat", "text", "embedding", "vision"],
-    defaultModels: [],
+    defaultModels: process.env.OPENAI_COMPATIBLE_MODEL ? [process.env.OPENAI_COMPATIBLE_MODEL] : [],
     docsHint: "任意兼容 OpenAI API 的供应商，请填写 Base URL 和模型 ID。",
     compatibleMode: "openai"
   }
-];
+  ];
+}
 
 export function listModelProviders(): ModelProviderDefinition[] {
-  return structuredClone(MODEL_PROVIDERS);
+  return structuredClone(buildModelProviders());
 }
 
 export function getModelProvider(providerId: ModelProviderId): ModelProviderDefinition | null {
