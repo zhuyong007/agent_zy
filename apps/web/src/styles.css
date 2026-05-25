@@ -4765,6 +4765,19 @@ body[data-theme="day"] .summary-list button {
   border-bottom: 1px solid var(--manage-line);
 }
 
+body[data-theme="day"] .manage-shell__header,
+body[data-theme="day"] .manage-overview,
+body[data-theme="day"] .manage-group__header {
+  border: 1px solid var(--manage-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--manage-shadow);
+}
+
+body[data-theme="day"] .manage-shell__header {
+  padding: 14px;
+}
+
 .manage-shell__header h1 {
   margin: 4px 0 0;
   font-size: 1.9rem;
@@ -4833,6 +4846,10 @@ body[data-theme="day"] .summary-list button {
   padding-top: 2px;
 }
 
+body[data-theme="day"] .manage-group__header {
+  padding: 12px;
+}
+
 .manage-group__header h2 {
   margin: 4px 0 0;
   font-size: 1.06rem;
@@ -4852,7 +4869,7 @@ body[data-theme="day"] .summary-list button {
 }
 
 .manage-card-grid--modules {
-  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 320px));
 }
 
 .manage-card-grid--visual {
@@ -4875,6 +4892,24 @@ body[data-theme="day"] .summary-list button {
     background 140ms ease,
     border-color 140ms ease,
     transform 140ms ease;
+}
+
+.manage-card-grid--models,
+.manage-card-grid--modules {
+  align-items: start;
+  justify-content: start;
+}
+
+.manage-card-grid--models > .manage-card,
+.manage-card-grid--modules > .manage-card {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.manage-card--module {
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .manage-card:hover {
@@ -4972,6 +5007,11 @@ body[data-theme="day"] .summary-list button {
   min-width: 0;
 }
 
+.manage-card-grid--models .manage-card__header,
+.manage-card-grid--modules .manage-card__header {
+  align-items: start;
+}
+
 .manage-card__header h3 {
   margin: 0;
   font-size: 0.94rem;
@@ -4983,6 +5023,13 @@ body[data-theme="day"] .summary-list button {
   color: var(--manage-muted);
   font-size: 0.72rem;
   line-height: 1.52;
+}
+
+.manage-card-grid--modules .manage-card__header p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .manage-card__index {
@@ -5001,6 +5048,8 @@ body[data-theme="day"] .summary-list button {
 .manage-card__controls {
   display: grid;
   gap: 8px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .manage-card__meta {
@@ -5099,6 +5148,19 @@ body[data-theme="day"] .manage-field--toggle input[type="checkbox"]:checked {
   outline: none;
 }
 
+.manage-field input[type="number"],
+.manage-field input[type="password"],
+.manage-field input:not([type]) {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--manage-line);
+  border-radius: 8px;
+  color: var(--manage-text);
+  background: var(--manage-control);
+  outline: none;
+}
+
 .manage-field input[type="text"]:focus {
   border-color: var(--manage-line-strong);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
@@ -5107,6 +5169,15 @@ body[data-theme="day"] .manage-field--toggle input[type="checkbox"]:checked {
 body[data-theme="day"] .manage-field input[type="text"] {
   border-color: rgba(19, 38, 61, 0.14);
   background: rgba(255, 255, 255, 0.94);
+}
+
+body[data-theme="day"] .manage-field input[type="number"],
+body[data-theme="day"] .manage-field input[type="password"],
+body[data-theme="day"] .manage-field input:not([type]),
+body[data-theme="day"] .manage-field select {
+  border-color: rgba(19, 38, 61, 0.14);
+  color: var(--manage-text);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .manage-field select {
@@ -6953,13 +7024,17 @@ body[data-theme="day"] .todo-scene-hero p {
 }
 
 .manage-card-grid--models {
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 360px));
+}
+
+.manage-card-grid--modules {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 320px));
 }
 
 .model-profile-card {
   display: grid;
   gap: 16px;
-  min-height: 280px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
 .model-profile-card .manage-card__header p {
@@ -6970,6 +7045,8 @@ body[data-theme="day"] .todo-scene-hero p {
 .model-profile-card__body {
   display: grid;
   gap: 12px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .model-profile-card__endpoint {
@@ -7022,6 +7099,11 @@ body[data-theme="day"] .todo-scene-hero p {
   gap: 8px;
 }
 
+.model-profile-card__chips {
+  max-height: 68px;
+  overflow: auto;
+}
+
 .model-profile-card__chips span,
 .model-check-grid label {
   padding: 6px 9px;
@@ -7037,6 +7119,12 @@ body[data-theme="day"] .todo-scene-hero p {
 
 .model-profile-card__actions {
   align-self: end;
+}
+
+.model-profile-card__actions button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 10px;
 }
 
 .model-profile-card__actions button,
@@ -7124,7 +7212,6 @@ body[data-theme="day"] .model-check-grid label {
 }
 
 @media (max-width: 960px) {
-  .manage-card-grid--models,
   .model-profile-card__status-grid {
     grid-template-columns: 1fr;
   }
