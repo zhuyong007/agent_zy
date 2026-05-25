@@ -45,6 +45,9 @@ export interface ModelRuntime {
   execute(input: ModelRuntimeRequest): Promise<unknown>;
 }
 
+export const DEFAULT_MODEL_TIMEOUT_MS = 120_000;
+export const DEFAULT_MODEL_RETRIES = 0;
+
 function redactSecrets(message: string, secrets: string[]): string {
   return secrets.reduce((result, secret) => result.split(secret).join("[redacted]"), message);
 }
@@ -69,8 +72,8 @@ export function createModelRuntime(options: {
   timeoutMs?: number;
   retries?: number;
 }): ModelRuntime {
-  const timeoutMs = options.timeoutMs ?? 30_000;
-  const retries = options.retries ?? 1;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
+  const retries = options.retries ?? DEFAULT_MODEL_RETRIES;
 
   function resolveProfile(input: { profileId?: string; agentId?: string; purpose?: ModelPurpose }): ModelProfile {
     const settings = options.store.getState().modelSettings;

@@ -44,6 +44,7 @@ import {
   fetchHomeLayout,
   fetchModelProfiles,
   fetchModelProviders,
+  fetchSystemStatus,
   generateCinematic,
   generateHistory,
   openExternalUrl,
@@ -1893,7 +1894,7 @@ export function ManageModuleCard({
   const canConfigureModel = Boolean(onAgentDefaultModelChange && modelProfiles);
 
   return (
-    <article className="manage-card manage-card--module">
+    <article className="manage-card manage-card--module manage-card--interactive">
       <div className="manage-card__header">
         <span className="manage-card__index">{String(preference.order + 1).padStart(2, "0")}</span>
         <div>
@@ -2656,10 +2657,61 @@ export function HomeManagePage() {
   );
 }
 
+type RestartNotice = {
+  tone: "pending" | "success" | "error";
+  title: string;
+  message: string;
+};
+
+const RESTART_PENDING_STORAGE_KEY = "agent-zy-restart-pending-started-at";
+const RESTART_RECOVERY_TIMEOUT_MS = 90000;
+const RESTART_RECOVERY_POLL_MS = 1200;
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
+async function waitForRestartRecovery(previousStartedAt: string | null, requestedAt: number) {
+  const deadline = Date.now() + RESTART_RECOVERY_TIMEOUT_MS;
+  const minimumWaitUntil = requestedAt + 3500;
+  let stableChecks = 0;
+
+  while (Date.now() < deadline) {
+    await wait(RESTART_RECOVERY_POLL_MS);
+
+    try {
+      const status = await fetchSystemStatus();
+      if (!previousStartedAt || status.startedAt !== previousStartedAt) {
+        await fetchDashboard();
+        return status;
+      }
+
+      if (Date.now() >= minimumWaitUntil) {
+        stableChecks += 1;
+
+        if (stableChecks >= 2) {
+          await fetchDashboard();
+          return status;
+        }
+      }
+    } catch {
+      stableChecks = 0;
+      // The API is expected to be unavailable for a short window while restarting.
+    }
+  }
+
+  throw new Error("Restart did not complete within timeout");
+}
+
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const [railExpanded, setRailExpanded] = useState(false);
   const [newsFilter, setNewsFilter] = useState<NewsFilter>("all");
+  const [restartNotice, setRestartNotice] = useState<RestartNotice | null>(null);
+  const restartRecoveryRunId = useRef(0);
+  const restartNoticeTimer = useRef<number | null>(null);
   const [themeKey, setThemeKey] = useThemePreference();
   const clockLine = useLiveClock();
   const { layout, updateModule, moveModule } = useHomeLayoutPreferences();
@@ -2683,8 +2735,101 @@ export function DashboardPage() {
       );
     }
   });
+
+  function clearRestartNoticeTimer() {
+    if (restartNoticeTimer.current !== null) {
+      window.clearTimeout(restartNoticeTimer.current);
+      restartNoticeTimer.current = null;
+    }
+  }
+
+  function showRestartNotice(notice: RestartNotice, autoDismiss = false) {
+    clearRestartNoticeTimer();
+    setRestartNotice(notice);
+
+    if (autoDismiss) {
+      restartNoticeTimer.current = window.setTimeout(() => {
+        setRestartNotice(null);
+        restartNoticeTimer.current = null;
+      }, 7000);
+    }
+  }
+
+  async function monitorRestartRecovery(previousStartedAt: string | null, requestedAt = Date.now()) {
+    const runId = restartRecoveryRunId.current + 1;
+    restartRecoveryRunId.current = runId;
+
+    window.sessionStorage.setItem(
+      RESTART_PENDING_STORAGE_KEY,
+      JSON.stringify({
+        previousStartedAt,
+        requestedAt
+      })
+    );
+    showRestartNotice({
+      tone: "pending",
+      title: "正在重启项目",
+      message: "已经发送重启请求，正在等待前后端重新上线。"
+    });
+
+    try {
+      await waitForRestartRecovery(previousStartedAt, requestedAt);
+
+      if (restartRecoveryRunId.current !== runId) {
+        return;
+      }
+
+      window.sessionStorage.removeItem(RESTART_PENDING_STORAGE_KEY);
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      showRestartNotice(
+        {
+          tone: "success",
+          title: "重启成功",
+          message: "前端和后端已经重新上线。"
+        },
+        true
+      );
+    } catch {
+      if (restartRecoveryRunId.current !== runId) {
+        return;
+      }
+
+      window.sessionStorage.removeItem(RESTART_PENDING_STORAGE_KEY);
+      showRestartNotice({
+        tone: "error",
+        title: "重启未确认",
+        message: "没有在 90 秒内检测到新的后端进程，请查看 .agent-zy-data\\logs。"
+      });
+    }
+  }
+
   const restartMutation = useMutation({
-    mutationFn: restartProject
+    mutationFn: async () => {
+      const previousStatus = await fetchSystemStatus().catch(() => null);
+      await restartProject();
+      return {
+        previousStartedAt: previousStatus?.startedAt ?? null,
+        requestedAt: Date.now()
+      };
+    },
+    onMutate: () => {
+      showRestartNotice({
+        tone: "pending",
+        title: "正在发送重启请求",
+        message: "请稍等，服务会短暂断开。"
+      });
+    },
+    onSuccess: ({ previousStartedAt, requestedAt }) => {
+      void monitorRestartRecovery(previousStartedAt, requestedAt);
+    },
+    onError: (error) => {
+      window.sessionStorage.removeItem(RESTART_PENDING_STORAGE_KEY);
+      showRestartNotice({
+        tone: "error",
+        title: "重启请求失败",
+        message: error instanceof Error ? error.message : "后端没有接受重启请求。"
+      });
+    }
   });
 
   useEffect(() => {
@@ -2694,6 +2839,27 @@ export function DashboardPage() {
       queryClient.setQueryData(["dashboard"], data);
     });
   }, [queryClient]);
+
+  useEffect(() => {
+    const pendingRestart = window.sessionStorage.getItem(RESTART_PENDING_STORAGE_KEY);
+
+    if (pendingRestart !== null) {
+      try {
+        const parsed = JSON.parse(pendingRestart) as {
+          previousStartedAt?: string | null;
+          requestedAt?: number;
+        };
+        void monitorRestartRecovery(parsed.previousStartedAt ?? null, parsed.requestedAt ?? Date.now());
+      } catch {
+        void monitorRestartRecovery(pendingRestart || null);
+      }
+    }
+
+    return () => {
+      clearRestartNoticeTimer();
+      restartRecoveryRunId.current += 1;
+    };
+  }, []);
 
   const todoWorkspace = useTodoWorkspaceDashboard(dashboardQuery.data);
 
@@ -2729,13 +2895,26 @@ export function DashboardPage() {
         clockLine={clockLine}
         navigationLayout={layout}
         onRestartProject={() => restartMutation.mutate()}
-        isRestarting={restartMutation.isPending}
+        isRestarting={restartMutation.isPending || restartNotice?.tone === "pending"}
         rightMeta={[
           { label: "agents", value: String(dashboard.agents.length) },
           { label: "tasks", value: String(dashboard.recentTasks.length) },
           { label: "runtime", value: dashboard.tasks.inProgress.length > 0 ? "running" : "idle" }
         ]}
       />
+      {restartNotice ? (
+        <div className={`restart-toast restart-toast--${restartNotice.tone}`} role="status" aria-live="polite">
+          <div>
+            <strong>{restartNotice.title}</strong>
+            <span>{restartNotice.message}</span>
+          </div>
+          {restartNotice.tone !== "pending" ? (
+            <button type="button" onClick={() => setRestartNotice(null)} aria-label="关闭重启提示">
+              关闭
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <DndContext
         sensors={sensors}

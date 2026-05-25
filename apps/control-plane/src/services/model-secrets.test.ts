@@ -27,16 +27,16 @@ describe("model secrets repository", () => {
     expect(maskApiKey("short")).toBe("****hort");
   });
 
-  it("prefers environment variables over local secrets", () => {
+  it("prefers profile-local secrets over provider environment variables", () => {
     const repository = createModelSecretsRepository(createTempDataDir());
 
     repository.save("profile-openai", "local-secret");
     process.env.OPENAI_API_KEY = "env-secret-1234";
 
     expect(repository.resolve({ profileId: "profile-openai", provider: "openai" })).toMatchObject({
-      value: "env-secret-1234",
-      source: "env",
-      maskedKey: "env-****1234"
+      value: "local-secret",
+      source: "local",
+      maskedKey: "local-****cret"
     });
   });
 

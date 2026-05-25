@@ -95,9 +95,10 @@ function longImagePrompt(topic: string) {
 
 function mockModelRuntimeText(textFactory: string | ((prompt: string) => string)) {
   (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
-    generateText: vi.fn(async (input: { prompt: string }) => {
+    generateText: vi.fn(async (input: { prompt: string; systemPrompt?: string }) => {
       const prompt = input.prompt ?? "";
-      const text = typeof textFactory === "function" ? textFactory(prompt) : textFactory;
+      const combinedPrompt = `${input.systemPrompt ?? ""}\n${prompt}`;
+      const text = typeof textFactory === "function" ? textFactory(combinedPrompt) : textFactory;
 
       return { text };
     })
@@ -212,6 +213,152 @@ describe("history agent", () => {
     expect(result.status).toBe("failed");
     expect(result.notifications).toBeUndefined();
     expect(result.summary).toContain("5");
+  });
+
+  it("repairs image prompts to 100-200 Chinese characters before returning payloads", async () => {
+    const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
+    process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
+    const restore = mockModelResponse({
+      topic: "Prompt repair topic",
+      summary: "Short model prompts should not fail the whole task.",
+      cardCount: 1,
+      cards: [
+        {
+          title: "Card title",
+          imageText: "Image text",
+          prompt: "短提示"
+        }
+      ],
+      xiaohongshuCaption: "Caption body"
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    const prompt = result.notifications?.[0]?.payload?.cards[0]?.prompt ?? "";
+    const chineseCharacterCount = Array.from(prompt.matchAll(/[\u3400-\u9fff]/gu)).length;
+
+    expect(result.status).toBe("completed");
+    expect(prompt).toContain("图片描述");
+    expect(prompt).toContain("文字形式展示");
+    expect(chineseCharacterCount).toBeGreaterThanOrEqual(100);
+    expect(chineseCharacterCount).toBeLessThanOrEqual(200);
+  });
+
+  it("removes word-count notes from returned image prompts", async () => {
+    const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
+    process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
+    const restore = mockModelResponse({
+      topic: "字数残留测试",
+      summary: "模型有时会把字数要求写进生图提示词。",
+      cardCount: 1,
+      cards: [
+        {
+          title: "去掉字数",
+          imageText: "画面文字展示知识范围",
+          prompt:
+            "图片描述：汉代商队穿过西域绿洲驿站，竖版小红书历史知识卡片，主体清晰居中，暖金光线，青灰地图背景，画面上方预留标题，图中文字以文字形式展示路线背景和交流影响，约120字"
+        }
+      ],
+      xiaohongshuCaption: "字数残留测试正文"
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    const prompt = result.notifications?.[0]?.payload?.cards[0]?.prompt ?? "";
+
+    expect(result.status).toBe("completed");
+    expect(prompt).not.toMatch(/\d+\s*(?:个)?(?:中文)?(?:字|字符)/u);
+  });
+
+  it("instructs the model to separate image description from text knowledge ranges in image prompts", async () => {
+    const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
+    process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("图片描述");
+      expect(prompt).toContain("图片中应该以文字形式展示哪些知识");
+      expect(prompt).toContain("只给出大概知识范围");
+      expect(prompt).toContain("不必写详细知识");
+      expect(prompt).toContain("不要把字数、字符数或类似“xx字”的说明写进 prompt 字段");
+
+      return JSON.stringify({
+        topic: "模板测试",
+        summary: "检查生图提示词模板是否包含图文边界要求。",
+        cardCount: 1,
+        cards: [
+          {
+            title: "提示词边界",
+            imageText: "画面文字只展示知识范围",
+            prompt: longImagePrompt("模板测试")
+          }
+        ],
+        xiaohongshuCaption: "模板测试正文"
+      });
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+  });
+
+  it("passes xiaohongshu analytics to the model as adaptive guidance", async () => {
+    const state = createState();
+    state.historyXhs = {
+      posts: [
+        {
+          id: "note-1",
+          title: "张骞出使西域",
+          publishedAt: "2026-05-20T08:00:00.000Z",
+          url: "https://www.xiaohongshu.com/explore/note-1",
+          views: 1200,
+          likes: 88,
+          collects: 19,
+          comments: 7,
+          shares: 3
+        }
+      ],
+      overview: {
+        postCount: 1,
+        totalViews: 1200,
+        totalLikes: 88,
+        totalCollects: 19,
+        totalComments: 7,
+        totalShares: 3,
+        engagementRate: 117 / 1200
+      },
+      lastSyncedAt: "2026-05-24T08:00:00.000Z",
+      status: "idle",
+      lastError: null,
+      sourceUrl: "https://creator.xiaohongshu.com/statistics/data-analysis"
+    };
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("小红书真实发布数据参考");
+      expect(prompt).toContain("已同步作品 1 篇");
+      expect(prompt).toContain("张骞出使西域");
+      expect(prompt).toContain("请先自行判断样本量和数据质量是否足够");
+      expect(prompt).toContain("调整选题角度、标题钩子、卡片节奏和正文表达");
+
+      return JSON.stringify({
+        topic: "真实数据适配测试",
+        summary: "模型应把真实数据作为参考，而不是机械套用。",
+        cardCount: 1,
+        cards: [
+          {
+            title: "数据参考",
+            imageText: "用真实数据微调表达",
+            prompt: longImagePrompt("真实数据适配测试")
+          }
+        ],
+        xiaohongshuCaption: "真实数据适配测试正文"
+      });
+    });
+
+    const result = await agent.execute(createRequest(state));
+    restore();
+
+    expect(result.status).toBe("completed");
   });
 
   it("accepts content-block array responses that contain JSON text", async () => {

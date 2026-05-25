@@ -184,6 +184,11 @@ describe("control-plane orchestrator ledger report routing", () => {
         generateDraft: vi.fn(),
         export: vi.fn(),
         import: vi.fn()
+      } as any,
+      historyXhsService: {
+        sync: vi.fn(async () => {
+          throw new Error("unexpected history xhs sync");
+        })
       } as any
     });
 

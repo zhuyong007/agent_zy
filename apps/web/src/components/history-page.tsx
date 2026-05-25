@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { fetchDashboard, generateHistory, openDashboardStream } from "../api";
+import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, syncHistoryXhsAnalytics } from "../api";
 import { getHistoryNotifications } from "../history-view";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
@@ -19,6 +19,20 @@ function formatDateTime(timestamp?: string | null) {
   });
 }
 
+function copyText(value: string) {
+  if (navigator.clipboard) {
+    return navigator.clipboard.writeText(value);
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+  return Promise.resolve();
+}
+
 export function HistoryPage() {
   const queryClient = useQueryClient();
   const clockLine = useLiveClock();
@@ -26,6 +40,7 @@ export function HistoryPage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicInput, setTopicInput] = useState("");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const { layout } = useHomeLayoutPreferences();
 
   const dashboardQuery = useQuery({
@@ -53,6 +68,33 @@ export function HistoryPage() {
       console.error("[history-page] generate:onError", error);
     }
   });
+  const historyDeleteMutation = useMutation({
+    mutationFn: (notificationId: string) => cancelNotification(notificationId),
+    onSuccess: (nextDashboard) => {
+      queryClient.setQueryData(["home-layout"], nextDashboard.homeLayout);
+      queryClient.setQueryData(["dashboard"], nextDashboard);
+
+      const nextNotifications = getHistoryNotifications(nextDashboard.notifications);
+      setSelectedId((currentId) =>
+        currentId && nextNotifications.some((item) => item.id === currentId)
+          ? currentId
+          : nextNotifications[0]?.id ?? null
+      );
+    }
+  });
+  const historyXhsSyncMutation = useMutation({
+    mutationFn: syncHistoryXhsAnalytics,
+    onSuccess: (nextDashboard) => {
+      queryClient.setQueryData(["home-layout"], nextDashboard.homeLayout);
+      queryClient.setQueryData(["dashboard"], nextDashboard);
+    }
+  });
+
+  async function handleCopy(key: string, value: string) {
+    await copyText(value);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(null), 1500);
+  }
 
   useEffect(() => {
     return openDashboardStream((data) => {
@@ -62,6 +104,7 @@ export function HistoryPage() {
   }, [queryClient]);
 
   const dashboard = dashboardQuery.data;
+  const historyXhs = dashboard?.historyXhs;
   const historyNotifications = useMemo(
     () => getHistoryNotifications(dashboard?.notifications ?? []),
     [dashboard?.notifications]
@@ -140,6 +183,74 @@ export function HistoryPage() {
             </div>
           </header>
 
+          <section className="history-xhs-panel">
+            <div className="history-stage__heading">
+              <p className="eyebrow">Xiaohongshu Analytics</p>
+              <h2>小红书数据总览</h2>
+              <button
+                type="button"
+                className="history-copy-button"
+                disabled={historyXhsSyncMutation.isPending}
+                onClick={() => historyXhsSyncMutation.mutate()}
+              >
+                {historyXhsSyncMutation.isPending ? "获取中..." : "获取小红书数据"}
+              </button>
+            </div>
+            <div className="history-xhs-panel__metrics">
+              <div>
+                <span>作品</span>
+                <strong>{historyXhs?.overview.postCount ?? 0}</strong>
+              </div>
+              <div>
+                <span>浏览</span>
+                <strong>{(historyXhs?.overview.totalViews ?? 0).toLocaleString("zh-CN")}</strong>
+              </div>
+              <div>
+                <span>点赞</span>
+                <strong>{(historyXhs?.overview.totalLikes ?? 0).toLocaleString("zh-CN")}</strong>
+              </div>
+              <div>
+                <span>收藏</span>
+                <strong>{(historyXhs?.overview.totalCollects ?? 0).toLocaleString("zh-CN")}</strong>
+              </div>
+              <div>
+                <span>评论</span>
+                <strong>{(historyXhs?.overview.totalComments ?? 0).toLocaleString("zh-CN")}</strong>
+              </div>
+              <div>
+                <span>分享</span>
+                <strong>{(historyXhs?.overview.totalShares ?? 0).toLocaleString("zh-CN")}</strong>
+              </div>
+            </div>
+            <div className="history-xhs-panel__footer">
+              <span>最近同步 {formatDateTime(historyXhs?.lastSyncedAt)}</span>
+              <a href={historyXhs?.sourceUrl ?? "https://creator.xiaohongshu.com/statistics/data-analysis"} target="_blank" rel="noreferrer">
+                打开数据分析页
+              </a>
+            </div>
+            {historyXhs?.posts?.length ? (
+              <div className="history-xhs-panel__posts">
+                {historyXhs.posts.slice(0, 4).map((post) => (
+                  <article key={post.id}>
+                    <strong>{post.title}</strong>
+                    <span>
+                      浏览 {post.views.toLocaleString("zh-CN")} / 点赞 {post.likes.toLocaleString("zh-CN")} / 收藏{" "}
+                      {post.collects.toLocaleString("zh-CN")}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            {historyXhs?.lastError || historyXhsSyncMutation.isError ? (
+              <div className="news-error">
+                {historyXhs?.lastError ??
+                  (historyXhsSyncMutation.error instanceof Error
+                    ? historyXhsSyncMutation.error.message
+                    : "获取小红书数据失败")}
+              </div>
+            ) : null}
+          </section>
+
           {selectedNotification && selectedPayload ? (
             <>
               <div className="history-stage__metrics">
@@ -165,7 +276,17 @@ export function HistoryPage() {
                 <div className="history-stage__cards">
                   {selectedPayload.cards.map((card, index) => (
                     <article key={`${selectedNotification.id}-${card.title}`} className="history-stage-card">
-                      <span>图 {index + 1}</span>
+                      <div className="history-stage-card__head">
+                        <span>图 {index + 1}</span>
+                        <button
+                          type="button"
+                          className="history-copy-button"
+                          aria-label={`复制第${index + 1}张生图提示词`}
+                          onClick={() => void handleCopy(`prompt-${index}`, card.prompt)}
+                        >
+                          {copiedKey === `prompt-${index}` ? "已复制" : "复制"}
+                        </button>
+                      </div>
                       <strong>{card.title}</strong>
                       <p>{card.imageText}</p>
                       <small>{card.prompt}</small>
@@ -178,6 +299,14 @@ export function HistoryPage() {
                 <div className="history-stage__heading">
                   <p className="eyebrow">Caption</p>
                   <h2>小红书正文</h2>
+                  <button
+                    type="button"
+                    className="history-copy-button"
+                    aria-label="复制正文"
+                    onClick={() => void handleCopy("caption", selectedPayload.xiaohongshuCaption)}
+                  >
+                    {copiedKey === "caption" ? "已复制" : "复制"}
+                  </button>
                 </div>
                 <article className="history-caption-card">
                   <p>{selectedPayload.xiaohongshuCaption}</p>
@@ -208,16 +337,29 @@ export function HistoryPage() {
                 const active = notification.id === selectedNotification?.id;
 
                 return (
-                  <button
+                  <article
                     key={notification.id}
-                    type="button"
                     className={`history-archive__item${active ? " is-active" : ""}`}
-                    onClick={() => setSelectedId(notification.id)}
                   >
-                    <span>{formatDateTime(notification.payload.generatedAt)}</span>
-                    <strong>{notification.payload.topic}</strong>
-                    <p>{notification.payload.summary}</p>
-                  </button>
+                    <button
+                      type="button"
+                      className="history-archive__select"
+                      onClick={() => setSelectedId(notification.id)}
+                    >
+                      <span>{formatDateTime(notification.payload.generatedAt)}</span>
+                      <strong>{notification.payload.topic}</strong>
+                      <p>{notification.payload.summary}</p>
+                    </button>
+                    <button
+                      type="button"
+                      className="history-archive__delete"
+                      aria-label={`删除 ${notification.payload.topic}`}
+                      disabled={historyDeleteMutation.isPending}
+                      onClick={() => historyDeleteMutation.mutate(notification.id)}
+                    >
+                      删除
+                    </button>
+                  </article>
                 );
               })
             ) : (

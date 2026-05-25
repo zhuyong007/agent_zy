@@ -70,6 +70,16 @@ export function createModelSecretsRepository(dataDir: string) {
   const filePath = resolve(dataDir, "secrets", "model-secrets.json");
 
   function resolveApiKey(input: { profileId: string; provider: ModelProviderId }) {
+    const localValue = readSecrets(filePath).secrets[input.profileId];
+
+    if (localValue) {
+      return {
+        value: localValue,
+        source: "local" as const,
+        maskedKey: maskApiKey(localValue)
+      };
+    }
+
     const envName = getProviderEnvKey(input.provider);
     const envValue = envName ? process.env[envName] : undefined;
 
@@ -78,16 +88,6 @@ export function createModelSecretsRepository(dataDir: string) {
         value: envValue,
         source: "env" as const,
         maskedKey: maskApiKey(envValue)
-      };
-    }
-
-    const localValue = readSecrets(filePath).secrets[input.profileId];
-
-    if (localValue) {
-      return {
-        value: localValue,
-        source: "local" as const,
-        maskedKey: maskApiKey(localValue)
       };
     }
 

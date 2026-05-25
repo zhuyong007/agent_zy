@@ -18,6 +18,7 @@ import type {
   LedgerReportRecord,
   LedgerSemanticRecord,
   HistoryPushState,
+  HistoryXhsState,
   LifeStageRecord,
   ModelProfile,
   ModelProviderId,
@@ -214,6 +215,7 @@ function createInitialState(): AppState {
     },
     cinematic: createEmptyCinematicState(),
     summary: createEmptySummaryState(),
+    historyXhs: createEmptyHistoryXhsState(),
     historyPush: {
       lastTriggeredDate: null
     },
@@ -226,6 +228,25 @@ function createInitialState(): AppState {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function createEnvModelScopeProfile(createdAt = nowIso()): ModelProfile {
+  return {
+    id: "modelscope-default",
+    displayName: "ModelScope 默认模型",
+    provider: "modelscope",
+    modelName: process.env.MODELSCOPE_MODEL ?? "Qwen/Qwen3-235B-A22B",
+    baseUrl: process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1",
+    apiKeyRef: "env:MODELSCOPE_API_KEY",
+    capabilities: ["chat", "text", "vision"],
+    temperature: 0.7,
+    maxTokens: 2000,
+    enabled: true,
+    isDefault: true,
+    purpose: ["general", "summary", "vision"],
+    createdAt,
+    updatedAt: createdAt
+  };
 }
 
 function createInitialModelSettingsState(): ModelSettingsState {
@@ -299,6 +320,27 @@ function createEmptySummaryState(): SummaryState {
   };
 }
 
+const XHS_ANALYTICS_URL = "https://creator.xiaohongshu.com/statistics/data-analysis";
+
+function createEmptyHistoryXhsState(): HistoryXhsState {
+  return {
+    posts: [],
+    overview: {
+      postCount: 0,
+      totalViews: 0,
+      totalLikes: 0,
+      totalCollects: 0,
+      totalComments: 0,
+      totalShares: 0,
+      engagementRate: null
+    },
+    lastSyncedAt: null,
+    status: "idle",
+    lastError: null,
+    sourceUrl: XHS_ANALYTICS_URL
+  };
+}
+
 function createEmptyCinematicState(): CinematicState {
   return {
     projects: [],
@@ -321,6 +363,8 @@ function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
 }
 
 function normalizeStoryboardShot(shot: CinematicProject["storyboard"][number], index: number) {
+  const handoff = typeof shot.handoff === "string" && shot.handoff.trim() ? shot.handoff : undefined;
+
   return {
     id: typeof shot.id === "string" && shot.id ? shot.id : `shot-${index + 1}`,
     title: typeof shot.title === "string" ? shot.title : `镜头 ${index + 1}`,
@@ -332,11 +376,30 @@ function normalizeStoryboardShot(shot: CinematicProject["storyboard"][number], i
     transition: typeof shot.transition === "string" ? shot.transition : "",
     audioHint: typeof shot.audioHint === "string" ? shot.audioHint : "",
     emotionalBeat: typeof shot.emotionalBeat === "string" ? shot.emotionalBeat : "",
+    ...(handoff ? { handoff } : {}),
     prompt: {
       zh: typeof shot.prompt?.zh === "string" ? shot.prompt.zh : "",
       en: typeof shot.prompt?.en === "string" ? shot.prompt.en : ""
     }
   };
+}
+
+function normalizeCinematicContinuity(
+  continuity: Partial<CinematicProject["continuity"]> | undefined
+): CinematicProject["continuity"] | undefined {
+  if (!continuity) {
+    return undefined;
+  }
+
+  const next = {
+    actionLine: typeof continuity.actionLine === "string" ? continuity.actionLine : "",
+    spatialLine: typeof continuity.spatialLine === "string" ? continuity.spatialLine : "",
+    emotionalLine: typeof continuity.emotionalLine === "string" ? continuity.emotionalLine : "",
+    visualLine: typeof continuity.visualLine === "string" ? continuity.visualLine : "",
+    audioLine: typeof continuity.audioLine === "string" ? continuity.audioLine : ""
+  };
+
+  return Object.values(next).some((value) => value.trim().length > 0) ? next : undefined;
 }
 
 function normalizeCinematicProject(project: Partial<CinematicProject>, index: number): CinematicProject {
@@ -352,6 +415,7 @@ function normalizeCinematicProject(project: Partial<CinematicProject>, index: nu
     mood: typeof project.mood === "string" ? project.mood : "",
     script: typeof project.script === "string" ? project.script : "",
     storyboard,
+    ...(normalizeCinematicContinuity(project.continuity) ? { continuity: normalizeCinematicContinuity(project.continuity) } : {}),
     createdAt: typeof project.createdAt === "string" ? project.createdAt : now,
     updatedAt: typeof project.updatedAt === "string" ? project.updatedAt : now,
     tags: Array.isArray(project.tags)
@@ -749,6 +813,50 @@ function normalizeSummaryState(summary: Partial<SummaryState> | undefined): Summ
   };
 }
 
+function normalizeMetric(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function normalizeHistoryXhsState(historyXhs: Partial<HistoryXhsState> | undefined): HistoryXhsState {
+  const posts = (historyXhs?.posts ?? []).map((post, index) => ({
+    id: typeof post.id === "string" && post.id ? post.id : `xhs-post-${index + 1}`,
+    title: typeof post.title === "string" && post.title ? post.title : `小红书作品 ${index + 1}`,
+    publishedAt: typeof post.publishedAt === "string" ? post.publishedAt : null,
+    url: typeof post.url === "string" ? post.url : null,
+    views: normalizeMetric(post.views),
+    likes: normalizeMetric(post.likes),
+    collects: normalizeMetric(post.collects),
+    comments: normalizeMetric(post.comments),
+    shares: normalizeMetric(post.shares)
+  }));
+  const totalViews = posts.reduce((sum, post) => sum + post.views, 0);
+  const totalLikes = posts.reduce((sum, post) => sum + post.likes, 0);
+  const totalCollects = posts.reduce((sum, post) => sum + post.collects, 0);
+  const totalComments = posts.reduce((sum, post) => sum + post.comments, 0);
+  const totalShares = posts.reduce((sum, post) => sum + post.shares, 0);
+  const engagement = totalLikes + totalCollects + totalComments + totalShares;
+
+  return {
+    posts,
+    overview: {
+      postCount: posts.length,
+      totalViews,
+      totalLikes,
+      totalCollects,
+      totalComments,
+      totalShares,
+      engagementRate: totalViews > 0 ? engagement / totalViews : null
+    },
+    lastSyncedAt: historyXhs?.lastSyncedAt ?? null,
+    status: historyXhs?.status === "syncing" || historyXhs?.status === "failed" ? historyXhs.status : "idle",
+    lastError: typeof historyXhs?.lastError === "string" ? historyXhs.lastError : null,
+    sourceUrl:
+      typeof historyXhs?.sourceUrl === "string" && historyXhs.sourceUrl
+        ? historyXhs.sourceUrl
+        : XHS_ANALYTICS_URL
+  };
+}
+
 function normalizeHistoryPushState(
   historyPush: Partial<HistoryPushState> | undefined
 ): HistoryPushState {
@@ -822,12 +930,48 @@ function normalizeModelSettingsState(
     return createInitialModelSettingsState();
   }
 
-  const profiles = modelSettings.profiles.map(normalizeModelProfile);
-  const defaultProfileId =
+  let profiles = modelSettings.profiles.map(normalizeModelProfile);
+  const envProfile = process.env.MODELSCOPE_API_KEY
+    ? createEnvModelScopeProfile(modelSettings.lastUpdatedAt ?? nowIso())
+    : null;
+
+  if (envProfile) {
+    const existingIndex = profiles.findIndex(
+      (profile) => profile.id === envProfile.id || profile.apiKeyRef === envProfile.apiKeyRef
+    );
+
+    if (existingIndex >= 0) {
+      profiles[existingIndex] = {
+        ...profiles[existingIndex],
+        ...envProfile,
+        createdAt: profiles[existingIndex].createdAt
+      };
+    } else {
+      profiles = [envProfile, ...profiles.filter((profile) => profile.id !== "modelscope-example")];
+    }
+  }
+
+  const storedDefaultProfileId =
     typeof modelSettings.defaultProfileId === "string" &&
     profiles.some((profile) => profile.id === modelSettings.defaultProfileId && profile.enabled)
       ? modelSettings.defaultProfileId
-      : profiles.find((profile) => profile.isDefault && profile.enabled)?.id ?? null;
+      : null;
+  const defaultProfileId =
+    storedDefaultProfileId ?? envProfile?.id ?? profiles.find((profile) => profile.isDefault && profile.enabled)?.id ?? null;
+  const purposeDefaults = Object.fromEntries(
+    Object.entries(modelSettings.purposeDefaults ?? {}).filter(
+      ([purpose, profileId]) =>
+        isModelPurpose(purpose) &&
+        typeof profileId === "string" &&
+        profiles.some((profile) => profile.id === profileId)
+    )
+  );
+
+  if (envProfile && defaultProfileId === envProfile.id) {
+    for (const purpose of envProfile.purpose) {
+      purposeDefaults[purpose] = envProfile.id;
+    }
+  }
 
   return {
     profiles: profiles.map((profile) => ({
@@ -835,14 +979,7 @@ function normalizeModelSettingsState(
       isDefault: profile.id === defaultProfileId
     })),
     defaultProfileId,
-    purposeDefaults: Object.fromEntries(
-      Object.entries(modelSettings.purposeDefaults ?? {}).filter(
-        ([purpose, profileId]) =>
-          isModelPurpose(purpose) &&
-          typeof profileId === "string" &&
-          profiles.some((profile) => profile.id === profileId)
-      )
-    ),
+    purposeDefaults,
     agentDefaults: Object.fromEntries(
       Object.entries(modelSettings.agentDefaults ?? {}).filter(
         ([agentId, profileId]) =>
@@ -929,6 +1066,7 @@ function normalizeAppState(state: AppState): AppState {
     topics: normalizeTopicState(state.topics),
     cinematic: normalizeCinematicState(state.cinematic),
     summary: normalizeSummaryState(state.summary),
+    historyXhs: normalizeHistoryXhsState(state.historyXhs),
     historyPush: normalizeHistoryPushState(state.historyPush),
     nightlyReview: state.nightlyReview ?? {
       lastTriggeredDate: null
@@ -955,6 +1093,7 @@ export interface ControlPlaneStore {
   upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
   setCinematicState(cinematic: CinematicState): CinematicState;
   setSummaryState(summary: SummaryState): SummaryState;
+  setHistoryXhsState(historyXhs: HistoryXhsState): HistoryXhsState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
   updateModelProfile(id: string, patch: Partial<ModelProfile>): ModelProfile;
   deleteModelProfile(id: string): { ok: true };
@@ -1118,6 +1257,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.summary);
+    },
+    setHistoryXhsState(historyXhs) {
+      state.historyXhs = normalizeHistoryXhsState(historyXhs);
+      persist();
+
+      return structuredClone(state.historyXhs);
     },
     createModelProfile(profile) {
       const now = nowIso();
@@ -1316,6 +1461,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)
         },
+        historyXhs: state.historyXhs,
         modelSettingsDashboard: buildModelSettingsDashboard(state.modelSettings),
         agents: manifests.map((manifest) => {
           const runtimeView = runtimeViews.find((item) => item.id === manifest.id);

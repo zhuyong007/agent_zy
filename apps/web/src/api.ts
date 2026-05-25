@@ -3,6 +3,7 @@ import type {
   CinematicProject,
   CinematicState,
   DashboardData,
+  HistoryXhsState,
   HomeModulePreference,
   LedgerFactRecord,
   LedgerReportRecord,
@@ -20,7 +21,36 @@ import type {
   TopicState
 } from "@agent-zy/shared-types";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:4378";
+export function resolveApiBase(
+  configuredBase?: string | null,
+  locationLike: Pick<Location, "protocol" | "hostname"> | null =
+    typeof window === "undefined" ? null : window.location
+) {
+  const pageHostname = locationLike?.hostname || "127.0.0.1";
+  const pageProtocol = locationLike?.protocol === "https:" ? "https:" : "http:";
+
+  if (configuredBase) {
+    try {
+      const configuredUrl = new URL(configuredBase);
+      const configuredHostIsLoopback = ["127.0.0.1", "localhost", "::1"].includes(configuredUrl.hostname);
+      const pageHostIsLoopback = ["127.0.0.1", "localhost", "::1"].includes(pageHostname);
+
+      if (configuredHostIsLoopback && !pageHostIsLoopback) {
+        configuredUrl.hostname = pageHostname;
+        configuredUrl.protocol = pageProtocol;
+        return configuredUrl.toString().replace(/\/$/, "");
+      }
+    } catch {
+      return configuredBase;
+    }
+
+    return configuredBase;
+  }
+
+  return `${pageProtocol}//${pageHostname}:4378`;
+}
+
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 
 export async function fetchDashboard(): Promise<DashboardData> {
   const response = await fetch(`${API_BASE}/api/dashboard`);
@@ -170,15 +200,29 @@ export async function deleteModelProfile(id: string): Promise<{ ok: true }> {
 }
 
 export async function testModelProfile(id: string): Promise<{ ok: boolean; latencyMs?: number; message: string }> {
-  const response = await fetch(`${API_BASE}/api/model-profiles/${id}/test`, {
-    method: "POST"
-  });
+  try {
+    const response = await fetch(`${API_BASE}/api/model-profiles/${id}/test`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: "{}"
+    });
 
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to test model profile"));
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: await readApiError(response, "Failed to test model profile")
+      };
+    }
+
+    return response.json();
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to test model profile"
+    };
   }
-
-  return response.json();
 }
 
 export async function setAgentDefaultModel(input: {
@@ -516,6 +560,24 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
   return dashboard;
 }
 
+export async function syncHistoryXhsAnalytics(): Promise<DashboardData> {
+  const response = await fetch(`${API_BASE}/api/history/xhs/sync`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to sync history xiaohongshu analytics"));
+  }
+
+  const historyXhs = (await response.json()) as HistoryXhsState;
+  const dashboard = await fetchDashboard();
+
+  return {
+    ...dashboard,
+    historyXhs
+  };
+}
+
 export type NewsRefreshInput = {
   reason?: string;
   view?: "all" | "daily";
@@ -566,11 +628,25 @@ export async function openExternalUrl(url: string): Promise<{ ok: true }> {
 
 export async function restartProject(): Promise<{ ok: true }> {
   const response = await fetch(`${API_BASE}/api/system/restart`, {
-    method: "POST"
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
   });
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to restart project"));
+  }
+
+  return response.json();
+}
+
+export async function fetchSystemStatus(): Promise<{ ok: true; startedAt: string }> {
+  const response = await fetch(`${API_BASE}/api/system/status`);
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to fetch system status"));
   }
 
   return response.json();
