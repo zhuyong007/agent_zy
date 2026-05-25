@@ -1,5 +1,6 @@
 import type {
   AppState,
+  ClassicShotState,
   HistoryPostPayload,
   LedgerFactRecord,
   LedgerSemanticRecord,
@@ -107,6 +108,7 @@ export interface AgentExecutionResult {
     news?: NewsState;
     topics?: TopicState;
     cinematic?: CinematicState;
+    classicShots?: ClassicShotState;
     summary?: SummaryState;
     historyPush?: HistoryPushState;
   };

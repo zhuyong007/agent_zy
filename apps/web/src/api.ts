@@ -2,6 +2,8 @@ import type {
   ChatResponse,
   CinematicProject,
   CinematicState,
+  ClassicShotState,
+  ClassicShotTargetPlatform,
   DashboardData,
   HistoryXhsState,
   HomeModulePreference,
@@ -327,6 +329,37 @@ export async function updateCinematicProject(
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to update cinematic project"));
+  }
+
+  return response.json();
+}
+
+export async function fetchClassicShots(): Promise<ClassicShotState> {
+  const response = await fetch(`${API_BASE}/api/classic-shots`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch classic shot projects");
+  }
+
+  return response.json();
+}
+
+export type ClassicShotGenerateInput = {
+  input: string;
+  targetPlatform?: ClassicShotTargetPlatform;
+};
+
+export async function generateClassicShot(input: ClassicShotGenerateInput): Promise<ClassicShotState> {
+  const response = await fetch(`${API_BASE}/api/classic-shots/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to generate classic shot storyboard"));
   }
 
   return response.json();

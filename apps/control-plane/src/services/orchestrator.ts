@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import type {
   ChatMessage,
   ChatResponse,
+  ClassicShotState,
   CinematicProject,
   CinematicState,
   DashboardData,
@@ -77,6 +78,8 @@ export interface ControlPlaneOrchestrator {
   createCinematicProject(input: unknown): CinematicProject;
   updateCinematicProject(id: string, input: unknown): CinematicProject;
   generateCinematicProject(input?: Record<string, unknown>): Promise<CinematicState>;
+  getClassicShots(): ClassicShotState;
+  generateClassicShotProject(input?: Record<string, unknown>): Promise<ClassicShotState>;
   generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
   syncHistoryXhs(): Promise<HistoryXhsState>;
   listSummaries(query?: SummaryListQuery): { entries: SummaryEntry[] };
@@ -624,6 +627,26 @@ export function createControlPlaneOrchestrator(options: {
       }
 
       return options.store.getState().cinematic;
+    },
+    getClassicShots() {
+      return options.store.getState().classicShots;
+    },
+    async generateClassicShotProject(input = {}) {
+      const task = await this.runSystemTask({
+        agentId: "classic-shot-agent",
+        trigger: "system",
+        summary: "生成经典电影镜头复刻",
+        meta: {
+          ...input,
+          action: "generate"
+        }
+      });
+
+      if (task.status === "failed") {
+        throw new Error(task.resultSummary ?? "classic shot generation failed");
+      }
+
+      return options.store.getState().classicShots;
     },
     async generateHistory(meta = {}) {
       console.info("[history-generate] orchestrator:start", {

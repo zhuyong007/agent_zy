@@ -451,6 +451,79 @@ export interface CinematicDashboardSummary {
   todayInspiration: string;
 }
 
+export type ClassicShotTargetPlatform =
+  | "jianying"
+  | "jimeng"
+  | "kling"
+  | "runway"
+  | "seedance"
+  | "generic";
+
+export interface ClassicShotSource {
+  director: string;
+  film: string;
+  year: number;
+  shotName: string;
+  shotPosition: string;
+  context?: string;
+}
+
+export interface ClassicShotAnalysis {
+  cameraMovement: string;
+  lighting: string;
+  emotionCurve: string;
+}
+
+export interface ClassicShotStoryboard {
+  id: string;
+  title: string;
+  function: string;
+  prompt: string;
+  movementKeywords: string[];
+  visualKeywords: string[];
+}
+
+export interface ClassicShotContinuity {
+  actionContinuity: string;
+  cameraContinuity: string;
+  lightingContinuity: string;
+  colorContinuity: string;
+  antiJumpGuidance: string;
+}
+
+export interface ClassicShotProject {
+  id: string;
+  rawInput: string;
+  title: string;
+  source: ClassicShotSource;
+  coreValue: string;
+  analysis: ClassicShotAnalysis;
+  minimumStoryboardCount: number;
+  storyboard: ClassicShotStoryboard[];
+  continuity: ClassicShotContinuity;
+  markdown: string;
+  targetPlatform: ClassicShotTargetPlatform;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClassicShotState {
+  projects: ClassicShotProject[];
+  recentProjectIds: string[];
+  lastGeneratedAt: string | null;
+  status: "idle" | "generating";
+  lastError: string | null;
+}
+
+export interface ClassicShotDashboardSummary {
+  projectCount: number;
+  recentProjects: ClassicShotProject[];
+  latestProject: ClassicShotProject | null;
+  lastGeneratedAt: string | null;
+  totalStoryboardCount: number;
+  todayReference: string;
+}
+
 export type ModelProviderId =
   | "modelscope"
   | "deepseek"
@@ -563,6 +636,7 @@ export interface AppState {
   news: NewsState;
   topics: TopicState;
   cinematic: CinematicState;
+  classicShots: ClassicShotState;
   summary: SummaryState;
   historyPush: HistoryPushState;
   historyXhs?: HistoryXhsState;
@@ -596,6 +670,9 @@ export interface DashboardData {
   topics: TopicState;
   cinematic: CinematicState & {
     dashboard: CinematicDashboardSummary;
+  };
+  classicShots: ClassicShotState & {
+    dashboard: ClassicShotDashboardSummary;
   };
   summary: SummaryState & {
     dashboard: SummaryDashboard;

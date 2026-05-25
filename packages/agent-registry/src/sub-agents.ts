@@ -1,4 +1,5 @@
 import type { AgentManifest } from "@agent-zy/agent-sdk";
+import { manifest as classicShotManifest } from "@agent-zy/classic-shot-agent/manifest";
 import { manifest as cinematicManifest } from "@agent-zy/cinematic-agent/manifest";
 import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
@@ -101,6 +102,18 @@ export const SUB_AGENT_ROUTES = [
     }
   },
   {
+    agentId: "classic-shot-agent",
+    manifest: classicShotManifest,
+    homeModule: {
+      id: "classicShots",
+      label: "经典镜头复刻",
+      description: "拆解经典电影镜头并生成 AI 视频分镜提示词",
+      defaultSize: "large",
+      defaultVisible: true,
+      order: 7
+    }
+  },
+  {
     agentId: "summary-agent",
     manifest: summaryManifest,
     homeModule: {
@@ -109,7 +122,7 @@ export const SUB_AGENT_ROUTES = [
       description: "每日、每周、每月、每年个人复盘",
       defaultSize: "smaller",
       defaultVisible: true,
-      order: 7
+      order: 8
     }
   }
 ] as const satisfies readonly SubAgentRouteConfig[];

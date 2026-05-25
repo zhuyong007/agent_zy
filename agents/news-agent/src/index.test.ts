@@ -72,6 +72,13 @@ function createState(news?: Partial<NewsState>): AppState {
       status: "idle",
       lastError: null
     },
+    classicShots: {
+      projects: [],
+      recentProjectIds: [],
+      lastGeneratedAt: null,
+      status: "idle",
+      lastError: null
+    },
     summary: {
       entries: [],
       drafts: [],

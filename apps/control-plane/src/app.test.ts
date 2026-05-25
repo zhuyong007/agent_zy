@@ -15,6 +15,16 @@ function longCinematicPrompt(label: string) {
   return `${label}，夜色压低城市天际线，潮湿街面反射冷蓝霓虹和红色刹车灯，镜头以 50mm 焦段从玻璃雨痕后的前景缓慢推进。前景雨滴失焦，中景人物停在便利店门口，背景高楼窗口像沉默的网格，浅景深让城市边缘轻微化开。空气里有水汽、低频车流和细小胶片颗粒，摄影机移动像克制呼吸，人物没有夸张动作，只用肩膀下沉和迟疑停步表达疲惫。构图把人物压在画面右下角，左侧保留大片空街，孤独被空间放大。`;
 }
 
+function longClassicShotPrompt() {
+  return [
+    "昏暗狭窄的公寓走廊里，墙面是潮湿的绿色旧漆和磨损木门，主体是一男一女在狭窄空间里缓慢擦肩而过，时间像被压低的夜晚，空气中有饭菜蒸汽和旧灯泡的暖黄色微尘。",
+    "摄影机保持连续镜头感，从走廊尽头以 50mm 焦段缓慢横移跟随，前景有虚焦的门框和纱帘边缘，中景是人物肩膀、手臂与垂下的视线，背景保留楼梯口微弱阴影和墙面反光。",
+    "光线来自顶部钨丝灯和房门缝隙的暖光，形成柔软但压抑的高反差阴影，色彩低饱和，暗红、墨绿和旧黄色互相渗透，画面带细微 film grain。",
+    "动作必须连贯：人物先从相反方向进入画面，步速很慢，肩膀靠近但不碰触，视线短暂停留后错开，摄影机不切镜，只用稳定横移和轻微推进完成情绪递进。",
+    "背景中远处邻居开门的光线一闪即灭，空气感保持湿热、安静、克制，镜头节奏像一次被压住的呼吸，结尾停在两人背影错开的空隙上。"
+  ].join("");
+}
+
 function createCinematicFixture() {
   return {
     id: "cinematic-app-fixture",
@@ -53,6 +63,45 @@ function createCinematicFixture() {
   };
 }
 
+function createClassicShotFixture() {
+  return {
+    id: "classic-shot-app-fixture",
+    rawInput: "王家卫 花样年华 走廊擦肩镜头",
+    title: "走廊擦肩的压抑长镜头",
+    source: {
+      director: "王家卫",
+      film: "花样年华",
+      year: 2000,
+      shotName: "走廊擦肩镜头",
+      shotPosition: "影片前中段，周慕云与苏丽珍在公寓走廊多次相遇的段落"
+    },
+    coreValue: "经典在于用狭窄走廊、慢速横移和钨丝暖光，把克制关系压缩成一次擦肩。",
+    analysis: {
+      cameraMovement: "缓慢横移跟拍，轻微推进，保持长镜头连续感。",
+      lighting: "钨丝灯暖黄、门缝漏光、低饱和暗红与墨绿、高反差阴影。",
+      emotionCurve: "平静、压抑、靠近、错开、余韵。"
+    },
+    minimumStoryboardCount: 1,
+    storyboard: [
+      {
+        id: "shot-1",
+        title: "走廊擦肩",
+        function: "用一个连续横移镜头完成空间建立、人物靠近、情绪停顿和错开。",
+        prompt: longClassicShotPrompt(),
+        movementKeywords: ["slow tracking shot", "long take"],
+        visualKeywords: ["film grain", "cinematic lighting"]
+      }
+    ],
+    continuity: {
+      actionContinuity: "人物从走廊两端进入，擦肩后继续向相反方向离开，动作不中断。",
+      cameraContinuity: "摄影机始终沿走廊横移并轻微推进，不改变轴线。",
+      lightingContinuity: "顶部暖光和门缝光保持同一方向。",
+      colorContinuity: "暗红、墨绿、旧黄色和胶片颗粒贯穿整条提示词。",
+      antiJumpGuidance: "不要切换场景、服装、人物脸型或镜头方向。"
+    }
+  };
+}
+
 describe("control-plane app", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-test-"));
   const app = createControlPlaneApp({
@@ -74,6 +123,7 @@ describe("control-plane app", () => {
     delete process.env.MODELSCOPE_MODEL;
     delete process.env.HISTORY_POST_FIXTURE_JSON;
     delete process.env.CINEMATIC_PROJECT_FIXTURE_JSON;
+    delete process.env.CLASSIC_SHOT_PROJECT_FIXTURE_JSON;
     vi.unstubAllGlobals();
   });
 
@@ -363,6 +413,64 @@ describe("control-plane app", () => {
 
       expect(generateResponse.statusCode).toBe(500);
       expect(generateResponse.json().message).toContain("未找到可用模型配置");
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("generates classic shot projects and exposes them in dashboard summary", async () => {
+    process.env.CLASSIC_SHOT_PROJECT_FIXTURE_JSON = JSON.stringify(createClassicShotFixture());
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-classic-shot-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const generateResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/classic-shots/generate",
+        payload: {
+          input: "王家卫 花样年华 走廊擦肩镜头",
+          targetPlatform: "kling"
+        }
+      });
+
+      expect(generateResponse.statusCode).toBe(200);
+      expect(generateResponse.json()).toMatchObject({
+        projects: [
+          expect.objectContaining({
+            id: "classic-shot-app-fixture",
+            title: "走廊擦肩的压抑长镜头",
+            source: expect.objectContaining({
+              director: "王家卫",
+              film: "花样年华",
+              year: 2000
+            })
+          })
+        ],
+        recentProjectIds: ["classic-shot-app-fixture"]
+      });
+
+      const dashboardResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/dashboard"
+      });
+
+      expect(dashboardResponse.statusCode).toBe(200);
+      expect(dashboardResponse.json().classicShots.dashboard).toMatchObject({
+        projectCount: 1,
+        totalStoryboardCount: 1,
+        latestProject: expect.objectContaining({
+          title: "走廊擦肩的压抑长镜头"
+        })
+      });
     } finally {
       await isolatedApp.close();
       rmSync(isolatedDataDir, {

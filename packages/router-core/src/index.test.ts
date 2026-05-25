@@ -54,6 +54,22 @@ const manifests: AgentManifest[] = [
     modulePath: "agents/cinematic-agent/src/index.ts",
     manifestPath: "agents/cinematic-agent/src/manifest.ts",
     tags: ["电影感", "分镜", "镜头", "视频文案", "提示词", "构图", "光影", "氛围"]
+  },
+  {
+    id: "classic-shot-agent",
+    name: "经典镜头复刻 Agent",
+    description: "拆解有明确出处的经典电影镜头，生成适合 AI 视频工具的连贯分镜提示词",
+    version: "0.1.0",
+    capabilities: [
+      "classic_shot_recreation",
+      "film_reference_analysis",
+      "ai_video_storyboard_prompt",
+      "long_take_continuity_design"
+    ],
+    triggers: ["user", "system"],
+    modulePath: "agents/classic-shot-agent/src/index.ts",
+    manifestPath: "agents/classic-shot-agent/src/manifest.ts",
+    tags: ["经典电影镜头", "经典镜头", "复刻", "电影出处", "长镜头", "Runway", "可灵"]
   }
 ];
 
@@ -147,5 +163,25 @@ describe("router-core", () => {
 
     expect(route.agentId).toBe("cinematic-agent");
     expect(route.candidates[0].id).toBe("cinematic-agent");
+  });
+
+  it("routes classic film shot recreation requests to classic-shot-agent", async () => {
+    const model: RouterModel = {
+      async selectCandidate() {
+        return null;
+      }
+    };
+
+    const router = createHybridRouter({ model });
+    const route = await router.route(
+      {
+        message: "帮我复刻王家卫《花样年华》的经典电影镜头，输出可灵和 Runway 可用的分镜提示词",
+        trigger: "user"
+      },
+      manifests
+    );
+
+    expect(route.agentId).toBe("classic-shot-agent");
+    expect(route.candidates[0].id).toBe("classic-shot-agent");
   });
 });

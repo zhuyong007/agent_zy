@@ -178,6 +178,21 @@ function createDashboard(): DashboardData {
         todayInspiration: "把一个情绪变成镜头"
       }
     },
+    classicShots: {
+      projects: [],
+      recentProjectIds: [],
+      lastGeneratedAt: null,
+      status: "idle",
+      lastError: null,
+      dashboard: {
+        projectCount: 0,
+        recentProjects: [],
+        latestProject: null,
+        lastGeneratedAt: null,
+        totalStoryboardCount: 0,
+        todayReference: "选择一个有明确出处的经典镜头"
+      }
+    },
     summary: {
       entries: [],
       drafts: [],

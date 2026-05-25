@@ -15,6 +15,7 @@ describe("sub-agent route config", () => {
       "topic-agent",
       "history-agent",
       "cinematic-agent",
+      "classic-shot-agent",
       "summary-agent"
     ]);
   });
@@ -40,6 +41,7 @@ describe("sub-agent route config", () => {
       "topics",
       "history",
       "cinematic",
+      "classicShots",
       "summary"
     ]);
   });

@@ -334,6 +334,14 @@ export function createControlPlaneApp(options?: {
     return orchestrator.generateCinematicProject(body);
   });
 
+  app.get("/api/classic-shots", async () => orchestrator.getClassicShots());
+
+  app.post("/api/classic-shots/generate", async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    return orchestrator.generateClassicShotProject(body);
+  });
+
   app.get("/api/summaries", async (request) => {
     const query = request.query as Record<string, string | undefined>;
 

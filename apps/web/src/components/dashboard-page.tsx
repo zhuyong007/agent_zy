@@ -45,6 +45,7 @@ import {
   fetchModelProfiles,
   fetchModelProviders,
   fetchSystemStatus,
+  generateClassicShot,
   generateCinematic,
   generateHistory,
   openExternalUrl,
@@ -118,6 +119,7 @@ export type RailSection =
   | "topics"
   | "history"
   | "cinematic"
+  | "classicShots"
   | "ledger"
   | "todo"
   | "summary";
@@ -136,9 +138,10 @@ const railItems: Array<{
   { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
   { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
   { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
-  { key: "ledger", label: "记账", stamp: "06", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "07", to: "/todo", moduleId: "todo" },
-  { key: "summary", label: "总结", stamp: "08", to: "/summaries", moduleId: "summary" }
+  { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
+  { key: "ledger", label: "记账", stamp: "07", to: "/ledger", moduleId: "ledger" },
+  { key: "todo", label: "待办", stamp: "08", to: "/todo", moduleId: "todo" },
+  { key: "summary", label: "总结", stamp: "09", to: "/summaries", moduleId: "summary" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -319,6 +322,10 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
 
   if (id === "cinematic") {
     return `${formatShortCount(dashboard.cinematic.dashboard.projectCount)} 个镜头项目`;
+  }
+
+  if (id === "classicShots") {
+    return `${formatShortCount(dashboard.classicShots.dashboard.projectCount)} 个复刻镜头`;
   }
 
   if (id === "summary") {
@@ -1214,6 +1221,108 @@ export function CinematicPanel({
   );
 }
 
+export function ClassicShotPanel({
+  dashboard,
+  size
+}: {
+  dashboard: DashboardData;
+  size: HomeModuleSize;
+}) {
+  const queryClient = useQueryClient();
+  const [input, setInput] = useState("");
+  const summary = dashboard.classicShots.dashboard;
+  const latest = summary.latestProject;
+  const compact = size === "small";
+  const showList = size === "max" || size === "large" || size === "medium";
+  const showPrompt = size === "max" || size === "large";
+  const generateMutation = useMutation({
+    mutationFn: (nextInput: string) =>
+      generateClassicShot({
+        input: nextInput || "随机生成一个经典镜头",
+        targetPlatform: "generic"
+      }),
+    onSuccess: async () => {
+      setInput("");
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard"]
+      });
+    }
+  });
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!generateMutation.isPending) {
+      generateMutation.mutate(input.trim());
+    }
+  }
+
+  return (
+    <section className={`cinematic-panel cinematic-panel--${size}`}>
+      <div className="cinematic-panel__header">
+        <div>
+          <p className="eyebrow">Classic Shot Recreation</p>
+          <h2>经典镜头复刻</h2>
+        </div>
+        <Link to="/classic-shots" className="panel-link">
+          复刻台
+        </Link>
+      </div>
+      <form className="cinematic-panel__quick" onSubmit={handleSubmit}>
+        <input
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={compact ? "留空随机" : "输入导演、电影或经典镜头；留空随机"}
+          disabled={generateMutation.isPending}
+          aria-label="快速生成经典镜头复刻"
+        />
+        <button type="submit" disabled={generateMutation.isPending}>
+          {generateMutation.isPending ? "生成中" : "生成"}
+        </button>
+      </form>
+      <div className="cinematic-panel__inspiration">
+        <span>参考镜头</span>
+        <strong>{summary.todayReference}</strong>
+      </div>
+      {latest ? (
+        <article className="cinematic-panel__latest">
+          <span>{latest.source.director} · {latest.source.year}</span>
+          <h3>{latest.source.film}：{latest.source.shotName}</h3>
+          {size !== "small" ? <p>{latest.coreValue}</p> : null}
+          <div className="cinematic-panel__meta">
+            <b>{latest.storyboard.length} 分镜</b>
+            <b>{latest.targetPlatform}</b>
+          </div>
+        </article>
+      ) : (
+        <div className="edge-empty">还没有经典镜头复刻方案。</div>
+      )}
+      {showList && summary.recentProjects.length > 0 ? (
+        <div className="cinematic-panel__projects" aria-label="最近经典镜头复刻">
+          {summary.recentProjects.slice(0, size === "max" ? 4 : 3).map((project) => (
+            <Link key={project.id} to="/classic-shots" className="cinematic-panel__project">
+              <span>{project.storyboard.length} shots</span>
+              <strong>{project.source.director}《{project.source.film}》</strong>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+      {showPrompt && latest?.storyboard[0] ? (
+        <div className="cinematic-panel__prompt">
+          <span>首镜提示词</span>
+          <p>{latest.storyboard[0].prompt}</p>
+        </div>
+      ) : null}
+      {generateMutation.isError ? (
+        <div className="news-error">
+          错误：
+          {generateMutation.error instanceof Error ? generateMutation.error.message : "经典镜头复刻生成失败"}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function SummaryPanel({
   dashboard,
   size
@@ -1861,6 +1970,10 @@ function renderHomeModuleContent({
     return <CinematicPanel dashboard={dashboard} size={size} />;
   }
 
+  if (id === "classicShots") {
+    return <ClassicShotPanel dashboard={dashboard} size={size} />;
+  }
+
   if (id === "summary") {
     return <SummaryPanel dashboard={dashboard} size={size} />;
   }
@@ -1987,6 +2100,7 @@ const MODULE_AGENT_IDS: Record<string, string> = {
   topics: "topic-agent",
   history: "history-agent",
   cinematic: "cinematic-agent",
+  classicShots: "classic-shot-agent",
   summary: "summary-agent"
 };
 

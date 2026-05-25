@@ -33,6 +33,12 @@
       "@agent-zy/cinematic-agent": [
         "agents/cinematic-agent/src/index.ts"
       ],
+      "@agent-zy/classic-shot-agent/manifest": [
+        "agents/classic-shot-agent/src/manifest.ts"
+      ],
+      "@agent-zy/classic-shot-agent": [
+        "agents/classic-shot-agent/src/index.ts"
+      ],
       "@agent-zy/ledger-agent/manifest": [
         "agents/ledger-agent/src/manifest.ts"
       ],

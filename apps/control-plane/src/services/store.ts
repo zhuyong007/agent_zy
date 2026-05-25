@@ -5,6 +5,9 @@ import { SUB_AGENT_HOME_MODULE_DEFINITIONS } from "@agent-zy/agent-registry/sub-
 import type {
   AppState,
   ChatMessage,
+  ClassicShotDashboardSummary,
+  ClassicShotProject,
+  ClassicShotState,
   CinematicDashboardSummary,
   CinematicProject,
   CinematicState,
@@ -109,6 +112,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "todo",
   "history",
   "cinematic",
+  "classicShots",
   "summary"
 ]);
 
@@ -214,6 +218,7 @@ function createInitialState(): AppState {
       lastError: null
     },
     cinematic: createEmptyCinematicState(),
+    classicShots: createEmptyClassicShotState(),
     summary: createEmptySummaryState(),
     historyXhs: createEmptyHistoryXhsState(),
     historyPush: {
@@ -351,6 +356,16 @@ function createEmptyCinematicState(): CinematicState {
   };
 }
 
+function createEmptyClassicShotState(): ClassicShotState {
+  return {
+    projects: [],
+    recentProjectIds: [],
+    lastGeneratedAt: null,
+    status: "idle",
+    lastError: null
+  };
+}
+
 function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
   return {
     todayIncomeCents: 0,
@@ -468,6 +483,110 @@ function buildCinematicDashboard(cinematic: CinematicState): CinematicDashboardS
     todayInspiration: latestProject
       ? `${latestProject.mood} · ${latestProject.style || latestProject.title}`
       : "把一个情绪变成镜头：先找光，再找沉默。"
+  };
+}
+
+function normalizeClassicShotStoryboard(
+  shot: ClassicShotProject["storyboard"][number],
+  index: number
+): ClassicShotProject["storyboard"][number] {
+  return {
+    id: typeof shot.id === "string" && shot.id ? shot.id : `shot-${index + 1}`,
+    title: typeof shot.title === "string" ? shot.title : `分镜 ${index + 1}`,
+    function: typeof shot.function === "string" ? shot.function : "",
+    prompt: typeof shot.prompt === "string" ? shot.prompt : "",
+    movementKeywords: Array.isArray(shot.movementKeywords)
+      ? shot.movementKeywords.filter((item): item is string => typeof item === "string")
+      : [],
+    visualKeywords: Array.isArray(shot.visualKeywords)
+      ? shot.visualKeywords.filter((item): item is string => typeof item === "string")
+      : []
+  };
+}
+
+function normalizeClassicShotProject(project: Partial<ClassicShotProject>, index: number): ClassicShotProject {
+  const now = nowIso();
+  const storyboard = Array.isArray(project.storyboard)
+    ? project.storyboard.map(normalizeClassicShotStoryboard)
+    : [];
+
+  return {
+    id: typeof project.id === "string" && project.id ? project.id : `classic-shot-${index}`,
+    rawInput: typeof project.rawInput === "string" ? project.rawInput : "",
+    title: typeof project.title === "string" && project.title ? project.title : "未命名经典镜头复刻",
+    source: {
+      director: typeof project.source?.director === "string" ? project.source.director : "",
+      film: typeof project.source?.film === "string" ? project.source.film : "",
+      year: typeof project.source?.year === "number" ? project.source.year : 0,
+      shotName: typeof project.source?.shotName === "string" ? project.source.shotName : "",
+      shotPosition: typeof project.source?.shotPosition === "string" ? project.source.shotPosition : "",
+      ...(typeof project.source?.context === "string" ? { context: project.source.context } : {})
+    },
+    coreValue: typeof project.coreValue === "string" ? project.coreValue : "",
+    analysis: {
+      cameraMovement: typeof project.analysis?.cameraMovement === "string" ? project.analysis.cameraMovement : "",
+      lighting: typeof project.analysis?.lighting === "string" ? project.analysis.lighting : "",
+      emotionCurve: typeof project.analysis?.emotionCurve === "string" ? project.analysis.emotionCurve : ""
+    },
+    minimumStoryboardCount:
+      typeof project.minimumStoryboardCount === "number" &&
+      Number.isInteger(project.minimumStoryboardCount) &&
+      project.minimumStoryboardCount > 0
+        ? project.minimumStoryboardCount
+        : Math.max(storyboard.length, 1),
+    storyboard,
+    continuity: {
+      actionContinuity: typeof project.continuity?.actionContinuity === "string" ? project.continuity.actionContinuity : "",
+      cameraContinuity: typeof project.continuity?.cameraContinuity === "string" ? project.continuity.cameraContinuity : "",
+      lightingContinuity: typeof project.continuity?.lightingContinuity === "string" ? project.continuity.lightingContinuity : "",
+      colorContinuity: typeof project.continuity?.colorContinuity === "string" ? project.continuity.colorContinuity : "",
+      antiJumpGuidance: typeof project.continuity?.antiJumpGuidance === "string" ? project.continuity.antiJumpGuidance : ""
+    },
+    markdown: typeof project.markdown === "string" ? project.markdown : "",
+    targetPlatform: project.targetPlatform ?? "generic",
+    createdAt: typeof project.createdAt === "string" ? project.createdAt : now,
+    updatedAt: typeof project.updatedAt === "string" ? project.updatedAt : now
+  };
+}
+
+function normalizeClassicShotState(classicShots: Partial<ClassicShotState> | undefined): ClassicShotState {
+  const projects = (classicShots?.projects ?? [])
+    .map(normalizeClassicShotProject)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const recentProjectIds = [
+    ...(classicShots?.recentProjectIds ?? []),
+    ...projects.map((project) => project.id)
+  ]
+    .filter((id, index, ids): id is string => typeof id === "string" && projectIds.has(id) && ids.indexOf(id) === index)
+    .slice(0, 12);
+
+  return {
+    projects,
+    recentProjectIds,
+    lastGeneratedAt: classicShots?.lastGeneratedAt ?? projects[0]?.updatedAt ?? null,
+    status: classicShots?.status === "generating" ? "generating" : "idle",
+    lastError: classicShots?.lastError ?? null
+  };
+}
+
+function buildClassicShotDashboard(classicShots: ClassicShotState): ClassicShotDashboardSummary {
+  const projectById = new Map(classicShots.projects.map((project) => [project.id, project]));
+  const recentProjects = classicShots.recentProjectIds
+    .map((id) => projectById.get(id))
+    .filter((project): project is ClassicShotProject => Boolean(project))
+    .slice(0, 4);
+  const latestProject = recentProjects[0] ?? classicShots.projects[0] ?? null;
+
+  return {
+    projectCount: classicShots.projects.length,
+    recentProjects,
+    latestProject,
+    lastGeneratedAt: classicShots.lastGeneratedAt,
+    totalStoryboardCount: classicShots.projects.reduce((count, project) => count + project.storyboard.length, 0),
+    todayReference: latestProject
+      ? `${latestProject.source.director}《${latestProject.source.film}》`
+      : "选择一个有明确出处的经典镜头，再把它拆成可生成视频的连续调度。"
   };
 }
 
@@ -1065,6 +1184,7 @@ function normalizeAppState(state: AppState): AppState {
     news,
     topics: normalizeTopicState(state.topics),
     cinematic: normalizeCinematicState(state.cinematic),
+    classicShots: normalizeClassicShotState(state.classicShots),
     summary: normalizeSummaryState(state.summary),
     historyXhs: normalizeHistoryXhsState(state.historyXhs),
     historyPush: normalizeHistoryPushState(state.historyPush),
@@ -1193,6 +1313,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       if (result.domainUpdates?.cinematic) {
         state.cinematic = result.domainUpdates.cinematic;
+      }
+
+      if (result.domainUpdates?.classicShots) {
+        state.classicShots = result.domainUpdates.classicShots;
       }
 
       if (result.domainUpdates?.summary) {
@@ -1456,6 +1580,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         cinematic: {
           ...state.cinematic,
           dashboard: buildCinematicDashboard(state.cinematic)
+        },
+        classicShots: {
+          ...state.classicShots,
+          dashboard: buildClassicShotDashboard(state.classicShots)
         },
         summary: {
           ...state.summary,

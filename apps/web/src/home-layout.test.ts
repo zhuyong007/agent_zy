@@ -53,6 +53,7 @@ describe("home-layout", () => {
       "topics",
       "history",
       "cinematic",
+      "classicShots",
       "summary"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
@@ -62,6 +63,7 @@ describe("home-layout", () => {
       "small",
       "smaller",
       "smaller",
+      "large",
       "large",
       "smaller"
     ]);
@@ -73,6 +75,7 @@ describe("home-layout", () => {
       true,
       false,
       true,
+      true,
       true
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
@@ -82,6 +85,7 @@ describe("home-layout", () => {
       true,
       true,
       false,
+      true,
       true,
       true
     ]);
@@ -108,6 +112,15 @@ describe("home-layout", () => {
   test("shows cinematic module in top navigation by default", () => {
     expect(canShowHomeModuleInNavigation("cinematic")).toBe(true);
     expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "cinematic")).toMatchObject({
+      visible: true,
+      showInNavigation: true,
+      size: "large"
+    });
+  });
+
+  test("shows classic shots module in top navigation by default", () => {
+    expect(canShowHomeModuleInNavigation("classicShots")).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "classicShots")).toMatchObject({
       visible: true,
       showInNavigation: true,
       size: "large"
@@ -296,9 +309,10 @@ describe("home-layout", () => {
       "ledger",
       "history",
       "cinematic",
+      "classicShots",
       "summary"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {
