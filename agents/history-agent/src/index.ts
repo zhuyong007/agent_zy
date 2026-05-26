@@ -1,4 +1,4 @@
-import { defineAgent, getModelClient } from "@agent-zy/agent-sdk";
+import { defineAgent, getModelClient, normalizeModelOutput, parseModelJson } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
 import type { HistoryPostCard, HistoryPostPayload } from "@agent-zy/shared-types";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,6 +18,9 @@ const HISTORY_TOPICS = [
   "敦煌藏经洞如何保存千年文明切片",
   "阿拉伯学者如何保存并发展古希腊知识"
 ];
+
+const MIN_HISTORY_CARD_COUNT = 3;
+const MAX_HISTORY_CARD_COUNT = 10;
 
 function hashText(value: string): number {
   let hash = 0;
@@ -45,7 +48,7 @@ function getTopicArchivePath(): string {
 }
 
 function parseArchive(value: string): HistoryTopicArchive {
-  const parsed = parseJson(value);
+  const parsed = parseModelJson(value);
   const record = asRecord(parsed);
   const entries = Array.isArray(record?.entries) ? record.entries : [];
 
@@ -97,8 +100,23 @@ function writeTopicArchive(path: string, archive: HistoryTopicArchive) {
   writeFileSync(path, JSON.stringify(archive, null, 2), "utf8");
 }
 
-function selectTopic(localDate: string, archive: HistoryTopicArchive): string {
-  const usedTopics = new Set(archive.entries.map((entry) => entry.topic));
+function getHistoryNotificationTopics(state: AgentExecutionRequest["state"]): string[] {
+  return state.notifications
+    .filter((notification) => notification.kind === "history-post")
+    .flatMap((notification) => {
+      const payloadTopic = asString(notification.payload?.topic);
+      const titleTopic = asString(notification.title)?.replace(/^每日历史知识点[:：]/, "").trim();
+
+      return [payloadTopic, titleTopic].filter((topic): topic is string => Boolean(topic));
+    });
+}
+
+function selectTopic(
+  localDate: string,
+  archive: HistoryTopicArchive,
+  existingTopics: string[] = []
+): string {
+  const usedTopics = new Set([...archive.entries.map((entry) => entry.topic), ...existingTopics]);
   const dateSeedTopic = HISTORY_TOPICS[hashText(`history:${localDate}`) % HISTORY_TOPICS.length];
 
   if (!usedTopics.has(dateSeedTopic)) {
@@ -152,26 +170,6 @@ function recordGeneratedTopic(
   };
 }
 
-function parseJson(value: string): unknown | null {
-  try {
-    return JSON.parse(value);
-  } catch {
-    const arrayMatch = value.match(/\[[\s\S]*\]/);
-    const objectMatch = value.match(/\{[\s\S]*\}/);
-    const fallback = objectMatch?.[0] ?? arrayMatch?.[0];
-
-    if (!fallback) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(fallback);
-    } catch {
-      return null;
-    }
-  }
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -221,7 +219,7 @@ function removePromptLengthNotes(prompt: string): string {
 
 function repairImagePrompt(prompt: string): string {
   const filler =
-    "。图片描述：竖版小红书历史知识卡片，主体清晰居中，时代场景准确，构图稳定，光线柔和，色彩克制，材质细腻。图中文字以文字形式展示相关背景、关键人物、影响意义等大概知识范围，不必写详细知识";
+    "。图片描述：竖版小红书历史知识卡片，主体清晰居中，时代场景准确，构图稳定，光线柔和，色彩克制，材质细腻。图片中应该以文字类型展示相关背景、关键人物、影响意义等大概知识范围，不必写详细知识";
   let repaired = removePromptLengthNotes(prompt);
 
   while (countChineseCharacters(repaired) < 100) {
@@ -266,7 +264,7 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
   const record = asRecord(normalizedValue);
 
   if (!record) {
-    throw new Error("ModelScope 输出不是 JSON 对象");
+    throw new Error("模型输出不是 JSON 对象");
   }
 
   const topic = asString(record.topic);
@@ -281,11 +279,15 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
       : cards.length;
 
   if (!topic || !summary || !xiaohongshuCaption) {
-    throw new Error("ModelScope 输出缺少 topic、summary 或 xiaohongshuCaption");
+    throw new Error("模型输出缺少 topic、summary 或 xiaohongshuCaption");
   }
 
-  if (cardCount < 1 || cardCount > 5 || cards.length !== cardCount) {
-    throw new Error("历史推文图片数量必须是 1 到 5 张，并且 cards 数量要匹配");
+  if (
+    cardCount < MIN_HISTORY_CARD_COUNT ||
+    cardCount > MAX_HISTORY_CARD_COUNT ||
+    cards.length !== cardCount
+  ) {
+    throw new Error("历史推文图片数量必须是 3 到 10 张，并且 cards 数量要匹配");
   }
 
   return {
@@ -298,87 +300,22 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
   };
 }
 
-function extractTextContent(value: unknown): string | null {
-  const direct = asString(value);
-
-  if (direct) {
-    return direct;
-  }
-
-  if (Array.isArray(value)) {
-    const joined = value
-      .map((item) => {
-        const record = asRecord(item);
-        return asString(record?.text) ?? asString(record?.content);
-      })
-      .filter((item): item is string => Boolean(item))
-      .join("\n");
-
-    return joined || null;
-  }
-
-  const record = asRecord(value);
-
-  return asString(record?.text) ?? asString(record?.content);
-}
-
-function extractModelContent(value: unknown): unknown {
-  const record = asRecord(value);
-  const choices = Array.isArray(record?.choices) ? record.choices : [];
-  const firstChoice = asRecord(choices[0]);
-  const message = asRecord(firstChoice?.message);
-
-  return message?.content ?? firstChoice?.text ?? null;
-}
-
-function getModelScopeErrorMessage(responseText: string): string {
-  const parsed = asRecord(parseJson(responseText));
-  const error = asRecord(parsed?.error);
-  const detail =
-    asString(error?.message) ??
-    asString(parsed?.message) ??
-    asString(parsed?.error) ??
-    responseText.trim();
-
-  return detail ? detail.slice(0, 500) : "响应体为空";
-}
-
 function normalizePayloadInput(value: unknown): unknown {
-  if (hasPayloadShape(value)) {
-    return value;
+  const normalized = normalizeModelOutput(value);
+
+  if (hasPayloadShape(normalized)) {
+    return normalized;
   }
 
-  if (typeof value === "string") {
-    const parsed = parseJson(value);
-
-    return parsed ? normalizePayloadInput(parsed) : value;
-  }
-
-  if (Array.isArray(value)) {
-    const payloadCandidate = value.find(hasPayloadShape);
+  if (Array.isArray(normalized)) {
+    const payloadCandidate = normalized.find(hasPayloadShape);
 
     if (payloadCandidate) {
       return payloadCandidate;
     }
-
-    const text = extractTextContent(value);
-
-    if (text) {
-      const parsed = parseJson(text);
-
-      return parsed ?? text;
-    }
   }
 
-  const text = extractTextContent(value);
-
-  if (text) {
-    const parsed = parseJson(text);
-
-    return parsed ?? text;
-  }
-
-  return value;
+  return normalized;
 }
 
 function buildHistoryXhsAnalyticsPrompt(state: AgentExecutionRequest["state"]): string {
@@ -414,7 +351,7 @@ async function generateWithModelRuntime(
   const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
 
   if (fixture) {
-    return validatePayload(parseJson(fixture), requestedAt);
+    return validatePayload(parseModelJson(fixture), requestedAt);
   }
 
   console.info("[history-agent] model-runtime:request", {
@@ -426,7 +363,7 @@ async function generateWithModelRuntime(
       ? `中文历史知识编辑，只输出严格 JSON，不要输出 Markdown。${analyticsPrompt}`
       :
       "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
-    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 最多 5 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字形式展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。`
+    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cardCount、cards、xiaohongshuCaption。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。`
   });
   const rawContent = result.text;
   const normalizedPayloadInput = normalizePayloadInput(rawContent);
@@ -452,7 +389,9 @@ export const agent = defineAgent({
     const localDate = asString(input.meta?.localDate) ?? input.requestedAt.slice(0, 10);
     const archivePath = getTopicArchivePath();
     const archive = loadTopicArchive(archivePath);
-    const topic = asString(input.meta?.topic) ?? selectTopic(localDate, archive);
+    const topic =
+      asString(input.meta?.topic) ??
+      selectTopic(localDate, archive, getHistoryNotificationTopics(input.state));
 
     console.info("[history-agent] execute:start", {
       taskId: input.taskId,

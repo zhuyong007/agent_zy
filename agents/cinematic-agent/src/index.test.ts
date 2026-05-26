@@ -22,6 +22,18 @@ function createFixture(overrides: Partial<CinematicProject> = {}) {
     script: "城市从不睡觉，只是把孤独留给凌晨两点的人。",
     style: "冷蓝霓虹与低饱和胶片感",
     pace: "缓慢建立，轻微递进，结尾留白",
+    scenePlan: {
+      sceneCount: 1,
+      maxDurationSeconds: 15,
+      scenes: [
+        {
+          id: "scene-1",
+          name: "rainy-street",
+          anchor: "same rainy street outside the convenience store",
+          role: "main continuous scene"
+        }
+      ]
+    },
     continuity: {
       actionLine: "人物从便利店门口走向街角，动作始终克制缓慢。",
       spatialLine: "所有镜头发生在同一条雨后街道，便利店、积水和街角霓虹保持方位连续。",
@@ -35,6 +47,8 @@ function createFixture(overrides: Partial<CinematicProject> = {}) {
     updatedAt: "2026-05-22T00:00:00.000Z",
     storyboard: Array.from({ length: 4 }, (_, index) => ({
       id: `shot-${index + 1}`,
+      sceneId: "scene-1",
+      sceneAnchor: "same rainy street outside the convenience store",
       title: `镜头 ${index + 1}`,
       purpose: "建立孤独的城市空间",
       duration: "4-6 秒",
@@ -147,9 +161,13 @@ function createRequest(state = createState()): AgentExecutionRequest {
 }
 
 function mockModelRuntimeText(text: string) {
+  const generateText = vi.fn(async (_input: Record<string, unknown>) => ({ text }));
+
   (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
-    generateText: vi.fn(async () => ({ text }))
+    generateText
   };
+
+  return generateText;
 }
 
 describe("cinematic agent", () => {
@@ -173,9 +191,14 @@ describe("cinematic agent", () => {
       continuity: expect.objectContaining({
         actionLine: expect.stringContaining("便利店门口"),
         spatialLine: expect.stringContaining("同一条雨后街道")
+      }),
+      scenePlan: expect.objectContaining({
+        sceneCount: 1,
+        maxDurationSeconds: 15
       })
     });
     expect(project?.storyboard).toHaveLength(4);
+    expect(new Set(project?.storyboard.map((shot) => shot.sceneId)).size).toBeLessThanOrEqual(3);
     expect(project?.storyboard[0]?.handoff).toContain("积水倒影");
     expect(project?.storyboard[0]?.prompt.zh.length).toBeGreaterThan(300);
     expect(project?.storyboard[0]?.prompt.en).toContain("cinematic");
@@ -183,12 +206,42 @@ describe("cinematic agent", () => {
   });
 
   it("parses model JSON and records the project in cinematic state", async () => {
-    mockModelRuntimeText(JSON.stringify(createFixture({ id: "cinematic-model" })));
+    const generateText = mockModelRuntimeText(JSON.stringify(createFixture({ id: "cinematic-model" })));
 
     const result = await agent.execute(createRequest());
 
     expect(result.status).toBe("completed");
     expect(result.domainUpdates?.cinematic?.projects[0]?.id).toBe("cinematic-model");
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseFormat: "json",
+        timeoutMs: 600_000
+      })
+    );
+    const callInput = generateText.mock.calls[0]?.[0];
+    expect(callInput.prompt).toContain("1-3");
+    expect(callInput.prompt).toContain("15");
+    expect(callInput.prompt).toContain("scenePlan");
+  });
+
+  it("fills continuity and handoff when an older model returns the previous schema", async () => {
+    const legacyProject = createFixture({ id: "cinematic-legacy" }) as any;
+    delete legacyProject.continuity;
+    delete legacyProject.scenePlan;
+    legacyProject.storyboard = legacyProject.storyboard.map(({ handoff: _handoff, ...shot }: any) => shot);
+    legacyProject.storyboard = legacyProject.storyboard.map(({ sceneId: _sceneId, sceneAnchor: _sceneAnchor, ...shot }: any) => shot);
+    mockModelRuntimeText(JSON.stringify(legacyProject));
+
+    const result = await agent.execute(createRequest());
+    const project = result.domainUpdates?.cinematic?.projects[0];
+
+    expect(result.status).toBe("completed");
+    expect(project?.id).toBe("cinematic-legacy");
+    expect(project?.continuity?.actionLine).toBeTruthy();
+    expect(project?.scenePlan?.sceneCount).toBe(1);
+    expect(project?.scenePlan?.maxDurationSeconds).toBe(15);
+    expect(project?.storyboard[0]?.handoff).toBeTruthy();
+    expect(project?.storyboard[0]?.sceneId).toBe("scene-1");
   });
 
   it("rejects model output with missing storyboard fields", async () => {

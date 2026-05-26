@@ -57,4 +57,13 @@ describe("model provider registry", () => {
 
     expect(getModelProvider("deepseek")?.defaultModels[0]).toBe("deepseek-v4-pro");
   });
+
+  it("lists current DeepSeek v4 models before legacy aliases", () => {
+    expect(getModelProvider("deepseek")?.defaultModels).toEqual([
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "deepseek-chat",
+      "deepseek-reasoner"
+    ]);
+  });
 });

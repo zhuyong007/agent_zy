@@ -20,7 +20,9 @@ function buildModelProviders(): ModelProviderDefinition[] {
     requiresApiKey: true,
     authType: "bearer",
     supportedCapabilities: ["chat", "text"],
-    defaultModels: [process.env.DEEPSEEK_MODEL ?? "deepseek-chat", "deepseek-reasoner"],
+    defaultModels: process.env.DEEPSEEK_MODEL
+      ? [process.env.DEEPSEEK_MODEL, "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"]
+      : ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
     docsHint: "DeepSeek OpenAI-compatible API。",
     compatibleMode: "openai"
   },

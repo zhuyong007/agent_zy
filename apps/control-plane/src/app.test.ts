@@ -36,6 +36,18 @@ function createCinematicFixture() {
     pace: "缓慢推进，结尾留白",
     targetShotCount: 4,
     tags: ["城市", "夜晚", "孤独"],
+    scenePlan: {
+      sceneCount: 1,
+      maxDurationSeconds: 15,
+      scenes: [
+        {
+          id: "scene-1",
+          name: "rainy-street",
+          anchor: "same rainy street outside the convenience store",
+          role: "main continuous scene"
+        }
+      ]
+    },
     continuity: {
       actionLine: "The figure keeps moving through the same rainy city block until reaching the final doorway.",
       spatialLine: "Every shot preserves the wet street, storefront light, and right-edge character position as a connected route.",
@@ -45,6 +57,8 @@ function createCinematicFixture() {
     },
     storyboard: Array.from({ length: 4 }, (_, index) => ({
       id: `shot-${index + 1}`,
+      sceneId: "scene-1",
+      sceneAnchor: "same rainy street outside the convenience store",
       title: `镜头 ${index + 1}`,
       purpose: "建立城市孤独感",
       duration: "5 秒",
@@ -413,6 +427,46 @@ describe("control-plane app", () => {
 
       expect(generateResponse.statusCode).toBe(500);
       expect(generateResponse.json().message).toContain("未找到可用模型配置");
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("deletes a cinematic generation history item", async () => {
+    process.env.CINEMATIC_PROJECT_FIXTURE_JSON = JSON.stringify(createCinematicFixture());
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-cinematic-delete-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      await isolatedApp.inject({
+        method: "POST",
+        url: "/api/cinematic/generate",
+        payload: {
+          concept: "瀛ょ嫭鎰熺殑鍩庡競澶滄櫄",
+          targetShotCount: 4
+        }
+      });
+
+      const deleteResponse = await isolatedApp.inject({
+        method: "DELETE",
+        url: "/api/cinematic/projects/cinematic-app-fixture"
+      });
+
+      expect(deleteResponse.statusCode).toBe(200);
+      expect(deleteResponse.json()).toMatchObject({
+        projects: [],
+        recentProjectIds: [],
+        lastGeneratedAt: null
+      });
     } finally {
       await isolatedApp.close();
       rmSync(isolatedDataDir, {
@@ -843,7 +897,7 @@ describe("control-plane app", () => {
     process.env.HISTORY_POST_FIXTURE_JSON = JSON.stringify({
       topic: "张骞出使西域如何改变丝绸之路",
       summary: "一次外交行动，重塑了贸易、地理认知和文化交流。",
-      cardCount: 2,
+      cardCount: 3,
       cards: [
         {
           title: "先讲出发背景",
@@ -854,6 +908,11 @@ describe("control-plane app", () => {
           title: "再讲长期影响",
           imageText: "打开的不是一条路，而是一整套交流网络",
           prompt: longHistoryImagePrompt("丝绸之路商队与文明交流")
+        },
+        {
+          title: "最后讲知识范围",
+          imageText: "图中展示外交背景、路线节点和交流影响",
+          prompt: longHistoryImagePrompt("张骞出使西域路线与知识交流")
         }
       ],
       xiaohongshuCaption: "今天用两张图讲清张骞出使西域为什么是历史转折点。"

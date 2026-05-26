@@ -77,6 +77,7 @@ export interface ControlPlaneOrchestrator {
   getCinematic(): CinematicState;
   createCinematicProject(input: unknown): CinematicProject;
   updateCinematicProject(id: string, input: unknown): CinematicProject;
+  deleteCinematicProject(id: string): CinematicState;
   generateCinematicProject(input?: Record<string, unknown>): Promise<CinematicState>;
   getClassicShots(): ClassicShotState;
   generateClassicShotProject(input?: Record<string, unknown>): Promise<ClassicShotState>;
@@ -306,9 +307,13 @@ export function createControlPlaneOrchestrator(options: {
     const record = asRecord(value);
     const prompt = asRecord(record.prompt);
     const handoff = asString(record.handoff);
+    const sceneId = asString(record.sceneId);
+    const sceneAnchor = asString(record.sceneAnchor);
 
     return {
       id: asString(record.id) || `shot-${index + 1}`,
+      ...(sceneId ? { sceneId } : {}),
+      ...(sceneAnchor ? { sceneAnchor } : {}),
       title: asString(record.title) || `镜头 ${index + 1}`,
       purpose: asString(record.purpose),
       duration: asString(record.duration),
@@ -339,12 +344,58 @@ export function createControlPlaneOrchestrator(options: {
     return Object.values(continuity).some(Boolean) ? continuity : undefined;
   }
 
+  function normalizeScenePlanInput(value: unknown): CinematicProject["scenePlan"] | undefined {
+    const record = asRecord(value);
+    const rawScenes = Array.isArray(record.scenes) ? record.scenes : [];
+    const scenes = rawScenes
+      .map((item, index) => {
+        const scene = asRecord(item);
+        const id = asString(scene.id) || `scene-${index + 1}`;
+        const name = asString(scene.name) || id;
+        const anchor = asString(scene.anchor);
+        const role = asString(scene.role);
+
+        return anchor
+          ? {
+              id,
+              name,
+              anchor,
+              role
+            }
+          : null;
+      })
+      .filter((scene): scene is NonNullable<CinematicProject["scenePlan"]>["scenes"][number] => Boolean(scene))
+      .slice(0, 3);
+
+    if (!scenes.length) {
+      return undefined;
+    }
+
+    const sceneCount =
+      typeof record.sceneCount === "number" && Number.isInteger(record.sceneCount)
+        ? record.sceneCount
+        : scenes.length;
+    const maxDurationSeconds =
+      typeof record.maxDurationSeconds === "number" && Number.isInteger(record.maxDurationSeconds)
+        ? record.maxDurationSeconds
+        : 15;
+    const limitedSceneCount = Math.min(Math.max(sceneCount, 1), 3, scenes.length);
+
+    return {
+      sceneCount: limitedSceneCount,
+      maxDurationSeconds: Math.min(Math.max(maxDurationSeconds, 1), 15),
+      scenes: scenes.slice(0, limitedSceneCount)
+    };
+  }
+
   function createProjectFromInput(input: unknown): CinematicProject {
     const record = asRecord(input);
     const now = new Date().toISOString();
     const storyboard = Array.isArray(record.storyboard)
       ? record.storyboard.map(normalizeShotInput)
       : [];
+    const scenePlan = normalizeScenePlanInput(record.scenePlan);
+    const continuity = normalizeContinuityInput(record.continuity);
 
     return {
       id: asString(record.id) || `cinematic-${nanoid()}`,
@@ -353,7 +404,8 @@ export function createControlPlaneOrchestrator(options: {
       mood: asString(record.mood),
       script: asString(record.script),
       storyboard,
-      ...(normalizeContinuityInput(record.continuity) ? { continuity: normalizeContinuityInput(record.continuity) } : {}),
+      ...(scenePlan ? { scenePlan } : {}),
+      ...(continuity ? { continuity } : {}),
       createdAt: asString(record.createdAt) || now,
       updatedAt: now,
       tags: Array.isArray(record.tags)
@@ -610,6 +662,30 @@ export function createControlPlaneOrchestrator(options: {
       options.eventBus.emit("dashboard.updated", options.store.getState());
 
       return next.projects.find((project) => project.id === id) ?? updated;
+    },
+    deleteCinematicProject(id) {
+      const current = options.store.getState().cinematic;
+
+      if (!current.projects.some((project) => project.id === id)) {
+        throw new Error("cinematic project not found");
+      }
+
+      const projects = current.projects.filter((project) => project.id !== id);
+      const projectIds = new Set(projects.map((project) => project.id));
+      const recentProjectIds = current.recentProjectIds.filter((projectId) => projectIds.has(projectId));
+      const lastGeneratedAt = recentProjectIds[0]
+        ? projects.find((project) => project.id === recentProjectIds[0])?.updatedAt ?? projects[0]?.updatedAt ?? null
+        : projects[0]?.updatedAt ?? null;
+      const next = options.store.setCinematicState({
+        projects,
+        recentProjectIds,
+        lastGeneratedAt,
+        status: "idle",
+        lastError: null
+      });
+      options.eventBus.emit("dashboard.updated", options.store.getState());
+
+      return next;
     },
     async generateCinematicProject(input = {}) {
       const task = await this.runSystemTask({

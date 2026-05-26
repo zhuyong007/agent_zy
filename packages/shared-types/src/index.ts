@@ -394,6 +394,8 @@ export interface HistoryXhsState {
 
 export interface StoryboardShot {
   id: string;
+  sceneId?: string;
+  sceneAnchor?: string;
   title: string;
   purpose: string;
   duration: string;
@@ -418,6 +420,17 @@ export interface CinematicContinuity {
   audioLine: string;
 }
 
+export interface CinematicScenePlan {
+  sceneCount: number;
+  maxDurationSeconds: number;
+  scenes: Array<{
+    id: string;
+    name: string;
+    anchor: string;
+    role: string;
+  }>;
+}
+
 export interface CinematicProject {
   id: string;
   title: string;
@@ -425,6 +438,7 @@ export interface CinematicProject {
   mood: string;
   script: string;
   storyboard: StoryboardShot[];
+  scenePlan?: CinematicScenePlan;
   continuity?: CinematicContinuity;
   createdAt: string;
   updatedAt: string;

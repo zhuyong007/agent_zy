@@ -1,31 +1,19 @@
 import { randomUUID } from "node:crypto";
 
-import { defineAgent, getModelClient } from "@agent-zy/agent-sdk";
+import { defineAgent, getModelClient, normalizeModelOutput, parseModelJson } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
-import type { CinematicContinuity, CinematicProject, CinematicState, StoryboardShot } from "@agent-zy/shared-types";
+import type {
+  CinematicContinuity,
+  CinematicProject,
+  CinematicScenePlan,
+  CinematicState,
+  StoryboardShot
+} from "@agent-zy/shared-types";
 
 import { buildCinematicPrompt, CINEMATIC_SYSTEM_PROMPT } from "./prompts";
 import type { CinematicGenerationInput } from "./types";
 
 const HISTORY_LIMIT = 50;
-
-function parseJson(value: string): unknown | null {
-  try {
-    return JSON.parse(value);
-  } catch {
-    const objectMatch = value.match(/\{[\s\S]*\}/);
-
-    if (!objectMatch) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(objectMatch[0]);
-    } catch {
-      return null;
-    }
-  }
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -47,59 +35,6 @@ function asPositiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
-function extractTextContent(value: unknown): string | null {
-  const direct = asString(value);
-
-  if (direct) {
-    return direct;
-  }
-
-  if (Array.isArray(value)) {
-    const joined = value
-      .map((item) => {
-        const record = asRecord(item);
-        return asString(record?.text) ?? asString(record?.content);
-      })
-      .filter((item): item is string => Boolean(item))
-      .join("\n");
-
-    return joined || null;
-  }
-
-  const record = asRecord(value);
-
-  return asString(record?.text) ?? asString(record?.content);
-}
-
-function normalizeModelPayload(value: unknown): unknown {
-  if (asRecord(value)?.storyboard) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsed = parseJson(value);
-    return parsed ? normalizeModelPayload(parsed) : value;
-  }
-
-  if (Array.isArray(value)) {
-    const projectCandidate = value.find((item) => Boolean(asRecord(item)?.storyboard));
-
-    if (projectCandidate) {
-      return projectCandidate;
-    }
-
-    const text = extractTextContent(value);
-    const parsed = text ? parseJson(text) : null;
-
-    return parsed ?? value;
-  }
-
-  const text = extractTextContent(value);
-  const parsed = text ? parseJson(text) : null;
-
-  return parsed ?? value;
-}
-
 function validateShot(value: unknown, index: number): StoryboardShot {
   const record = asRecord(value);
 
@@ -110,6 +45,8 @@ function validateShot(value: unknown, index: number): StoryboardShot {
   const prompt = asRecord(record.prompt);
   const zhPrompt = asString(prompt?.zh);
   const enPrompt = asString(prompt?.en);
+  const sceneId = asString(record.sceneId);
+  const sceneAnchor = asString(record.sceneAnchor);
   const title = asString(record.title);
   const purpose = asString(record.purpose);
   const duration = asString(record.duration);
@@ -131,7 +68,6 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     !transition ||
     !audioHint ||
     !emotionalBeat ||
-    !handoff ||
     !zhPrompt ||
     !enPrompt
   ) {
@@ -140,6 +76,8 @@ function validateShot(value: unknown, index: number): StoryboardShot {
 
   return {
     id: asString(record.id) ?? `shot-${index + 1}`,
+    ...(sceneId ? { sceneId } : {}),
+    ...(sceneAnchor ? { sceneAnchor } : {}),
     title,
     purpose,
     duration,
@@ -149,7 +87,7 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     transition,
     audioHint,
     emotionalBeat,
-    handoff,
+    ...(handoff ? { handoff } : {}),
     prompt: {
       zh: zhPrompt,
       en: enPrompt
@@ -181,8 +119,122 @@ function validateContinuity(value: unknown): CinematicContinuity | undefined {
     : undefined;
 }
 
+function validateScenePlan(value: unknown): CinematicScenePlan | undefined {
+  const record = asRecord(value);
+
+  if (!record) {
+    return undefined;
+  }
+
+  const scenes = Array.isArray(record.scenes)
+    ? record.scenes
+        .map((item, index) => {
+          const scene = asRecord(item);
+          const id = asString(scene?.id) ?? `scene-${index + 1}`;
+          const name = asString(scene?.name) ?? id;
+          const anchor = asString(scene?.anchor);
+          const role = asString(scene?.role) ?? "";
+
+          return anchor
+            ? {
+                id,
+                name,
+                anchor,
+                role
+              }
+            : null;
+        })
+        .filter((item): item is CinematicScenePlan["scenes"][number] => Boolean(item))
+        .slice(0, 3)
+    : [];
+
+  if (scenes.length === 0) {
+    return undefined;
+  }
+
+  const sceneCount = Math.min(Math.max(asPositiveInteger(record.sceneCount) ?? scenes.length, 1), 3);
+  const maxDurationSeconds = Math.min(asPositiveInteger(record.maxDurationSeconds) ?? 15, 15);
+  const limitedSceneCount = Math.min(sceneCount, scenes.length);
+
+  return {
+    sceneCount: limitedSceneCount,
+    maxDurationSeconds,
+    scenes: scenes.slice(0, limitedSceneCount)
+  };
+}
+
+function buildFallbackHandoff(shot: StoryboardShot, nextShot: StoryboardShot | undefined) {
+  if (!nextShot) {
+    return `最后一镜以「${shot.emotionalBeat}」收束，保留画面、声音和情绪余韵作为结尾留白。`;
+  }
+
+  return `从「${shot.title}」延续动作、空间方向、光线质感和声音尾音，自然接入下一镜「${nextShot.title}」，避免跳切和场景漂移。`;
+}
+
+function buildFallbackScenePlan(input: {
+  concept: string;
+  style: string;
+  storyboard: StoryboardShot[];
+}): CinematicScenePlan {
+  const firstShot = input.storyboard[0];
+
+  return {
+    sceneCount: 1,
+    maxDurationSeconds: 15,
+    scenes: [
+      {
+        id: "scene-1",
+        name: input.concept || "main-scene",
+        anchor: firstShot?.sceneAnchor || firstShot?.composition || input.style || "同一主场景",
+        role: "承载整条15秒视频的主场景，多个分镜只改变机位、动作、光线细节和情绪。"
+      }
+    ]
+  };
+}
+
+function withSceneAnchors(storyboard: StoryboardShot[], scenePlan: CinematicScenePlan) {
+  const sceneById = new Map(scenePlan.scenes.map((scene) => [scene.id, scene]));
+  const fallbackScene = scenePlan.scenes[0];
+
+  return storyboard.map((shot) => {
+    const scene = (shot.sceneId ? sceneById.get(shot.sceneId) : null) ?? fallbackScene;
+
+    return {
+      ...shot,
+      sceneId: scene.id,
+      sceneAnchor: shot.sceneAnchor ?? scene.anchor
+    };
+  });
+}
+
+function withContinuityHandoffs(storyboard: StoryboardShot[]) {
+  return storyboard.map((shot, index) => ({
+    ...shot,
+    handoff: shot.handoff ?? buildFallbackHandoff(shot, storyboard[index + 1])
+  }));
+}
+
+function buildFallbackContinuity(input: {
+  concept: string;
+  mood: string;
+  style: string;
+  pace: string;
+  storyboard: StoryboardShot[];
+}): CinematicContinuity {
+  const firstShot = input.storyboard[0];
+  const lastShot = input.storyboard.at(-1) ?? firstShot;
+
+  return {
+    actionLine: `围绕「${input.concept}」，让主体从「${firstShot?.purpose ?? input.mood}」逐步推进到「${lastShot?.purpose ?? input.mood}」，所有分镜按同一场戏的动作链连接。`,
+    spatialLine: "延续每个分镜中的场景方位、主体位置、前景/中景/背景关系和光线方向，保持空间像同一地点或同一路径内连续发生。",
+    emotionalLine: `情绪从「${firstShot?.emotionalBeat ?? input.mood}」递进到「${lastShot?.emotionalBeat ?? input.mood}」，每一镜都是上一镜的因果延伸。`,
+    visualLine: `统一「${input.style}」的色彩、材质、天气、景深和镜头质感，让画面风格贯穿全片。`,
+    audioLine: `用环境声、动作声或音乐尾音按「${input.pace}」连接镜头，声音不断裂，只随情绪轻微变化。`
+  };
+}
+
 function validateProject(value: unknown, input: CinematicGenerationInput, requestedAt: string): CinematicProject {
-  const record = asRecord(normalizeModelPayload(value));
+  const record = asRecord(normalizeModelOutput(value));
 
   if (!record) {
     throw new Error("电影镜头设计输出不是 JSON 对象");
@@ -192,25 +244,38 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
   const concept = asString(record.concept) ?? input.concept;
   const mood = asString(record.mood);
   const script = asString(record.script);
-  const storyboard = Array.isArray(record.storyboard)
+  const rawStoryboard = Array.isArray(record.storyboard)
     ? record.storyboard.map(validateShot)
     : [];
-  const continuity = validateContinuity(record.continuity);
   const style = asString(record.style) ?? input.style ?? "电影感镜头设计";
   const pace = asString(record.pace) ?? input.pace ?? "情绪递进";
-  const targetShotCount = asPositiveInteger(record.targetShotCount) ?? input.targetShotCount ?? storyboard.length;
+  const targetShotCount = asPositiveInteger(record.targetShotCount) ?? input.targetShotCount ?? rawStoryboard.length;
 
   if (!title || !concept || !mood || !script) {
     throw new Error("电影镜头设计输出缺少 title、concept、mood 或 script");
   }
 
-  if (storyboard.length < 4) {
+  if (rawStoryboard.length < 4) {
     throw new Error("电影分镜至少需要 4 个镜头，才能形成完整情绪递进");
   }
 
-  if (!continuity) {
-    throw new Error("cinematic project is missing continuity design");
-  }
+  const scenePlan =
+    validateScenePlan(record.scenePlan) ??
+    buildFallbackScenePlan({
+      concept,
+      style,
+      storyboard: rawStoryboard
+    });
+  const storyboard = withContinuityHandoffs(withSceneAnchors(rawStoryboard, scenePlan));
+  const continuity =
+    validateContinuity(record.continuity) ??
+    buildFallbackContinuity({
+      concept,
+      mood,
+      style,
+      pace,
+      storyboard
+    });
 
   return {
     id: asString(record.id) ?? `cinematic-${randomUUID()}`,
@@ -219,6 +284,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     mood,
     script,
     storyboard,
+    scenePlan,
     continuity,
     createdAt: asString(record.createdAt) ?? requestedAt,
     updatedAt: requestedAt,
@@ -276,7 +342,7 @@ async function generateProject(input: CinematicGenerationInput, requestedAt: str
   const fixture = process.env.CINEMATIC_PROJECT_FIXTURE_JSON;
 
   if (fixture) {
-    return validateProject(parseJson(fixture), input, requestedAt);
+    return validateProject(parseModelJson(fixture), input, requestedAt);
   }
 
   const result = await getModelClient().generateText({
@@ -285,7 +351,9 @@ async function generateProject(input: CinematicGenerationInput, requestedAt: str
     systemPrompt: CINEMATIC_SYSTEM_PROMPT,
     prompt: buildCinematicPrompt(input),
     temperature: 0.8,
-    maxTokens: 6000
+    maxTokens: 6000,
+    timeoutMs: 600_000,
+    responseFormat: "json"
   });
 
   if (!result.text) {

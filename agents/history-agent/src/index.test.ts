@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -7,6 +7,15 @@ import type { AgentExecutionRequest } from "@agent-zy/agent-sdk";
 import type { AppState } from "@agent-zy/shared-types";
 
 import { agent } from "./index";
+
+const tempDirs: string[] = [];
+
+function createTempArchivePath(): string {
+  const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
+  tempDirs.push(archiveDir);
+
+  return join(archiveDir, "topic-archive.json");
+}
 
 function createState(): AppState {
   return {
@@ -100,6 +109,14 @@ function longImagePrompt(topic: string) {
   return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
 }
 
+function createHistoryCards(topic: string, count = 3) {
+  return Array.from({ length: count }, (_, index) => ({
+    title: `第 ${index + 1} 张`,
+    imageText: `${topic} 图文 ${index + 1}`,
+    prompt: longImagePrompt(`${topic} 第 ${index + 1} 张`)
+  }));
+}
+
 function mockModelRuntimeText(textFactory: string | ((prompt: string) => string)) {
   (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
     generateText: vi.fn(async (input: { prompt: string; systemPrompt?: string }) => {
@@ -125,6 +142,10 @@ function mockStructuredModelResponse(content: unknown) {
 }
 
 describe("history agent", () => {
+  beforeEach(() => {
+    process.env.HISTORY_TOPIC_ARCHIVE_PATH = createTempArchivePath();
+  });
+
   afterEach(() => {
     delete process.env.MODELSCOPE_API_KEY;
     delete process.env.MODELSCOPE_BASE_URL;
@@ -132,6 +153,10 @@ describe("history agent", () => {
     delete process.env.HISTORY_TOPIC_ARCHIVE_PATH;
     delete (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__;
     vi.unstubAllGlobals();
+
+    for (const dataDir of tempDirs.splice(0)) {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("generates a persistent history post notification from model runtime JSON", async () => {
@@ -201,16 +226,28 @@ describe("history agent", () => {
     expect(result.domainUpdates?.historyPush).toBeUndefined();
   });
 
-  it("rejects model output that needs more than five images", async () => {
+  it("accepts model output with up to ten images", async () => {
     const restore = mockModelResponse({
-      topic: "超长选题",
-      summary: "这条输出不符合图片数量限制。",
-      cardCount: 6,
-      cards: Array.from({ length: 6 }, (_, index) => ({
-        title: `第 ${index + 1} 张`,
-        imageText: `文字 ${index + 1}`,
-        prompt: longImagePrompt(`超长选题第 ${index + 1} 张`)
-      })),
+      topic: "长内容图文数量测试",
+      summary: "复杂主题可以拆成更多图文卡片。",
+      cardCount: 10,
+      cards: createHistoryCards("长内容图文数量测试", 10),
+      xiaohongshuCaption: "十张图文正文"
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]?.payload?.cardCount).toBe(10);
+  });
+
+  it("rejects model output with fewer than three images", async () => {
+    const restore = mockModelResponse({
+      topic: "过短图文数量测试",
+      summary: "少于三张不符合图文结构下限。",
+      cardCount: 2,
+      cards: createHistoryCards("过短图文数量测试", 2),
       xiaohongshuCaption: "不应通过"
     });
 
@@ -219,7 +256,24 @@ describe("history agent", () => {
 
     expect(result.status).toBe("failed");
     expect(result.notifications).toBeUndefined();
-    expect(result.summary).toContain("5");
+    expect(result.summary).toContain("3 到 10");
+  });
+
+  it("rejects model output with more than ten images", async () => {
+    const restore = mockModelResponse({
+      topic: "超长图文数量测试",
+      summary: "超过十张不符合图片数量限制。",
+      cardCount: 11,
+      cards: createHistoryCards("超长图文数量测试", 11),
+      xiaohongshuCaption: "不应通过"
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("failed");
+    expect(result.notifications).toBeUndefined();
+    expect(result.summary).toContain("3 到 10");
   });
 
   it("repairs image prompts to 100-200 Chinese characters before returning payloads", async () => {
@@ -228,13 +282,14 @@ describe("history agent", () => {
     const restore = mockModelResponse({
       topic: "Prompt repair topic",
       summary: "Short model prompts should not fail the whole task.",
-      cardCount: 1,
+      cardCount: 3,
       cards: [
         {
           title: "Card title",
           imageText: "Image text",
           prompt: "短提示"
-        }
+        },
+        ...createHistoryCards("Prompt repair topic").slice(1)
       ],
       xiaohongshuCaption: "Caption body"
     });
@@ -247,7 +302,7 @@ describe("history agent", () => {
 
     expect(result.status).toBe("completed");
     expect(prompt).toContain("图片描述");
-    expect(prompt).toContain("文字形式展示");
+    expect(prompt).toContain("文字类型展示");
     expect(chineseCharacterCount).toBeGreaterThanOrEqual(100);
     expect(chineseCharacterCount).toBeLessThanOrEqual(200);
   });
@@ -258,14 +313,15 @@ describe("history agent", () => {
     const restore = mockModelResponse({
       topic: "字数残留测试",
       summary: "模型有时会把字数要求写进生图提示词。",
-      cardCount: 1,
+      cardCount: 3,
       cards: [
         {
           title: "去掉字数",
           imageText: "画面文字展示知识范围",
           prompt:
             "图片描述：汉代商队穿过西域绿洲驿站，竖版小红书历史知识卡片，主体清晰居中，暖金光线，青灰地图背景，画面上方预留标题，图中文字以文字形式展示路线背景和交流影响，约120字"
-        }
+        },
+        ...createHistoryCards("字数残留测试").slice(1)
       ],
       xiaohongshuCaption: "字数残留测试正文"
     });
@@ -284,7 +340,9 @@ describe("history agent", () => {
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
     const restore = mockModelRuntimeText((prompt) => {
       expect(prompt).toContain("图片描述");
-      expect(prompt).toContain("图片中应该以文字形式展示哪些知识");
+      expect(prompt).toContain("图片中应该以文字类型展示哪些知识");
+      expect(prompt).toContain("根据内容判断需要多少张");
+      expect(prompt).toContain("下限 3 张，上限 10 张");
       expect(prompt).toContain("只给出大概知识范围");
       expect(prompt).toContain("不必写详细知识");
       expect(prompt).toContain("不要把字数、字符数或类似“xx字”的说明写进 prompt 字段");
@@ -292,14 +350,8 @@ describe("history agent", () => {
       return JSON.stringify({
         topic: "模板测试",
         summary: "检查生图提示词模板是否包含图文边界要求。",
-        cardCount: 1,
-        cards: [
-          {
-            title: "提示词边界",
-            imageText: "画面文字只展示知识范围",
-            prompt: longImagePrompt("模板测试")
-          }
-        ],
+        cardCount: 3,
+        cards: createHistoryCards("模板测试"),
         xiaohongshuCaption: "模板测试正文"
       });
     });
@@ -350,14 +402,8 @@ describe("history agent", () => {
       return JSON.stringify({
         topic: "真实数据适配测试",
         summary: "模型应把真实数据作为参考，而不是机械套用。",
-        cardCount: 1,
-        cards: [
-          {
-            title: "数据参考",
-            imageText: "用真实数据微调表达",
-            prompt: longImagePrompt("真实数据适配测试")
-          }
-        ],
+        cardCount: 3,
+        cards: createHistoryCards("真实数据适配测试"),
         xiaohongshuCaption: "真实数据适配测试正文"
       });
     });
@@ -375,14 +421,8 @@ describe("history agent", () => {
         text: JSON.stringify({
           topic: "郑和下西洋真正留下了什么",
           summary: "不只是一场航海壮举，也是一套关于交流、秩序和影响力的实践。",
-          cardCount: 1,
-          cards: [
-            {
-              title: "先讲留下了什么",
-              imageText: "郑和下西洋，留下的不只是船队规模",
-              prompt: longImagePrompt("明代宝船与海上航线")
-            }
-          ],
+          cardCount: 3,
+          cards: createHistoryCards("郑和下西洋真正留下了什么"),
           xiaohongshuCaption: "今天用一张图讲清郑和下西洋真正留下了什么。"
         })
       }
@@ -405,14 +445,8 @@ describe("history agent", () => {
       {
         topic: "玛雅历法为什么如此精密",
         summary: "历法背后是长期观测与系统化知识的累积。",
-        cardCount: 1,
-        cards: [
-          {
-            title: "先讲为什么精密",
-            imageText: "精密历法来自长期观测，而不是神秘传说",
-            prompt: longImagePrompt("玛雅文明与天文观测")
-          }
-        ],
+        cardCount: 3,
+        cards: createHistoryCards("玛雅历法为什么如此精密"),
         xiaohongshuCaption: "今天讲清玛雅历法为什么会精密到令人惊讶。"
       }
     ]);
@@ -424,6 +458,39 @@ describe("history agent", () => {
     expect(result.notifications?.[0]).toMatchObject({
       kind: "history-post",
       title: "每日历史知识点：玛雅历法为什么如此精密"
+    });
+  });
+
+  it("accepts OpenAI-compatible choice payloads that wrap JSON content", async () => {
+    const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
+    process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
+    const restore = mockModelRuntimeText(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: `\`\`\`json
+${JSON.stringify({
+  topic: "张骞出使西域如何改变丝绸之路",
+  summary: "张骞出使西域打开了汉朝理解欧亚大陆的新窗口。",
+  cardCount: 3,
+  cards: createHistoryCards("张骞出使西域如何改变丝绸之路"),
+  xiaohongshuCaption: "今天讲清张骞出使西域为什么改变了丝绸之路。"
+})}
+\`\`\``
+            }
+          }
+        ]
+      })
+    );
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]).toMatchObject({
+      kind: "history-post",
+      title: "每日历史知识点：张骞出使西域如何改变丝绸之路"
     });
   });
 
@@ -455,19 +522,65 @@ describe("history agent", () => {
       return JSON.stringify({
         topic,
         summary: `${topic} 的摘要`,
-        cardCount: 1,
-        cards: [
-          {
-            title: "一张图讲清",
-            imageText: `${topic} 图片文案`,
-            prompt: longImagePrompt(topic)
-          }
-        ],
+        cardCount: 3,
+        cards: createHistoryCards(topic),
         xiaohongshuCaption: `${topic} 正文`
       });
     });
 
     const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]?.payload?.topic).not.toBe("玄奘取经为什么重要");
+  });
+
+  it("avoids topics already present in history notifications even when archive is empty", async () => {
+    const state = createState();
+    state.notifications = [
+      {
+        id: "history-xuanzang",
+        kind: "history-post",
+        title: "每日历史知识点：玄奘取经为什么重要",
+        body: "玄奘西行推动了中印知识交流。",
+        createdAt: "2026-05-08T08:00:00.000Z",
+        read: false,
+        persistent: true,
+        payload: {
+          topic: "玄奘取经为什么重要",
+          summary: "玄奘西行推动了中印知识交流。",
+          cardCount: 1,
+          cards: [
+            {
+              title: "路线",
+              imageText: "从长安到那烂陀",
+              prompt: longImagePrompt("玄奘西行路线")
+            }
+          ],
+          xiaohongshuCaption: "今天讲玄奘取经。",
+          generatedAt: "2026-05-08T08:00:00.000Z"
+        }
+      }
+    ];
+    const restore = mockModelRuntimeText((prompt) => {
+      const topicMatch = prompt.match(/「(.+?)」/);
+      const topic = topicMatch?.[1] ?? "未知主题";
+
+      return JSON.stringify({
+        topic,
+        summary: `${topic} 的摘要`,
+        cardCount: 3,
+        cards: createHistoryCards(topic),
+        xiaohongshuCaption: `${topic} 正文`
+      });
+    });
+
+    const result = await agent.execute({
+      ...createRequest(state),
+      meta: {
+        localDate: "2026-05-09"
+      }
+    });
     restore();
 
     expect(result.status).toBe("completed");
@@ -482,14 +595,8 @@ describe("history agent", () => {
       return JSON.stringify({
         topic,
         summary: `${topic} 的摘要`,
-        cardCount: 1,
-        cards: [
-          {
-            title: "一张图讲清",
-            imageText: `${topic} 图片文案`,
-            prompt: longImagePrompt(topic)
-          }
-        ],
+        cardCount: 3,
+        cards: createHistoryCards(topic),
         xiaohongshuCaption: `${topic} 正文`
       });
     });
@@ -601,14 +708,8 @@ describe("history agent", () => {
       return JSON.stringify({
         topic,
         summary: `${topic} 的摘要`,
-        cardCount: 1,
-        cards: [
-          {
-            title: "一张图讲清",
-            imageText: `${topic} 图片文案`,
-            prompt: longImagePrompt(topic)
-          }
-        ],
+        cardCount: 3,
+        cards: createHistoryCards(topic),
         xiaohongshuCaption: `${topic} 正文`
       });
     });
@@ -626,14 +727,8 @@ describe("history agent", () => {
     const restore = mockModelResponse({
       topic: "玄奘取经为什么重要",
       summary: "玄奘西行不只是宗教故事，也推动了中印知识交流。",
-      cardCount: 1,
-      cards: [
-        {
-          title: "一张图讲清路线",
-          imageText: "从长安到那烂陀：一次跨越万里的求知",
-          prompt: longImagePrompt("玄奘西行路线")
-        }
-      ],
+      cardCount: 3,
+      cards: createHistoryCards("玄奘取经为什么重要"),
       xiaohongshuCaption: "今天讲一个改变知识流动的历史瞬间：玄奘西行。"
     });
 

@@ -132,6 +132,8 @@ export type AgentModelRequest =
       messages: AgentModelChatMessage[];
       temperature?: number;
       maxTokens?: number;
+      timeoutMs?: number;
+      responseFormat?: "json";
     }
   | {
       kind: "generateText";
@@ -142,6 +144,8 @@ export type AgentModelRequest =
       systemPrompt?: string;
       temperature?: number;
       maxTokens?: number;
+      timeoutMs?: number;
+      responseFormat?: "json";
     }
   | {
       kind: "embedding";
@@ -149,6 +153,7 @@ export type AgentModelRequest =
       agentId?: string;
       purpose?: ModelPurpose;
       input: string | string[];
+      timeoutMs?: number;
     };
 
 export interface AgentModelClient {
@@ -157,6 +162,210 @@ export interface AgentModelClient {
   embedding(
     input: Omit<Extract<AgentModelRequest, { kind: "embedding" }>, "kind">
   ): Promise<{ embedding: number[] | number[][] }>;
+}
+
+function asModelOutputRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asModelOutputString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parseJsonCandidate(value: string): unknown | null {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractFencedJsonCandidates(value: string): string[] {
+  return Array.from(value.matchAll(/```(?:json)?\s*([\s\S]*?)```/giu), (match) => match[1]?.trim() ?? "")
+    .filter(Boolean);
+}
+
+function extractBalancedJsonCandidate(value: string, openToken: "{" | "[", closeToken: "}" | "]"): string | null {
+  for (let start = value.indexOf(openToken); start >= 0; start = value.indexOf(openToken, start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < value.length; index += 1) {
+      const character = value[index];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (character === "\\") {
+        escaped = inString;
+        continue;
+      }
+
+      if (character === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) {
+        continue;
+      }
+
+      if (character === openToken) {
+        depth += 1;
+      }
+
+      if (character === closeToken) {
+        depth -= 1;
+
+        if (depth === 0) {
+          return value.slice(start, index + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+export function parseModelJson(value: string): unknown | null {
+  const trimmed = value.trim();
+  const direct = parseJsonCandidate(trimmed);
+
+  if (direct !== null) {
+    return direct;
+  }
+
+  for (const candidate of extractFencedJsonCandidates(trimmed)) {
+    const parsed = parseJsonCandidate(candidate);
+
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  for (const candidate of [
+    extractBalancedJsonCandidate(trimmed, "{", "}"),
+    extractBalancedJsonCandidate(trimmed, "[", "]")
+  ]) {
+    if (!candidate) {
+      continue;
+    }
+
+    const parsed = parseJsonCandidate(candidate);
+
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function isTextWrapperRecord(record: Record<string, unknown>): boolean {
+  const keys = Object.keys(record);
+
+  return (
+    keys.length > 0 &&
+    keys.every((key) => key === "type" || key === "text" || key === "content") &&
+    Boolean(asModelOutputString(record.text) ?? asModelOutputString(record.content))
+  );
+}
+
+function isModelWrapperRecord(record: Record<string, unknown>): boolean {
+  return Boolean(
+    record.choices ||
+      record.message ||
+      record.response ||
+      record.output_text ||
+      isTextWrapperRecord(record)
+  );
+}
+
+function extractTextFromWrapperRecord(record: Record<string, unknown>): unknown | null {
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  const firstChoice = asModelOutputRecord(choices[0]);
+  const message = asModelOutputRecord(firstChoice?.message);
+  const messageContent = message?.content;
+
+  if (messageContent !== undefined && messageContent !== null) {
+    return messageContent;
+  }
+
+  if (firstChoice?.text !== undefined && firstChoice.text !== null) {
+    return firstChoice.text;
+  }
+
+  const directMessage = asModelOutputRecord(record.message);
+
+  if (directMessage?.content !== undefined && directMessage.content !== null) {
+    return directMessage.content;
+  }
+
+  for (const key of ["output_text", "response", "text", "content"] as const) {
+    if (record[key] !== undefined && record[key] !== null && (key !== "content" || isTextWrapperRecord(record))) {
+      return record[key];
+    }
+  }
+
+  return null;
+}
+
+function normalizeModelOutputInternal(value: unknown, depth: number): unknown {
+  if (depth > 8) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = parseModelJson(value);
+
+    return parsed === null ? value : normalizeModelOutputInternal(parsed, depth + 1);
+  }
+
+  if (Array.isArray(value)) {
+    const textBlocks = value.filter((item): item is Record<string, unknown> => {
+      const record = asModelOutputRecord(item);
+
+      return record !== null && isTextWrapperRecord(record);
+    });
+
+    if (textBlocks.length === value.length && textBlocks.length > 0) {
+      const text = textBlocks
+        .map((record) => asModelOutputString(record.text) ?? asModelOutputString(record.content))
+        .filter((item): item is string => Boolean(item))
+        .join("\n");
+
+      return normalizeModelOutputInternal(text, depth + 1);
+    }
+
+    if (value.length === 1) {
+      const record = asModelOutputRecord(value[0]);
+
+      if (record && isModelWrapperRecord(record)) {
+        return normalizeModelOutputInternal(record, depth + 1);
+      }
+    }
+
+    return value;
+  }
+
+  const record = asModelOutputRecord(value);
+
+  if (!record || !isModelWrapperRecord(record)) {
+    return value;
+  }
+
+  const text = extractTextFromWrapperRecord(record);
+
+  return text === null ? value : normalizeModelOutputInternal(text, depth + 1);
+}
+
+export function normalizeModelOutput(value: unknown): unknown {
+  return normalizeModelOutputInternal(value, 0);
 }
 
 export function defineAgentManifest(manifest: AgentManifest): AgentManifest {

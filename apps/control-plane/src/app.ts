@@ -328,6 +328,18 @@ export function createControlPlaneApp(options?: {
     }
   });
 
+  app.delete("/api/cinematic/projects/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return orchestrator.deleteCinematicProject(params.id);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "cinematic project not found"
+      });
+    }
+  });
+
   app.post("/api/cinematic/generate", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
 

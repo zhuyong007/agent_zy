@@ -27,6 +27,8 @@ const project = {
   storyboard: [
     {
       id: "shot-1",
+      sceneId: "scene-1",
+      sceneAnchor: "same rainy street outside the convenience store",
       title: "雨后街口",
       purpose: "建立孤独空间",
       duration: "5 秒",
@@ -48,6 +50,18 @@ const project = {
   tags: ["城市"],
   style: "冷蓝霓虹",
   pace: "缓慢",
+  scenePlan: {
+    sceneCount: 1,
+    maxDurationSeconds: 15,
+    scenes: [
+      {
+        id: "scene-1",
+        name: "rainy-street",
+        anchor: "same rainy street outside the convenience store",
+        role: "main continuous scene"
+      }
+    ]
+  },
   continuity: {
     actionLine: "人物从便利店门口走向街角，动作始终克制缓慢。",
     spatialLine: "所有镜头发生在同一条雨后街道，便利店、积水和街角霓虹保持方位连续。",
@@ -86,10 +100,18 @@ vi.mock("../api", () => ({
   saveHomeLayout: vi.fn(async (layout) => layout),
   generateCinematic: vi.fn(async () => cinematicState),
   updateCinematicProject: vi.fn(async () => project),
+  deleteCinematicProject: vi.fn(async () => ({
+    projects: [],
+    recentProjectIds: [],
+    lastGeneratedAt: null,
+    status: "idle",
+    lastError: null
+  })),
   openDashboardStream: vi.fn(() => () => undefined),
   restartProject: vi.fn(async () => ({ ok: true }))
 }));
 
+import { deleteCinematicProject } from "../api";
 import { buildCinematicMarkdown, buildStoryboardVideoPrompt, CinematicPage } from "./cinematic-page";
 
 describe("CinematicPage", () => {
@@ -155,9 +177,46 @@ describe("CinematicPage", () => {
     expect(prompt).toContain("时长：5 秒");
     expect(prompt).toContain("镜头运动：缓慢推进");
     expect(prompt).toContain("转场：溶接");
+    expect(prompt).toContain("场景数量：1 个；整条视频必须控制在 1-3 个连续场景内");
+    expect(prompt).toContain("所属场景：scene-1");
+    expect(prompt).toContain("视频总时长：不超过 15 秒");
     expect(prompt).toContain("整体风格：冷蓝霓虹");
     expect(prompt).toContain("连续动作线：人物从便利店门口走向街角，动作始终克制缓慢。");
     expect(prompt).toContain("空间连续性：所有镜头发生在同一条雨后街道，便利店、积水和街角霓虹保持方位连续。");
     expect(prompt).toContain("镜头衔接：镜头停在积水倒影，下一镜从同一片倒影抬起进入人物背影。");
+  });
+
+  it("deletes a cinematic generation history item from the project list", async () => {
+    const queryClient = new QueryClient();
+
+    queryClient.setQueryData(["cinematic"], cinematicState);
+    queryClient.setQueryData(["home-layout"], []);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(CinematicPage)
+        )
+      );
+    });
+
+    const deleteButton = container.querySelector('[aria-label^="删除生成历史"]') as HTMLButtonElement | null;
+    expect(deleteButton).not.toBeNull();
+
+    await act(async () => {
+      deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(deleteCinematicProject).toHaveBeenCalledWith("cinematic-1");
+    expect(queryClient.getQueryData(["cinematic"])).toMatchObject({
+      projects: [],
+      recentProjectIds: []
+    });
   });
 });

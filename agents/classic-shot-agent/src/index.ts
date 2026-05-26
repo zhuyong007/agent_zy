@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { defineAgent, getModelClient } from "@agent-zy/agent-sdk";
+import { defineAgent, getModelClient, normalizeModelOutput, parseModelJson } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
 import type {
   ClassicShotContinuity,
@@ -24,24 +24,6 @@ const TARGET_PLATFORMS = new Set<ClassicShotTargetPlatform>([
   "generic"
 ]);
 
-function parseJson(value: string): unknown | null {
-  try {
-    return JSON.parse(value);
-  } catch {
-    const objectMatch = value.match(/\{[\s\S]*\}/);
-
-    if (!objectMatch) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(objectMatch[0]);
-    } catch {
-      return null;
-    }
-  }
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -60,23 +42,6 @@ function asStringArray(value: unknown): string[] {
 
 function asPositiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function normalizeModelPayload(value: unknown): unknown {
-  if (asRecord(value)?.source) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsed = parseJson(value);
-    return parsed ? normalizeModelPayload(parsed) : value;
-  }
-
-  const record = asRecord(value);
-  const text = asString(record?.text) ?? asString(record?.content);
-  const parsed = text ? parseJson(text) : null;
-
-  return parsed ?? value;
 }
 
 function validateSource(value: unknown): ClassicShotSource {
@@ -222,7 +187,7 @@ ${storyboard}
 }
 
 function validateProject(value: unknown, input: ClassicShotGenerationInput, requestedAt: string): ClassicShotProject {
-  const record = asRecord(normalizeModelPayload(value));
+  const record = asRecord(normalizeModelOutput(value));
 
   if (!record) {
     throw new Error("经典镜头复刻输出不是 JSON 对象");
@@ -318,7 +283,7 @@ async function generateProject(input: ClassicShotGenerationInput, requestedAt: s
   const fixture = process.env.CLASSIC_SHOT_PROJECT_FIXTURE_JSON;
 
   if (fixture) {
-    return validateProject(parseJson(fixture), input, requestedAt);
+    return validateProject(parseModelJson(fixture), input, requestedAt);
   }
 
   const result = await getModelClient().generateText({

@@ -6,6 +6,7 @@ import type { CinematicProject, StoryboardShot } from "@agent-zy/shared-types";
 
 import {
   type CinematicGenerateInput,
+  deleteCinematicProject,
   fetchCinematic,
   fetchDashboard,
   generateCinematic,
@@ -32,6 +33,8 @@ export function buildStoryboardVideoPrompt(project: CinematicProject) {
     .map(
       (shot, index) => [
         `第 ${index + 1} 张分镜图：${shot.title}`,
+        `所属场景：${shot.sceneId || "scene-1"}`,
+        `场景锚点：${shot.sceneAnchor || shot.composition}`,
         `用途：${shot.purpose}`,
         `时长：${shot.duration}`,
         `镜头运动：${shot.cameraMovement}`,
@@ -43,6 +46,19 @@ export function buildStoryboardVideoPrompt(project: CinematicProject) {
       ].join("\n")
     )
     .join("\n\n");
+  const scenePlanLines = project.scenePlan?.scenes.length
+    ? [
+        `视频总时长：不超过 ${project.scenePlan.maxDurationSeconds || 15} 秒`,
+        `场景数量：${project.scenePlan.sceneCount} 个；整条视频必须控制在 1-3 个连续场景内，不要一张分镜图换一个场景。`,
+        ...project.scenePlan.scenes.map(
+          (scene, index) => `${index + 1}. ${scene.id}｜${scene.name}：${scene.anchor}；作用：${scene.role}`
+        )
+      ].join("\n")
+    : [
+        "视频总时长：不超过 15 秒",
+        "场景数量：只使用 1-3 个连续场景；不要一张分镜图换一个场景。",
+        "把所有分镜图理解为同一条动作/情绪链上的关键帧，只允许在镜头角度、焦距、动作细节、光线和情绪上递进。"
+      ].join("\n");
   const continuityLines = project.continuity
     ? [
         `连续动作线：${project.continuity.actionLine}`,
@@ -71,6 +87,8 @@ export function buildStoryboardVideoPrompt(project: CinematicProject) {
 - 生成的是视频，不要输出字幕、水印、解释文字或额外画面元素。
 
 连续性导演设计：
+
+${scenePlanLines}
 
 ${continuityLines}
 
@@ -318,6 +336,16 @@ export function CinematicPage() {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     }
   });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteCinematicProject(id),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["cinematic"], next);
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      const nextProject = next.projects.find((project) => project.id === next.recentProjectIds[0]) ?? next.projects[0] ?? null;
+      setSelectedProjectId(nextProject?.id ?? null);
+      setSelectedShotId(nextProject?.storyboard[0]?.id ?? null);
+    }
+  });
 
   useEffect(() => {
     return openDashboardStream((data) => {
@@ -456,19 +484,32 @@ export function CinematicPage() {
           <div className="cinematic-project-list" aria-label="项目列表">
             {projects.length > 0 ? (
               projects.map((project) => (
-                <button
+                <div
                   key={project.id}
-                  type="button"
-                  className={`cinematic-project-card${project.id === selectedProject?.id ? " is-active" : ""}`}
-                  onClick={() => {
-                    setSelectedProjectId(project.id);
-                    setSelectedShotId(project.storyboard[0]?.id ?? null);
-                  }}
+                  className="cinematic-project-card-shell"
                 >
-                  <span>{formatDateTime(project.updatedAt)}</span>
-                  <strong>{project.title}</strong>
-                  <p>{project.concept}</p>
-                </button>
+                  <button
+                    type="button"
+                    className={`cinematic-project-card${project.id === selectedProject?.id ? " is-active" : ""}`}
+                    onClick={() => {
+                      setSelectedProjectId(project.id);
+                      setSelectedShotId(project.storyboard[0]?.id ?? null);
+                    }}
+                  >
+                    <span>{formatDateTime(project.updatedAt)}</span>
+                    <strong>{project.title}</strong>
+                    <p>{project.concept}</p>
+                  </button>
+                  <button
+                    type="button"
+                    className="cinematic-project-delete"
+                    aria-label={`删除生成历史：${project.title}`}
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(project.id)}
+                  >
+                    删除
+                  </button>
+                </div>
               ))
             ) : (
               <div className="edge-empty">暂无分镜项目。</div>

@@ -18,6 +18,8 @@ export type ModelRuntimeRequest =
       messages: ModelChatMessage[];
       temperature?: number;
       maxTokens?: number;
+      timeoutMs?: number;
+      responseFormat?: "json";
     }
   | {
       kind: "generateText";
@@ -28,6 +30,8 @@ export type ModelRuntimeRequest =
       systemPrompt?: string;
       temperature?: number;
       maxTokens?: number;
+      timeoutMs?: number;
+      responseFormat?: "json";
     }
   | {
       kind: "embedding";
@@ -35,6 +39,7 @@ export type ModelRuntimeRequest =
       agentId?: string;
       purpose?: ModelPurpose;
       input: string | string[];
+      timeoutMs?: number;
     };
 
 export interface ModelRuntime {
@@ -56,6 +61,10 @@ function profileEndpoint(profile: ModelProfile, path: string) {
   return `${profile.baseUrl.replace(/\/$/, "")}${path}`;
 }
 
+function supportsJsonResponseFormat(profile: ModelProfile) {
+  return profile.provider === "deepseek";
+}
+
 function extractText(data: any): string {
   return (
     data?.choices?.[0]?.message?.content ??
@@ -64,6 +73,19 @@ function extractText(data: any): string {
     data?.response ??
     ""
   );
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof DOMException && error.name === "AbortError"
+  ) || (
+    error instanceof Error &&
+    (error.name === "AbortError" || /operation was aborted|aborted/i.test(error.message))
+  );
+}
+
+function formatTimeoutMessage(timeoutMs: number) {
+  return `模型请求超时（超过 ${Math.round(timeoutMs / 1000)} 秒），请检查当前模型是否响应过慢，或切换更快的模型/调高超时时间。`;
 }
 
 export function createModelRuntime(options: {
@@ -117,12 +139,12 @@ export function createModelRuntime(options: {
     };
   }
 
-  async function requestJson(url: string, init: RequestInit, secrets: string[]) {
+  async function requestJson(url: string, init: RequestInit, secrets: string[], requestTimeoutMs = timeoutMs) {
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
 
       try {
         const response = await fetch(url, {
@@ -141,6 +163,10 @@ export function createModelRuntime(options: {
       } finally {
         clearTimeout(timer);
       }
+    }
+
+    if (isAbortError(lastError)) {
+      throw new Error(formatTimeoutMessage(requestTimeoutMs));
     }
 
     const message = lastError instanceof Error ? lastError.message : String(lastError);
@@ -177,7 +203,10 @@ export function createModelRuntime(options: {
             model: profile.modelName,
             messages: input.messages,
             temperature: input.temperature ?? profile.temperature ?? undefined,
-            max_tokens: input.maxTokens ?? profile.maxTokens ?? undefined
+            max_tokens: input.maxTokens ?? profile.maxTokens ?? undefined,
+            ...(input.responseFormat === "json" && supportsJsonResponseFormat(profile)
+              ? { response_format: { type: "json_object" } }
+              : {})
           };
 
     const data = await requestJson(
@@ -187,7 +216,8 @@ export function createModelRuntime(options: {
         headers,
         body: JSON.stringify(body)
       },
-      apiKey ? [apiKey] : []
+      apiKey ? [apiKey] : [],
+      input.timeoutMs
     );
 
     return {
@@ -204,8 +234,10 @@ export function createModelRuntime(options: {
         agentId: input.agentId,
         purpose: input.purpose,
         temperature: input.temperature,
-        maxTokens: input.maxTokens,
-        messages: [
+          maxTokens: input.maxTokens,
+          timeoutMs: input.timeoutMs,
+          responseFormat: input.responseFormat,
+          messages: [
           ...(input.systemPrompt ? [{ role: "system" as const, content: input.systemPrompt }] : []),
           { role: "user" as const, content: input.prompt }
         ]
@@ -231,7 +263,8 @@ export function createModelRuntime(options: {
             input: input.input
           })
         },
-        apiKey ? [apiKey] : []
+        apiKey ? [apiKey] : [],
+        input.timeoutMs
       );
 
       return {

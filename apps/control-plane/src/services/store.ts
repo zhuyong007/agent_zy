@@ -379,9 +379,13 @@ function createEmptyLedgerDashboardSummary(): LedgerDashboardSummary {
 
 function normalizeStoryboardShot(shot: CinematicProject["storyboard"][number], index: number) {
   const handoff = typeof shot.handoff === "string" && shot.handoff.trim() ? shot.handoff : undefined;
+  const sceneId = typeof shot.sceneId === "string" && shot.sceneId.trim() ? shot.sceneId : undefined;
+  const sceneAnchor = typeof shot.sceneAnchor === "string" && shot.sceneAnchor.trim() ? shot.sceneAnchor : undefined;
 
   return {
     id: typeof shot.id === "string" && shot.id ? shot.id : `shot-${index + 1}`,
+    ...(sceneId ? { sceneId } : {}),
+    ...(sceneAnchor ? { sceneAnchor } : {}),
     title: typeof shot.title === "string" ? shot.title : `镜头 ${index + 1}`,
     purpose: typeof shot.purpose === "string" ? shot.purpose : "",
     duration: typeof shot.duration === "string" ? shot.duration : "",
@@ -417,11 +421,62 @@ function normalizeCinematicContinuity(
   return Object.values(next).some((value) => value.trim().length > 0) ? next : undefined;
 }
 
+function normalizeCinematicScenePlan(
+  scenePlan: CinematicProject["scenePlan"] | undefined
+): CinematicProject["scenePlan"] | undefined {
+  if (!scenePlan) {
+    return undefined;
+  }
+
+  const scenes = Array.isArray(scenePlan.scenes)
+    ? scenePlan.scenes
+        .map((scene, index) => {
+          const id = typeof scene.id === "string" && scene.id.trim() ? scene.id : `scene-${index + 1}`;
+          const name = typeof scene.name === "string" && scene.name.trim() ? scene.name : id;
+          const anchor = typeof scene.anchor === "string" && scene.anchor.trim() ? scene.anchor : "";
+          const role = typeof scene.role === "string" ? scene.role : "";
+
+          return anchor
+            ? {
+                id,
+                name,
+                anchor,
+                role
+              }
+            : null;
+        })
+        .filter((scene): scene is NonNullable<CinematicProject["scenePlan"]>["scenes"][number] => Boolean(scene))
+        .slice(0, 3)
+    : [];
+
+  if (scenes.length === 0) {
+    return undefined;
+  }
+
+  const sceneCount =
+    typeof scenePlan.sceneCount === "number" && Number.isInteger(scenePlan.sceneCount)
+      ? scenePlan.sceneCount
+      : scenes.length;
+  const maxDurationSeconds =
+    typeof scenePlan.maxDurationSeconds === "number" && Number.isInteger(scenePlan.maxDurationSeconds)
+      ? scenePlan.maxDurationSeconds
+      : 15;
+  const limitedSceneCount = Math.min(Math.max(sceneCount, 1), 3, scenes.length);
+
+  return {
+    sceneCount: limitedSceneCount,
+    maxDurationSeconds: Math.min(Math.max(maxDurationSeconds, 1), 15),
+    scenes: scenes.slice(0, limitedSceneCount)
+  };
+}
+
 function normalizeCinematicProject(project: Partial<CinematicProject>, index: number): CinematicProject {
   const now = nowIso();
   const storyboard = Array.isArray(project.storyboard)
     ? project.storyboard.map(normalizeStoryboardShot)
     : [];
+  const scenePlan = normalizeCinematicScenePlan(project.scenePlan);
+  const continuity = normalizeCinematicContinuity(project.continuity);
 
   return {
     id: typeof project.id === "string" && project.id ? project.id : `cinematic-${index}`,
@@ -430,7 +485,8 @@ function normalizeCinematicProject(project: Partial<CinematicProject>, index: nu
     mood: typeof project.mood === "string" ? project.mood : "",
     script: typeof project.script === "string" ? project.script : "",
     storyboard,
-    ...(normalizeCinematicContinuity(project.continuity) ? { continuity: normalizeCinematicContinuity(project.continuity) } : {}),
+    ...(scenePlan ? { scenePlan } : {}),
+    ...(continuity ? { continuity } : {}),
     createdAt: typeof project.createdAt === "string" ? project.createdAt : now,
     updatedAt: typeof project.updatedAt === "string" ? project.updatedAt : now,
     tags: Array.isArray(project.tags)

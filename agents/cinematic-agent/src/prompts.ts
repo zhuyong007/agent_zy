@@ -29,6 +29,18 @@ export function buildCinematicPrompt(input: CinematicGenerationInput) {
   "script": "短视频文案，像电影台词或内心独白，不鸡汤",
   "style": "整体美术/摄影风格",
   "pace": "节奏描述",
+  "scenePlan": {
+    "sceneCount": 1到3之间的数字,
+    "maxDurationSeconds": 15,
+    "scenes": [
+      {
+        "id": "scene-1",
+        "name": "场景名称",
+        "anchor": "场景锚点：固定地点、关键道具、人物位置、光线方向和环境质感",
+        "role": "这个场景在15秒视频里的叙事作用"
+      }
+    ]
+  },
   "continuity": {
     "actionLine": "连续动作线：主角/主体从第一个镜头到最后一个镜头发生了什么动作变化，必须能把所有分镜串成同一场戏",
     "spatialLine": "空间连续性：人物、场景、道具、方位、前景/中景/背景如何保持同一空间关系",
@@ -41,6 +53,8 @@ export function buildCinematicPrompt(input: CinematicGenerationInput) {
   "storyboard": [
     {
       "id": "shot-1",
+      "sceneId": "scene-1",
+      "sceneAnchor": "必须引用 scenePlan 中同一个场景锚点，说明本镜头如何复用该场景",
       "title": "分镜名称",
       "purpose": "分镜目标",
       "duration": "时长建议",
@@ -60,6 +74,9 @@ export function buildCinematicPrompt(input: CinematicGenerationInput) {
 }
 
 硬性要求：
+- 最终视频时长按 15 秒以内设计；scenePlan.sceneCount 必须是 1-3，绝对不要一张分镜图一个新场景。
+- storyboard 可以有多个镜头，但必须复用 scenePlan 里的 1-3 个场景；同一场景内只改变机位、焦段、人物动作、视线、光影细节和情绪，不要让场景漂移。
+- 每个 storyboard 项都必须有 sceneId 和 sceneAnchor，sceneId 必须来自 scenePlan.scenes。
 - storyboard 至少 4 个分镜，简单概念也要有完整情绪递进。
 - continuity 必须先建立整条视频的动作线、空间线、情绪线、视觉线和声音线；分镜必须服务于这条连续线，不要写成互不相干的漂亮画面。
 - 每个 storyboard 项都必须有 handoff，说明这一镜如何自然接到下一镜；最后一镜的 handoff 写如何收束或留白。

@@ -142,6 +142,54 @@ describe("model runtime", () => {
     );
   });
 
+  it("enables DeepSeek JSON output for structured generation requests", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const profile = store.createModelProfile({
+      id: "deepseek-profile",
+      displayName: "DeepSeek profile",
+      provider: "deepseek",
+      modelName: "deepseek-v4-pro",
+      baseUrl: "https://api.deepseek.com",
+      apiKeyRef: "secret:deepseek-profile",
+      capabilities: ["chat", "text"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general"]
+    });
+    secrets.save(profile.id, "sk-deepseek-secret");
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      timeoutMs: 1000,
+      retries: 0
+    });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
+        status: 200
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runtime.generateText({
+      purpose: "general",
+      prompt: "return json",
+      responseFormat: "json"
+    } as any);
+
+    const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(requestInit.body as string)).toMatchObject({
+      model: "deepseek-v4-pro",
+      response_format: {
+        type: "json_object"
+      }
+    });
+  });
+
   it("redacts API keys from provider errors", async () => {
     const runtime = setupRuntime();
     vi.stubGlobal(
@@ -153,5 +201,33 @@ describe("model runtime", () => {
       ok: false,
       message: expect.not.stringContaining("sk-runtime-secret-abcd")
     });
+  });
+
+  it("honors per-request timeout overrides for long generation calls", async () => {
+    vi.useFakeTimers();
+    const runtime = setupRuntime();
+    const fetchMock = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("This operation was aborted", "AbortError"));
+          });
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = runtime.generateText({
+      purpose: "general",
+      prompt: "hello",
+      timeoutMs: 5000
+    });
+    const requestExpectation = expect(request).rejects.toThrow("模型请求超时");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.signal?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(4000);
+    await requestExpectation;
+    vi.useRealTimers();
   });
 });

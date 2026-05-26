@@ -334,6 +334,18 @@ export async function updateCinematicProject(
   return response.json();
 }
 
+export async function deleteCinematicProject(id: string): Promise<CinematicState> {
+  const response = await fetch(`${API_BASE}/api/cinematic/projects/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to delete cinematic project"));
+  }
+
+  return response.json();
+}
+
 export async function fetchClassicShots(): Promise<ClassicShotState> {
   const response = await fetch(`${API_BASE}/api/classic-shots`);
 
