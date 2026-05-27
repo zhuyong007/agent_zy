@@ -309,11 +309,21 @@ export function createControlPlaneOrchestrator(options: {
     const handoff = asString(record.handoff);
     const sceneId = asString(record.sceneId);
     const sceneAnchor = asString(record.sceneAnchor);
+    const characterRefs = Array.isArray(record.characterRefs)
+      ? record.characterRefs.map(asString).filter(Boolean)
+      : [];
+    const propRefs = Array.isArray(record.propRefs)
+      ? record.propRefs.map(asString).filter(Boolean)
+      : [];
+    const sceneRef = asString(record.sceneRef);
 
     return {
       id: asString(record.id) || `shot-${index + 1}`,
       ...(sceneId ? { sceneId } : {}),
       ...(sceneAnchor ? { sceneAnchor } : {}),
+      ...(characterRefs.length ? { characterRefs } : {}),
+      ...(propRefs.length ? { propRefs } : {}),
+      ...(sceneRef ? { sceneRef } : {}),
       title: asString(record.title) || `镜头 ${index + 1}`,
       purpose: asString(record.purpose),
       duration: asString(record.duration),
@@ -329,6 +339,74 @@ export function createControlPlaneOrchestrator(options: {
         en: asString(prompt.en)
       }
     };
+  }
+
+  function normalizeReferencePromptInput(value: unknown) {
+    const record = asRecord(value);
+    const zh = asString(record.zh);
+    const en = asString(record.en);
+
+    return zh || en ? { zh, en } : null;
+  }
+
+  function normalizeReferenceViewsInput(value: unknown) {
+    const record = asRecord(value);
+    const front = normalizeReferencePromptInput(record.front);
+    const side = normalizeReferencePromptInput(record.side);
+    const back = normalizeReferencePromptInput(record.back);
+
+    return front && side && back ? { front, side, back } : null;
+  }
+
+  function normalizeReferenceAssetsInput(value: unknown): CinematicProject["referenceAssets"] | undefined {
+    const record = asRecord(value);
+    const characters = (Array.isArray(record.characters) ? record.characters : [])
+      .map((item, index) => {
+        const asset = asRecord(item);
+        const views = normalizeReferenceViewsInput(asset.views);
+
+        return views
+          ? {
+              id: asString(asset.id) || `character-${index + 1}`,
+              name: asString(asset.name) || `人物 ${index + 1}`,
+              description: asString(asset.description),
+              views
+            }
+          : null;
+      })
+      .filter((asset): asset is NonNullable<CinematicProject["referenceAssets"]>["characters"][number] => Boolean(asset));
+    const props = (Array.isArray(record.props) ? record.props : [])
+      .map((item, index) => {
+        const asset = asRecord(item);
+        const views = normalizeReferenceViewsInput(asset.views);
+
+        return views
+          ? {
+              id: asString(asset.id) || `prop-${index + 1}`,
+              name: asString(asset.name) || `物品 ${index + 1}`,
+              description: asString(asset.description),
+              views
+            }
+          : null;
+      })
+      .filter((asset): asset is NonNullable<CinematicProject["referenceAssets"]>["props"][number] => Boolean(asset));
+    const scenes = (Array.isArray(record.scenes) ? record.scenes : [])
+      .map((item, index) => {
+        const asset = asRecord(item);
+        const prompt = normalizeReferencePromptInput(asset.prompt);
+
+        return prompt
+          ? {
+              id: asString(asset.id) || `scene-ref-${index + 1}`,
+              name: asString(asset.name) || `场景 ${index + 1}`,
+              description: asString(asset.description),
+              prompt
+            }
+          : null;
+      })
+      .filter((asset): asset is NonNullable<CinematicProject["referenceAssets"]>["scenes"][number] => Boolean(asset));
+
+    return characters.length || props.length || scenes.length ? { characters, props, scenes } : undefined;
   }
 
   function normalizeContinuityInput(value: unknown): CinematicProject["continuity"] | undefined {
@@ -396,6 +474,7 @@ export function createControlPlaneOrchestrator(options: {
       : [];
     const scenePlan = normalizeScenePlanInput(record.scenePlan);
     const continuity = normalizeContinuityInput(record.continuity);
+    const referenceAssets = normalizeReferenceAssetsInput(record.referenceAssets);
 
     return {
       id: asString(record.id) || `cinematic-${nanoid()}`,
@@ -404,6 +483,7 @@ export function createControlPlaneOrchestrator(options: {
       mood: asString(record.mood),
       script: asString(record.script),
       storyboard,
+      ...(referenceAssets ? { referenceAssets } : {}),
       ...(scenePlan ? { scenePlan } : {}),
       ...(continuity ? { continuity } : {}),
       createdAt: asString(record.createdAt) || now,

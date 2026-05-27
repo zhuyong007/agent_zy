@@ -117,6 +117,15 @@ function createHistoryCards(topic: string, count = 3) {
   }));
 }
 
+function createHistoryCover(topic: string) {
+  return {
+    title: `${topic}，一眼看懂`,
+    subtitle: "被低估的历史转折点",
+    imageText: `${topic}\n关键人物 / 时间线 / 长期影响`,
+    prompt: `${topic}，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域，中部留出副标题和知识标签，下方保留简短解释文字空间，质感像博物馆展陈海报，适合信息流首屏点击。`
+  };
+}
+
 function mockModelRuntimeText(textFactory: string | ((prompt: string) => string)) {
   (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
     generateText: vi.fn(async (input: { prompt: string; systemPrompt?: string }) => {
@@ -165,6 +174,7 @@ describe("history agent", () => {
     const restore = mockModelResponse({
       topic: "玄奘取经为什么重要",
       summary: "玄奘西行不只是宗教故事，也推动了中印知识交流。",
+      cover: createHistoryCover("玄奘取经为什么重要"),
       cardCount: 3,
       cards: [
         {
@@ -197,6 +207,12 @@ describe("history agent", () => {
         title: "每日历史知识点：玄奘取经为什么重要",
         payload: expect.objectContaining({
           topic: "玄奘取经为什么重要",
+          cover: expect.objectContaining({
+            title: "玄奘取经为什么重要，一眼看懂",
+            subtitle: "被低估的历史转折点",
+            imageText: expect.stringContaining("关键人物"),
+            prompt: expect.stringContaining("小红书历史知识首图封面")
+          }),
           cardCount: 3,
           generatedAt: "2026-05-06T23:00:00.000Z"
         })
@@ -216,6 +232,27 @@ describe("history agent", () => {
         generatedCount: 1
       })
     );
+  });
+
+  it("derives a cover plan when model output omits cover", async () => {
+    const restore = mockModelResponse({
+      topic: "商鞅变法为什么能改变秦国",
+      summary: "制度变化重塑了秦国的组织能力和战争动员方式。",
+      cardCount: 3,
+      cards: createHistoryCards("商鞅变法为什么能改变秦国"),
+      xiaohongshuCaption: "今天讲清商鞅变法为什么是秦国崛起的关键。"
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.notifications?.[0]?.payload?.cover).toMatchObject({
+      title: "商鞅变法为什么能改变秦国",
+      subtitle: expect.stringContaining("制度变化"),
+      imageText: expect.stringContaining("商鞅变法为什么能改变秦国"),
+      prompt: expect.stringContaining("小红书历史知识首图封面")
+    });
   });
 
   it("fails without creating a notification when model runtime is unavailable", async () => {
@@ -342,6 +379,8 @@ describe("history agent", () => {
       expect(prompt).toContain("图片描述");
       expect(prompt).toContain("图片中应该以文字类型展示哪些知识");
       expect(prompt).toContain("根据内容判断需要多少张");
+      expect(prompt).toContain("cover");
+      expect(prompt).toContain("小红书首图封面");
       expect(prompt).toContain("下限 3 张，上限 10 张");
       expect(prompt).toContain("只给出大概知识范围");
       expect(prompt).toContain("不必写详细知识");

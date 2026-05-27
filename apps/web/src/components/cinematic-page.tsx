@@ -32,6 +32,20 @@ export function buildStoryboardVideoPrompt(project: CinematicProject) {
   const limit = 500;
   const compact = (value: string | undefined, maxLength: number) =>
     Array.from((value ?? "").replace(/\s+/g, " ").trim()).slice(0, maxLength).join("");
+  const buildReferenceLine = (maxLength: number) => {
+    const assets = project.referenceAssets;
+    const refs = [
+      ...(assets?.characters ?? []).slice(0, 4).map((asset) => `人物${asset.id}`),
+      ...(assets?.props ?? []).slice(0, 4).map((asset) => `物品${asset.id}`),
+      ...(assets?.scenes ?? []).slice(0, 3).map((asset) => `场景${asset.id}`)
+    ];
+
+    if (!refs.length) {
+      return "";
+    }
+
+    return `先上传参考图（${compact(refs.join("、"), maxLength)}），再上传分镜图；`;
+  };
   const buildShotChain = (maxLength: number, tokenSize: { title: number; movement: number; transition: number }) => {
     const tokens = project.storyboard.map((shot, index) =>
       `${index + 1}.${compact(shot.title, tokenSize.title)}/${compact(shot.cameraMovement, tokenSize.movement)}/${compact(shot.transition, tokenSize.transition)}`
@@ -82,13 +96,14 @@ export function buildStoryboardVideoPrompt(project: CinematicProject) {
     const style = compact(project.style || "电影感", options.styleLength);
 
     return [
+      buildReferenceLine(options.sceneAnchorLength),
       `请按上传顺序把${project.storyboard.length}张分镜图生成一条连贯视频，总长≤${maxDurationSeconds}秒，画面连贯优先。`,
       `只用${sceneCount}个连续场景（最多1-3个），不要一图一景；场景锚点：${buildSceneAnchors(options.sceneAnchorLength)}。`,
       "保持角色、服装、主体构图、光线方向、色彩和画幅一致，禁止变脸、跳切、场景漂移、字幕水印。",
       `镜头运动是串联重点，镜头链：${buildShotChain(options.shotChainLength, options.tokenSize)}。`,
       `连续性：${continuity}。`,
       `整体风格：${style}；画面质感和速度变化保持统一。`
-    ].join("");
+    ].filter(Boolean).join("");
   };
   const attempts = [
     { sceneAnchorLength: 42, shotChainLength: 190, continuityLength: 74, styleLength: 34, tokenSize: { title: 8, movement: 6, transition: 6 } },
@@ -104,7 +119,62 @@ export function buildStoryboardVideoPrompt(project: CinematicProject) {
     }
   }
 
-  return `请按上传顺序把${project.storyboard.length}张分镜图生成一条连贯视频，总长≤${maxDurationSeconds}秒；只用${sceneCount}个连续场景，不要一图一景。镜头链：${buildShotChain(96, { title: 5, movement: 3, transition: 3 })}。保持角色、服装、构图、光线和色彩一致，禁止变脸、跳切、场景漂移、字幕水印。`;
+  return `${buildReferenceLine(28)}请按上传顺序把${project.storyboard.length}张分镜图生成一条连贯视频，总长≤${maxDurationSeconds}秒；只用${sceneCount}个连续场景，不要一图一景。镜头链：${buildShotChain(96, { title: 5, movement: 3, transition: 3 })}。保持角色、服装、构图、光线和色彩一致，禁止变脸、跳切、场景漂移、字幕水印。`;
+}
+
+function buildReferenceAssetsMarkdown(project: CinematicProject) {
+  const assets = project.referenceAssets;
+
+  if (!assets || (!assets.characters.length && !assets.props.length && !assets.scenes.length)) {
+    return "";
+  }
+
+  const formatThreeView = (title: string, items: Array<{
+    id: string;
+    name: string;
+    description: string;
+    views: {
+      front: { zh: string; en: string };
+      side: { zh: string; en: string };
+      back: { zh: string; en: string };
+    };
+  }>) =>
+    items.length
+      ? `### ${title}\n\n${items
+          .map(
+            (asset) => `#### ${asset.id} ${asset.name}
+
+${asset.description}
+
+- 正面：${asset.views.front.zh}
+- Front: ${asset.views.front.en}
+- 侧面：${asset.views.side.zh}
+- Side: ${asset.views.side.en}
+- 背面：${asset.views.back.zh}
+- Back: ${asset.views.back.en}`
+          )
+          .join("\n\n")}`
+      : "";
+  const sceneSection = assets.scenes.length
+    ? `### 场景参考图\n\n${assets.scenes
+        .map(
+          (asset) => `#### ${asset.id} ${asset.name}
+
+${asset.description}
+
+- 中文：${asset.prompt.zh}
+- English: ${asset.prompt.en}`
+        )
+        .join("\n\n")}`
+    : "";
+
+  return [
+    "## 参考图生成提示词",
+    "先生成以下参考图，再基于这些参考图生成每张分镜图。",
+    formatThreeView("人物三视图", assets.characters),
+    formatThreeView("物品三视图", assets.props),
+    sceneSection
+  ].filter(Boolean).join("\n\n");
 }
 
 export function buildCinematicMarkdown(project: CinematicProject) {
@@ -120,6 +190,11 @@ export function buildCinematicMarkdown(project: CinematicProject) {
 - 转场：${shot.transition}
 - 声音：${shot.audioHint}
 - 情绪：${shot.emotionalBeat}
+${shot.characterRefs?.length || shot.propRefs?.length || shot.sceneRef ? `- 引用参考图：${[
+  ...(shot.characterRefs ?? []),
+  ...(shot.propRefs ?? []),
+  ...(shot.sceneRef ? [shot.sceneRef] : [])
+].join(" / ")}` : ""}
 
 ### 中文提示词
 
@@ -146,6 +221,8 @@ ${project.script}
 ## 分镜串联视频提示词
 
 ${buildStoryboardVideoPrompt(project)}
+
+${buildReferenceAssetsMarkdown(project)}
 
 ${shots}
 `;

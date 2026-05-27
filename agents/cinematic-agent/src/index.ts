@@ -5,6 +5,9 @@ import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agen
 import type {
   CinematicContinuity,
   CinematicProject,
+  CinematicReferenceAssets,
+  CinematicReferencePrompt,
+  CinematicReferenceViews,
   CinematicScenePlan,
   CinematicState,
   StoryboardShot
@@ -153,6 +156,9 @@ function validateShot(value: unknown, index: number): StoryboardShot {
   const enPrompt = getStringField(prompt, "en") ?? getStringField(record, "enPrompt", "promptEn", "prompt_en");
   const sceneId = getStringField(record, "sceneId", "scene_id");
   const sceneAnchor = getStringField(record, "sceneAnchor", "scene_anchor");
+  const characterRefs = asStringArray(getField(record, "characterRefs", "character_refs"));
+  const propRefs = asStringArray(getField(record, "propRefs", "prop_refs"));
+  const sceneRef = getStringField(record, "sceneRef", "scene_ref");
   const title = getStringField(record, "title");
   const purpose = getStringField(record, "purpose");
   const duration = getStringField(record, "duration");
@@ -184,6 +190,9 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     id: getStringField(record, "id") ?? `shot-${index + 1}`,
     ...(sceneId ? { sceneId } : {}),
     ...(sceneAnchor ? { sceneAnchor } : {}),
+    ...(characterRefs.length ? { characterRefs } : {}),
+    ...(propRefs.length ? { propRefs } : {}),
+    ...(sceneRef ? { sceneRef } : {}),
     title,
     purpose,
     duration,
@@ -199,6 +208,81 @@ function validateShot(value: unknown, index: number): StoryboardShot {
       en: sanitizeFramePrompt(enPrompt, "en")
     }
   };
+}
+
+function validateReferencePrompt(value: unknown): CinematicReferencePrompt | null {
+  const record = asRecord(value);
+  const zh = getStringField(record, "zh");
+  const en = getStringField(record, "en");
+
+  return zh && en ? { zh, en } : null;
+}
+
+function validateReferenceViews(value: unknown): CinematicReferenceViews | null {
+  const record = asRecord(value);
+  const front = validateReferencePrompt(getField(record, "front"));
+  const side = validateReferencePrompt(getField(record, "side"));
+  const back = validateReferencePrompt(getField(record, "back"));
+
+  return front && side && back ? { front, side, back } : null;
+}
+
+function validateThreeViewReference(value: unknown, index: number, fallbackPrefix: string) {
+  const record = asRecord(value);
+  const views = validateReferenceViews(getField(record, "views"));
+  const name = getStringField(record, "name");
+  const description = getStringField(record, "description");
+
+  if (!record || !views || !name || !description) {
+    return null;
+  }
+
+  return {
+    id: getStringField(record, "id") ?? `${fallbackPrefix}-${index + 1}`,
+    name,
+    description,
+    views
+  };
+}
+
+function validateSceneReference(value: unknown, index: number): CinematicReferenceAssets["scenes"][number] | null {
+  const record = asRecord(value);
+  const prompt = validateReferencePrompt(getField(record, "prompt"));
+  const name = getStringField(record, "name");
+  const description = getStringField(record, "description");
+
+  if (!record || !prompt || !name || !description) {
+    return null;
+  }
+
+  return {
+    id: getStringField(record, "id") ?? `scene-ref-${index + 1}`,
+    name,
+    description,
+    prompt
+  };
+}
+
+function validateReferenceAssets(value: unknown): CinematicReferenceAssets | undefined {
+  const record = asRecord(value);
+
+  if (!record) {
+    return undefined;
+  }
+
+  const characters = getArrayField(record, "characters")
+    .map((item, index) => validateThreeViewReference(item, index, "character"))
+    .filter((item): item is CinematicReferenceAssets["characters"][number] => Boolean(item));
+  const props = getArrayField(record, "props")
+    .map((item, index) => validateThreeViewReference(item, index, "prop"))
+    .filter((item): item is CinematicReferenceAssets["props"][number] => Boolean(item));
+  const scenes = getArrayField(record, "scenes")
+    .map(validateSceneReference)
+    .filter((item): item is CinematicReferenceAssets["scenes"][number] => Boolean(item));
+
+  return characters.length || props.length || scenes.length
+    ? { characters, props, scenes }
+    : undefined;
 }
 
 function validateContinuity(value: unknown): CinematicContinuity | undefined {
@@ -357,6 +441,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
   const style = getStringField(record, "style") ?? input.style ?? "电影感镜头设计";
   const pace = getStringField(record, "pace") ?? input.pace ?? "情绪递进";
   const targetShotCount = getPositiveIntegerField(record, "targetShotCount", "target_shot_count") ?? input.targetShotCount ?? rawStoryboard.length;
+  const referenceAssets = validateReferenceAssets(getField(record, "referenceAssets", "reference_assets"));
 
   if (!title || !concept || !mood || !script) {
     throw new Error("电影镜头设计输出缺少 title、concept、mood 或 script");
@@ -391,6 +476,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     mood,
     script,
     storyboard,
+    ...(referenceAssets ? { referenceAssets } : {}),
     scenePlan,
     continuity,
     createdAt: getStringField(record, "createdAt", "created_at") ?? requestedAt,

@@ -41,6 +41,61 @@ function createFixture(overrides: Partial<CinematicProject> = {}) {
       visualLine: "冷蓝霓虹、湿润路面反光和低饱和胶片颗粒贯穿全片。",
       audioLine: "低频城市环境音延续，脚步踏水声作为镜头之间的连接。"
     },
+    referenceAssets: {
+      characters: [
+        {
+          id: "character-1",
+          name: "凌晨街口的白衣人",
+          description: "二十多岁，白衬衫、深色长裤、湿发贴近额头，神情克制。",
+          views: {
+            front: {
+              zh: "人物正面三视图参考，白衬衫、深色长裤、湿发、自然皮肤、冷蓝霓虹边缘光，纯色背景。",
+              en: "Front character reference sheet, white shirt, dark trousers, wet hair, natural skin, cold blue neon rim light, plain background."
+            },
+            side: {
+              zh: "人物侧面三视图参考，保持同一脸型、发型、服装比例和冷蓝边缘光，纯色背景。",
+              en: "Side character reference sheet preserving the same face shape, hairstyle, costume proportions, and cold blue rim light, plain background."
+            },
+            back: {
+              zh: "人物背面三视图参考，白衬衫背部湿痕、深色长裤、湿发后轮廓、冷蓝边缘光，纯色背景。",
+              en: "Back character reference sheet with damp white shirt back, dark trousers, wet hair silhouette, cold blue rim light, plain background."
+            }
+          }
+        }
+      ],
+      props: [
+        {
+          id: "prop-1",
+          name: "红色雨伞",
+          description: "半旧红色长柄雨伞，伞面有细小雨滴和轻微磨损。",
+          views: {
+            front: {
+              zh: "红色长柄雨伞正面三视图参考，半旧伞面、雨滴、轻微磨损，纯色背景。",
+              en: "Front prop reference sheet for an old red long-handle umbrella, raindrops, subtle wear, plain background."
+            },
+            side: {
+              zh: "红色长柄雨伞侧面三视图参考，保持同一伞柄弧度、伞面磨损和材质，纯色背景。",
+              en: "Side prop reference sheet preserving the same handle curve, canopy wear, and material, plain background."
+            },
+            back: {
+              zh: "红色长柄雨伞背面三视图参考，伞骨结构、雨滴和磨损位置保持一致，纯色背景。",
+              en: "Back prop reference sheet preserving ribs, raindrops, and wear placement, plain background."
+            }
+          }
+        }
+      ],
+      scenes: [
+        {
+          id: "scene-ref-1",
+          name: "雨后便利店街口",
+          description: "便利店在画面右侧，冷蓝霓虹从街角打入，前景有积水倒影。",
+          prompt: {
+            zh: "场景参考图，雨后便利店街口，便利店白光在右侧，冷蓝霓虹从左后方打入，前景积水倒影，低饱和胶片质感。",
+            en: "Scene reference image, rainy convenience-store street corner, white store light on the right, cold blue neon from back left, puddle reflections in the foreground, low-saturation film texture."
+          }
+        }
+      ]
+    },
     targetShotCount: 4,
     tags: ["城市", "夜晚", "孤独", "霓虹"],
     createdAt: "2026-05-22T00:00:00.000Z",
@@ -59,6 +114,9 @@ function createFixture(overrides: Partial<CinematicProject> = {}) {
       audioHint: "低频城市环境音、远处车流",
       emotionalBeat: "从压抑进入清醒",
       handoff: "镜头结尾停在积水倒影，下一镜从同一片倒影抬起进入人物背影。",
+      characterRefs: ["character-1"],
+      propRefs: ["prop-1"],
+      sceneRef: "scene-ref-1",
       prompt: {
         zh: longZhPrompt(`镜头 ${index + 1}`),
         en: longEnPrompt(`Shot ${index + 1}`)
@@ -200,6 +258,12 @@ describe("cinematic agent", () => {
     expect(project?.storyboard).toHaveLength(4);
     expect(new Set(project?.storyboard.map((shot) => shot.sceneId)).size).toBeLessThanOrEqual(3);
     expect(project?.storyboard[0]?.handoff).toContain("积水倒影");
+    expect(project?.referenceAssets?.characters[0]?.views.front.zh).toContain("人物正面三视图");
+    expect(project?.referenceAssets?.props[0]?.views.side.zh).toContain("红色长柄雨伞侧面");
+    expect(project?.referenceAssets?.scenes[0]?.prompt.zh).toContain("场景参考图");
+    expect(project?.storyboard[0]?.characterRefs).toEqual(["character-1"]);
+    expect(project?.storyboard[0]?.propRefs).toEqual(["prop-1"]);
+    expect(project?.storyboard[0]?.sceneRef).toBe("scene-ref-1");
     expect(project?.storyboard[0]?.prompt.zh.length).toBeGreaterThan(200);
     expect(project?.storyboard[0]?.prompt.zh).not.toContain("摄影机移动");
     expect(project?.storyboard[0]?.prompt.zh).not.toContain("声音");
@@ -224,6 +288,9 @@ describe("cinematic agent", () => {
     expect(callInput.prompt).toContain("1-3");
     expect(callInput.prompt).toContain("15");
     expect(callInput.prompt).toContain("scenePlan");
+    expect(callInput.prompt).toContain("referenceAssets");
+    expect(callInput.prompt).toContain("三视图");
+    expect(callInput.prompt).toContain("分镜图必须基于已生成的人物、物品、场景参考图");
   });
 
   it("fills continuity and handoff when an older model returns the previous schema", async () => {

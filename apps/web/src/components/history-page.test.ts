@@ -29,6 +29,12 @@ const historyNotification: NotificationRecord = {
   payload: {
     topic: "Silk Road",
     summary: "A compact summary",
+    cover: {
+      title: "Silk Road",
+      subtitle: "A trade route that moved ideas",
+      imageText: "Silk Road\nroutes / exchanges / long-term impact",
+      prompt: "丝绸之路，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、驿站与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域，中部留出副标题和知识标签，下方保留简短解释文字空间，适合信息流首屏点击"
+    },
     cardCount: 1,
     cards: [
       {
@@ -169,6 +175,44 @@ describe("HistoryPage", () => {
     });
 
     expect(writeText).toHaveBeenLastCalledWith(historyNotification.payload?.cards[0]?.prompt);
+  });
+
+  it("shows and copies xiaohongshu cover plan text from the selected history item", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true
+    });
+
+    await renderHistoryPage();
+
+    expect(container.textContent).toContain("封面方案");
+    expect(container.textContent).toContain("Silk Road");
+    expect(container.textContent).toContain("A trade route that moved ideas");
+
+    const copyCoverTextButton = container.querySelector(
+      'button[aria-label="复制封面文案"]'
+    ) as HTMLButtonElement | null;
+    const copyCoverPromptButton = container.querySelector(
+      'button[aria-label="复制封面生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    expect(copyCoverTextButton).toBeTruthy();
+    expect(copyCoverPromptButton).toBeTruthy();
+
+    await act(async () => {
+      copyCoverTextButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      "Silk Road\nA trade route that moved ideas\nSilk Road\nroutes / exchanges / long-term impact"
+    );
+
+    await act(async () => {
+      copyCoverPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith(historyNotification.payload?.cover?.prompt);
   });
 
   it("deletes an archived history notification from the history list", async () => {

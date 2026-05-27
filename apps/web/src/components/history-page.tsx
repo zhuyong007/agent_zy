@@ -119,6 +119,10 @@ export function HistoryPage() {
   const selectedNotification =
     historyNotifications.find((notification) => notification.id === selectedId) ?? historyNotifications[0] ?? null;
   const selectedPayload = selectedNotification?.payload ?? null;
+  const selectedCover = selectedPayload?.cover ?? null;
+  const selectedCoverText = selectedCover
+    ? [selectedCover.title, selectedCover.subtitle, selectedCover.imageText].filter(Boolean).join("\n")
+    : "";
   const totalCards = historyNotifications.reduce(
     (count, notification) => count + notification.payload.cardCount,
     0
@@ -267,6 +271,52 @@ export function HistoryPage() {
                   <strong>{historyNotifications.length} 条</strong>
                 </div>
               </div>
+
+              {selectedCover ? (
+                <section className="history-stage__section history-stage__section--cover">
+                  <div className="history-stage__heading">
+                    <div>
+                      <p className="eyebrow">Cover Plan</p>
+                      <h2>封面方案</h2>
+                    </div>
+                    <div className="history-cover-card__actions">
+                      <button
+                        type="button"
+                        className="history-copy-button"
+                        aria-label="复制封面文案"
+                        onClick={() => void handleCopy("cover-text", selectedCoverText)}
+                      >
+                        {copiedKey === "cover-text" ? "已复制" : "复制文案"}
+                      </button>
+                      <button
+                        type="button"
+                        className="history-copy-button"
+                        aria-label="复制封面生图提示词"
+                        onClick={() => void handleCopy("cover-prompt", selectedCover.prompt)}
+                      >
+                        {copiedKey === "cover-prompt" ? "已复制" : "复制提示词"}
+                      </button>
+                    </div>
+                  </div>
+                  <article className="history-cover-card">
+                    <div className="history-cover-card__preview">
+                      <span>首图封面</span>
+                      <strong>{selectedCover.title}</strong>
+                      <p>{selectedCover.subtitle}</p>
+                    </div>
+                    <div className="history-cover-card__body">
+                      <div>
+                        <span>封面文字</span>
+                        <p>{selectedCover.imageText}</p>
+                      </div>
+                      <div>
+                        <span>生图提示词</span>
+                        <small>{selectedCover.prompt}</small>
+                      </div>
+                    </div>
+                  </article>
+                </section>
+              ) : null}
 
               <section className="history-stage__section">
                 <div className="history-stage__heading">

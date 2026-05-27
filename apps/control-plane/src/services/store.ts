@@ -381,11 +381,21 @@ function normalizeStoryboardShot(shot: CinematicProject["storyboard"][number], i
   const handoff = typeof shot.handoff === "string" && shot.handoff.trim() ? shot.handoff : undefined;
   const sceneId = typeof shot.sceneId === "string" && shot.sceneId.trim() ? shot.sceneId : undefined;
   const sceneAnchor = typeof shot.sceneAnchor === "string" && shot.sceneAnchor.trim() ? shot.sceneAnchor : undefined;
+  const characterRefs = Array.isArray(shot.characterRefs)
+    ? shot.characterRefs.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+  const propRefs = Array.isArray(shot.propRefs)
+    ? shot.propRefs.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+  const sceneRef = typeof shot.sceneRef === "string" && shot.sceneRef.trim() ? shot.sceneRef : undefined;
 
   return {
     id: typeof shot.id === "string" && shot.id ? shot.id : `shot-${index + 1}`,
     ...(sceneId ? { sceneId } : {}),
     ...(sceneAnchor ? { sceneAnchor } : {}),
+    ...(characterRefs.length ? { characterRefs } : {}),
+    ...(propRefs.length ? { propRefs } : {}),
+    ...(sceneRef ? { sceneRef } : {}),
     title: typeof shot.title === "string" ? shot.title : `镜头 ${index + 1}`,
     purpose: typeof shot.purpose === "string" ? shot.purpose : "",
     duration: typeof shot.duration === "string" ? shot.duration : "",
@@ -401,6 +411,92 @@ function normalizeStoryboardShot(shot: CinematicProject["storyboard"][number], i
       en: typeof shot.prompt?.en === "string" ? shot.prompt.en : ""
     }
   };
+}
+
+function normalizeReferencePrompt(prompt: unknown) {
+  const record = prompt && typeof prompt === "object" && !Array.isArray(prompt)
+    ? (prompt as { zh?: unknown; en?: unknown })
+    : null;
+  const zh = typeof record?.zh === "string" ? record.zh : "";
+  const en = typeof record?.en === "string" ? record.en : "";
+
+  return zh.trim() || en.trim() ? { zh, en } : null;
+}
+
+function normalizeReferenceViews(views: unknown) {
+  const record = views && typeof views === "object" && !Array.isArray(views)
+    ? (views as { front?: unknown; side?: unknown; back?: unknown })
+    : null;
+  const front = normalizeReferencePrompt(record?.front);
+  const side = normalizeReferencePrompt(record?.side);
+  const back = normalizeReferencePrompt(record?.back);
+
+  return front && side && back ? { front, side, back } : null;
+}
+
+function normalizeCinematicReferenceAssets(
+  referenceAssets: Partial<CinematicProject["referenceAssets"]> | undefined
+): CinematicProject["referenceAssets"] | undefined {
+  if (!referenceAssets) {
+    return undefined;
+  }
+
+  const characters = Array.isArray(referenceAssets.characters)
+    ? referenceAssets.characters
+        .map((asset, index) => {
+          const views = normalizeReferenceViews(asset.views);
+          const name = typeof asset.name === "string" && asset.name.trim() ? asset.name : `人物 ${index + 1}`;
+          const description = typeof asset.description === "string" ? asset.description : "";
+
+          return views
+            ? {
+                id: typeof asset.id === "string" && asset.id.trim() ? asset.id : `character-${index + 1}`,
+                name,
+                description,
+                views
+              }
+            : null;
+        })
+        .filter((asset): asset is NonNullable<CinematicProject["referenceAssets"]>["characters"][number] => Boolean(asset))
+    : [];
+  const props = Array.isArray(referenceAssets.props)
+    ? referenceAssets.props
+        .map((asset, index) => {
+          const views = normalizeReferenceViews(asset.views);
+          const name = typeof asset.name === "string" && asset.name.trim() ? asset.name : `物品 ${index + 1}`;
+          const description = typeof asset.description === "string" ? asset.description : "";
+
+          return views
+            ? {
+                id: typeof asset.id === "string" && asset.id.trim() ? asset.id : `prop-${index + 1}`,
+                name,
+                description,
+                views
+              }
+            : null;
+        })
+        .filter((asset): asset is NonNullable<CinematicProject["referenceAssets"]>["props"][number] => Boolean(asset))
+    : [];
+  const scenes = Array.isArray(referenceAssets.scenes)
+    ? referenceAssets.scenes
+        .map((asset, index) => {
+          const prompt = normalizeReferencePrompt(asset.prompt);
+          const name = typeof asset.name === "string" && asset.name.trim() ? asset.name : `场景 ${index + 1}`;
+          const description = typeof asset.description === "string" ? asset.description : "";
+
+          return prompt
+            ? {
+                id: typeof asset.id === "string" && asset.id.trim() ? asset.id : `scene-ref-${index + 1}`,
+                name,
+                description,
+                prompt
+              }
+            : null;
+        })
+        .filter((asset): asset is NonNullable<CinematicProject["referenceAssets"]>["scenes"][number] => Boolean(asset))
+    : [];
+
+  return characters.length || props.length || scenes.length ? { characters, props, scenes } : undefined;
 }
 
 function normalizeCinematicContinuity(
@@ -477,6 +573,7 @@ function normalizeCinematicProject(project: Partial<CinematicProject>, index: nu
     : [];
   const scenePlan = normalizeCinematicScenePlan(project.scenePlan);
   const continuity = normalizeCinematicContinuity(project.continuity);
+  const referenceAssets = normalizeCinematicReferenceAssets(project.referenceAssets);
 
   return {
     id: typeof project.id === "string" && project.id ? project.id : `cinematic-${index}`,
@@ -485,6 +582,7 @@ function normalizeCinematicProject(project: Partial<CinematicProject>, index: nu
     mood: typeof project.mood === "string" ? project.mood : "",
     script: typeof project.script === "string" ? project.script : "",
     storyboard,
+    ...(referenceAssets ? { referenceAssets } : {}),
     ...(scenePlan ? { scenePlan } : {}),
     ...(continuity ? { continuity } : {}),
     createdAt: typeof project.createdAt === "string" ? project.createdAt : now,

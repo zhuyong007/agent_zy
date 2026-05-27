@@ -897,6 +897,12 @@ describe("control-plane app", () => {
     process.env.HISTORY_POST_FIXTURE_JSON = JSON.stringify({
       topic: "张骞出使西域如何改变丝绸之路",
       summary: "一次外交行动，重塑了贸易、地理认知和文化交流。",
+      cover: {
+        title: "张骞出使西域如何改变丝绸之路",
+        subtitle: "一次外交打开欧亚交流网络",
+        imageText: "张骞出使西域\n路线节点 / 外交背景 / 交流影响",
+        prompt: longHistoryImagePrompt("张骞出使西域小红书首图封面")
+      },
       cardCount: 3,
       cards: [
         {
@@ -931,7 +937,13 @@ describe("control-plane app", () => {
       notifications: expect.arrayContaining([
         expect.objectContaining({
           kind: "history-post",
-          title: "每日历史知识点：张骞出使西域如何改变丝绸之路"
+          title: "每日历史知识点：张骞出使西域如何改变丝绸之路",
+          payload: expect.objectContaining({
+            cover: expect.objectContaining({
+              title: "张骞出使西域如何改变丝绸之路",
+              prompt: expect.stringContaining("小红书首图封面")
+            })
+          })
         })
       ])
     });

@@ -348,9 +348,17 @@ export interface HistoryPostCard {
   prompt: string;
 }
 
+export interface HistoryPostCover {
+  title: string;
+  subtitle: string;
+  imageText: string;
+  prompt: string;
+}
+
 export interface HistoryPostPayload {
   topic: string;
   summary: string;
+  cover?: HistoryPostCover;
   cardCount: number;
   cards: HistoryPostCard[];
   xiaohongshuCaption: string;
@@ -396,6 +404,9 @@ export interface StoryboardShot {
   id: string;
   sceneId?: string;
   sceneAnchor?: string;
+  characterRefs?: string[];
+  propRefs?: string[];
+  sceneRef?: string;
   title: string;
   purpose: string;
   duration: string;
@@ -410,6 +421,44 @@ export interface StoryboardShot {
     zh: string;
     en: string;
   };
+}
+
+export interface CinematicReferencePrompt {
+  zh: string;
+  en: string;
+}
+
+export interface CinematicReferenceViews {
+  front: CinematicReferencePrompt;
+  side: CinematicReferencePrompt;
+  back: CinematicReferencePrompt;
+}
+
+export interface CinematicCharacterReference {
+  id: string;
+  name: string;
+  description: string;
+  views: CinematicReferenceViews;
+}
+
+export interface CinematicPropReference {
+  id: string;
+  name: string;
+  description: string;
+  views: CinematicReferenceViews;
+}
+
+export interface CinematicSceneReference {
+  id: string;
+  name: string;
+  description: string;
+  prompt: CinematicReferencePrompt;
+}
+
+export interface CinematicReferenceAssets {
+  characters: CinematicCharacterReference[];
+  props: CinematicPropReference[];
+  scenes: CinematicSceneReference[];
 }
 
 export interface CinematicContinuity {
@@ -438,6 +487,7 @@ export interface CinematicProject {
   mood: string;
   script: string;
   storyboard: StoryboardShot[];
+  referenceAssets?: CinematicReferenceAssets;
   scenePlan?: CinematicScenePlan;
   continuity?: CinematicContinuity;
   createdAt: string;

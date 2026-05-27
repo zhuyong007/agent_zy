@@ -2914,6 +2914,7 @@ body[data-theme="day"] .summary-list button {
 .history-panel__meta,
 .history-panel__caption span,
 .history-stage-card span,
+.history-cover-card span,
 .history-stage__meta span,
 .history-stage__metrics span,
 .history-xhs-panel span,
@@ -2943,6 +2944,7 @@ body[data-theme="day"] .summary-list button {
 .history-stage__hero > div > p,
 .history-xhs-panel p,
 .history-stage-card p,
+.history-cover-card p,
 .history-caption-card p,
 .history-archive__item p {
   margin: 0;
@@ -2992,6 +2994,7 @@ body[data-theme="day"] .summary-list button {
 
 .history-panel__item,
 .history-stage-card,
+.history-cover-card,
 .history-xhs-panel__posts article,
 .history-archive__item {
   padding: 12px 13px;
@@ -3017,10 +3020,59 @@ body[data-theme="day"] .summary-list button {
 }
 
 .history-panel__item > div,
-.history-stage-card {
+.history-stage-card,
+.history-cover-card__body {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.history-cover-card {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.42fr) minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.history-cover-card__preview {
+  display: grid;
+  align-content: end;
+  gap: 8px;
+  min-height: 240px;
+  padding: 18px;
+  border: 1px solid rgba(242, 214, 161, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(39, 56, 74, 0.1), rgba(5, 10, 17, 0.56)),
+    radial-gradient(circle at top left, rgba(204, 158, 86, 0.2), transparent 42%);
+}
+
+.history-cover-card__preview strong {
+  max-width: 12ch;
+  font-family: var(--display-font);
+  font-size: 1.7rem;
+  line-height: 1.08;
+}
+
+.history-cover-card__body {
+  align-content: start;
+  gap: 12px;
+}
+
+.history-cover-card__body > div {
+  display: grid;
+  gap: 6px;
+}
+
+.history-cover-card__body p {
+  white-space: pre-wrap;
+}
+
+.history-cover-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .history-stage-card__head {
@@ -3094,6 +3146,7 @@ body[data-theme="day"] .summary-list button {
 
 .history-panel__item strong,
 .history-stage-card strong,
+.history-cover-card__body strong,
 .history-archive__item strong,
 .history-stage__meta strong {
   font-size: 0.9rem;
@@ -3101,7 +3154,8 @@ body[data-theme="day"] .summary-list button {
 }
 
 .history-panel__item small,
-.history-stage-card small {
+.history-stage-card small,
+.history-cover-card small {
   color: rgba(214, 223, 243, 0.54);
   font-size: 0.68rem;
   line-height: 1.5;
@@ -5551,6 +5605,7 @@ body[data-theme="day"] .history-panel__stats div,
 body[data-theme="day"] .history-stage__metrics div,
 body[data-theme="day"] .history-panel__item,
 body[data-theme="day"] .history-stage-card,
+body[data-theme="day"] .history-cover-card,
 body[data-theme="day"] .history-caption-card,
 body[data-theme="day"] .history-archive__item,
 body[data-theme="day"] .session-tab,
@@ -5586,6 +5641,13 @@ body[data-theme="day"] .history-panel__item > span {
   background: rgba(171, 126, 52, 0.06);
 }
 
+body[data-theme="day"] .history-cover-card__preview {
+  border-color: rgba(171, 126, 52, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 245, 0.42), rgba(232, 219, 198, 0.58)),
+    radial-gradient(circle at top left, rgba(171, 126, 52, 0.16), transparent 42%);
+}
+
 body[data-theme="day"] .history-panel__status strong {
   color: rgba(68, 45, 18, 0.9);
 }
@@ -5615,6 +5677,7 @@ body[data-theme="day"] .history-panel__item p,
 body[data-theme="day"] .history-panel__caption p,
 body[data-theme="day"] .history-stage__hero > div > p,
 body[data-theme="day"] .history-stage-card p,
+body[data-theme="day"] .history-cover-card p,
 body[data-theme="day"] .history-caption-card p,
 body[data-theme="day"] .history-archive__item p,
 body[data-theme="day"] .intel-item p,
@@ -5947,6 +6010,7 @@ body[data-theme="day"] .topic-score {
   .history-stage__metrics,
   .history-xhs-panel__metrics,
   .history-xhs-panel__posts,
+  .history-cover-card,
   .history-stage__cards {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -7727,7 +7791,10 @@ body[data-theme="day"] .cinematic-project-controls input {
 }
 
 .cinematic-workspace {
+  height: 100vh;
   min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .cinematic-board {
