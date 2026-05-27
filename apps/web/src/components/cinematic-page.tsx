@@ -29,74 +29,82 @@ function formatDateTime(timestamp?: string | null) {
 }
 
 export function buildStoryboardVideoPrompt(project: CinematicProject) {
-  const shotLines = project.storyboard
-    .map(
-      (shot, index) => [
-        `第 ${index + 1} 张分镜图：${shot.title}`,
-        `所属场景：${shot.sceneId || "scene-1"}`,
-        `场景锚点：${shot.sceneAnchor || shot.composition}`,
-        `用途：${shot.purpose}`,
-        `时长：${shot.duration}`,
-        `镜头运动：${shot.cameraMovement}`,
-        `构图：${shot.composition}`,
-        `转场：${shot.transition}`,
-        `镜头衔接：${shot.handoff || "延续上一镜的动作、光线和空间方向，自然进入下一镜。"}`,
-        `情绪：${shot.emotionalBeat}`,
-        `声音参考：${shot.audioHint}`
-      ].join("\n")
-    )
-    .join("\n\n");
-  const scenePlanLines = project.scenePlan?.scenes.length
-    ? [
-        `视频总时长：不超过 ${project.scenePlan.maxDurationSeconds || 15} 秒`,
-        `场景数量：${project.scenePlan.sceneCount} 个；整条视频必须控制在 1-3 个连续场景内，不要一张分镜图换一个场景。`,
-        ...project.scenePlan.scenes.map(
-          (scene, index) => `${index + 1}. ${scene.id}｜${scene.name}：${scene.anchor}；作用：${scene.role}`
-        )
-      ].join("\n")
-    : [
-        "视频总时长：不超过 15 秒",
-        "场景数量：只使用 1-3 个连续场景；不要一张分镜图换一个场景。",
-        "把所有分镜图理解为同一条动作/情绪链上的关键帧，只允许在镜头角度、焦距、动作细节、光线和情绪上递进。"
-      ].join("\n");
-  const continuityLines = project.continuity
-    ? [
-        `连续动作线：${project.continuity.actionLine}`,
-        `空间连续性：${project.continuity.spatialLine}`,
-        `情绪递进线：${project.continuity.emotionalLine}`,
-        `视觉连续性：${project.continuity.visualLine}`,
-        `声音连续性：${project.continuity.audioLine}`
-      ].join("\n")
-    : [
-        `连续动作线：请把每张分镜图视为同一场戏中连续发生的动作节点，而不是独立画面。`,
-        `空间连续性：延续分镜图里的场景方位、主体位置、前景/中景/背景关系和光线方向。`,
-        `情绪递进线：让情绪从“${project.storyboard[0]?.emotionalBeat || project.mood}”逐步推进到“${project.storyboard.at(-1)?.emotionalBeat || project.mood}”。`,
-        `视觉连续性：延续${project.style || "分镜图"}的色彩、材质、天气、景深和镜头质感。`,
-        `声音连续性：用环境声、动作声或音乐尾音把镜头自然连起来。`
-      ].join("\n");
+  const limit = 500;
+  const compact = (value: string | undefined, maxLength: number) =>
+    Array.from((value ?? "").replace(/\s+/g, " ").trim()).slice(0, maxLength).join("");
+  const buildShotChain = (maxLength: number, tokenSize: { title: number; movement: number; transition: number }) => {
+    const tokens = project.storyboard.map((shot, index) =>
+      `${index + 1}.${compact(shot.title, tokenSize.title)}/${compact(shot.cameraMovement, tokenSize.movement)}/${compact(shot.transition, tokenSize.transition)}`
+    );
+    const selected: string[] = [];
 
-  return `请根据按顺序上传的 ${project.storyboard.length} 张分镜图生成一条连贯视频。
+    for (const token of tokens) {
+      const next = [...selected, token].join("→");
+      const remaining = tokens.length - selected.length - 1;
+      const suffix = remaining > 0 ? `→后续${remaining}镜沿同一空间推进` : "";
 
-核心要求：
-- 把这些分镜图当作连续关键帧，严格按上传顺序串联，不要打乱镜头。
-- 不要重新设计角色、服装、场景空间或主体构图；保持人物身份、环境位置、光影方向、色彩气质和画面比例连续。
-- 镜头之间用自然的摄影机运动、动作延续、光影变化或转场连接，避免突然跳切、角色变脸、服装变化、场景漂移。
-- 整体风格：${project.style || "延续分镜图的电影感风格"}。
-- 整体节奏：${project.pace || "按照情绪递进自然推进"}。
-- 核心情绪：${project.mood}。
-- 生成的是视频，不要输出字幕、水印、解释文字或额外画面元素。
+      if ((next + suffix).length <= maxLength) {
+        selected.push(token);
+      } else {
+        break;
+      }
+    }
 
-连续性导演设计：
+    if (!selected.length) {
+      return tokens.length ? `1.${compact(project.storyboard[0]?.title, 6)}` : "按分镜顺序推进";
+    }
 
-${scenePlanLines}
+    const remaining = tokens.length - selected.length;
+    const chain = selected.join("→");
+    const suffix = remaining > 0 ? `→后续${remaining}镜沿同一空间推进` : "";
 
-${continuityLines}
+    return chain + suffix;
+  };
+  const buildSceneAnchors = (maxAnchorLength: number) =>
+    project.scenePlan?.scenes.length
+      ? project.scenePlan.scenes
+          .slice(0, 3)
+          .map((scene) => `${scene.id}:${compact(scene.anchor, maxAnchorLength)}`)
+          .join("；")
+      : `scene-1:${compact(project.storyboard[0]?.sceneAnchor || project.storyboard[0]?.composition || project.concept, maxAnchorLength)}`;
+  const sceneCount = project.scenePlan?.sceneCount ?? Math.min(Math.max(project.storyboard.length ? 1 : 0, 1), 3);
+  const maxDurationSeconds = project.scenePlan?.maxDurationSeconds ?? 15;
+  const buildPrompt = (options: {
+    sceneAnchorLength: number;
+    shotChainLength: number;
+    continuityLength: number;
+    styleLength: number;
+    tokenSize: { title: number; movement: number; transition: number };
+  }) => {
+    const continuity =
+      compact(project.continuity?.spatialLine, options.continuityLength) ||
+      `围绕${compact(project.concept, 18)}保持同一地点、主体位置、光线方向和景别关系`;
+    const style = compact(project.style || "电影感", options.styleLength);
 
-分镜顺序与运动设计：
+    return [
+      `请按上传顺序把${project.storyboard.length}张分镜图生成一条连贯视频，总长≤${maxDurationSeconds}秒，画面连贯优先。`,
+      `只用${sceneCount}个连续场景（最多1-3个），不要一图一景；场景锚点：${buildSceneAnchors(options.sceneAnchorLength)}。`,
+      "保持角色、服装、主体构图、光线方向、色彩和画幅一致，禁止变脸、跳切、场景漂移、字幕水印。",
+      `镜头运动是串联重点，镜头链：${buildShotChain(options.shotChainLength, options.tokenSize)}。`,
+      `连续性：${continuity}。`,
+      `整体风格：${style}；画面质感和速度变化保持统一。`
+    ].join("");
+  };
+  const attempts = [
+    { sceneAnchorLength: 42, shotChainLength: 190, continuityLength: 74, styleLength: 34, tokenSize: { title: 8, movement: 6, transition: 6 } },
+    { sceneAnchorLength: 30, shotChainLength: 150, continuityLength: 54, styleLength: 24, tokenSize: { title: 7, movement: 5, transition: 5 } },
+    { sceneAnchorLength: 22, shotChainLength: 110, continuityLength: 38, styleLength: 18, tokenSize: { title: 6, movement: 4, transition: 4 } }
+  ];
 
-${shotLines}
+  for (const options of attempts) {
+    const prompt = buildPrompt(options);
 
-最终视频应像同一场戏的连续片段：画面、人物、空间和情绪保持统一，只让时间、镜头运动和情绪发生变化。`;
+    if (prompt.length <= limit) {
+      return prompt;
+    }
+  }
+
+  return `请按上传顺序把${project.storyboard.length}张分镜图生成一条连贯视频，总长≤${maxDurationSeconds}秒；只用${sceneCount}个连续场景，不要一图一景。镜头链：${buildShotChain(96, { title: 5, movement: 3, transition: 3 })}。保持角色、服装、构图、光线和色彩一致，禁止变脸、跳切、场景漂移、字幕水印。`;
 }
 
 export function buildCinematicMarkdown(project: CinematicProject) {
@@ -171,13 +179,19 @@ function copyText(value: string) {
 function buildGenerateInput(input: {
   concept: string;
   style: string;
+  visualStyle: string;
   pace: string;
+  visualFocus: string;
+  negativePrompt: string;
   targetShotCount: number | "";
 }): CinematicGenerateInput {
   return {
     concept: input.concept.trim(),
     style: input.style.trim() || undefined,
+    visualStyle: input.visualStyle.trim() || undefined,
     pace: input.pace.trim() || undefined,
+    visualFocus: input.visualFocus.trim() || undefined,
+    negativePrompt: input.negativePrompt.trim() || undefined,
     targetShotCount: typeof input.targetShotCount === "number" ? input.targetShotCount : undefined
   };
 }
@@ -239,12 +253,6 @@ function ShotDetail({ shot }: { shot: StoryboardShot | null }) {
         <h2>{shot.title}</h2>
         <p>{shot.emotionalBeat}</p>
       </header>
-      <div className="cinematic-shot-meta">
-        <div><span>构图</span><strong>{shot.composition}</strong></div>
-        <div><span>运动</span><strong>{shot.cameraMovement}</strong></div>
-        <div><span>转场</span><strong>{shot.transition}</strong></div>
-        <div><span>声音</span><strong>{shot.audioHint}</strong></div>
-      </div>
       <section className="cinematic-prompt-block">
         <div>
           <h3>中文提示词</h3>
@@ -307,7 +315,10 @@ export function CinematicPage() {
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [concept, setConcept] = useState("");
   const [style, setStyle] = useState("");
+  const [visualStyle, setVisualStyle] = useState("");
   const [pace, setPace] = useState("");
+  const [visualFocus, setVisualFocus] = useState("");
+  const [negativePrompt, setNegativePrompt] = useState("");
   const [targetShotCount, setTargetShotCount] = useState<number | "">("");
   const { layout } = useHomeLayoutPreferences();
 
@@ -409,7 +420,7 @@ export function CinematicPage() {
             className="cinematic-generate-form"
             onSubmit={(event) => {
               event.preventDefault();
-              generateMutation.mutate(buildGenerateInput({ concept, style, pace, targetShotCount }));
+              generateMutation.mutate(buildGenerateInput({ concept, style, visualStyle, pace, visualFocus, negativePrompt, targetShotCount }));
             }}
           >
             <div className="cinematic-generate-form__lead">
@@ -433,6 +444,38 @@ export function CinematicPage() {
                   onChange={(event) => setStyle(event.target.value)}
                   placeholder="例如：冷蓝霓虹、低饱和胶片感"
                   aria-label="风格"
+                />
+              </label>
+              <label className="cinematic-field">
+                <span>画面风格（可选）</span>
+                <select
+                  value={visualStyle}
+                  onChange={(event) => setVisualStyle(event.target.value)}
+                  aria-label="画面风格"
+                >
+                  <option value="">自动</option>
+                  <option value="真实影像">真实</option>
+                  <option value="动漫">动漫</option>
+                  <option value="插画">插画</option>
+                  <option value="3D 渲染">3D</option>
+                </select>
+              </label>
+              <label className="cinematic-field">
+                <span>必须出现的静态画面元素（可留空）</span>
+                <input
+                  value={visualFocus}
+                  onChange={(event) => setVisualFocus(event.target.value)}
+                  placeholder="例如：红色雨伞、便利店门口、湿润柏油路"
+                  aria-label="静态画面元素"
+                />
+              </label>
+              <label className="cinematic-field">
+                <span>不要出现的内容（可留空）</span>
+                <input
+                  value={negativePrompt}
+                  onChange={(event) => setNegativePrompt(event.target.value)}
+                  placeholder="例如：瞳孔变化、文字水印、怪物化"
+                  aria-label="不要出现的内容"
                 />
               </label>
               <label className="cinematic-field">
@@ -470,7 +513,10 @@ export function CinematicPage() {
                 onClick={() => {
                   setConcept("");
                   setStyle("");
+                  setVisualStyle("");
                   setPace("");
+                  setVisualFocus("");
+                  setNegativePrompt("");
                   setTargetShotCount("");
                   generateMutation.mutate({
                     concept: ""

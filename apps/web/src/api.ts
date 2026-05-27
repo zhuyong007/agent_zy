@@ -279,8 +279,11 @@ export async function fetchCinematic(): Promise<CinematicState> {
 export type CinematicGenerateInput = {
   concept: string;
   style?: string;
+  visualStyle?: string;
   pace?: string;
   targetShotCount?: number;
+  visualFocus?: string;
+  negativePrompt?: string;
 };
 
 export async function generateCinematic(input: CinematicGenerateInput): Promise<CinematicState> {

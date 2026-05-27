@@ -7438,6 +7438,7 @@ body[data-theme="day"] .model-check-grid label {
 .cinematic-panel__quick input,
 .cinematic-generate-form textarea,
 .cinematic-generate-form input,
+.cinematic-generate-form select,
 .cinematic-project-controls input {
   width: 100%;
   border: 1px solid var(--line);
@@ -7455,6 +7456,7 @@ body[data-theme="day"] .model-check-grid label {
 body[data-theme="day"] .cinematic-panel__quick input,
 body[data-theme="day"] .cinematic-generate-form textarea,
 body[data-theme="day"] .cinematic-generate-form input,
+body[data-theme="day"] .cinematic-generate-form select,
 body[data-theme="day"] .cinematic-project-controls input {
   background: rgba(255, 255, 255, 0.78);
 }
@@ -7462,6 +7464,7 @@ body[data-theme="day"] .cinematic-project-controls input {
 .cinematic-panel__quick input:focus,
 .cinematic-generate-form textarea:focus,
 .cinematic-generate-form input:focus,
+.cinematic-generate-form select:focus,
 .cinematic-project-controls input:focus {
   border-color: var(--line-strong);
   background: var(--manage-control);
@@ -7527,7 +7530,6 @@ body[data-theme="day"] .cinematic-project-controls input {
 .cinematic-project-card span,
 .cinematic-shot-item span,
 .cinematic-shot-detail span,
-.cinematic-shot-meta span,
 .cinematic-generate-form__lead span,
 .cinematic-field span {
   color: var(--muted);
@@ -7846,21 +7848,6 @@ body[data-theme="day"] .cinematic-project-controls input {
   white-space: pre-wrap;
 }
 
-.cinematic-shot-meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.cinematic-shot-meta div {
-  display: grid;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
-  background: var(--manage-control-soft);
-}
-
 .cinematic-copy-all {
   width: 100%;
 }
@@ -7894,8 +7881,7 @@ body[data-theme="day"] .cinematic-project-controls input {
 
 @media (max-width: 720px) {
   .cinematic-hero,
-  .cinematic-project-controls,
-  .cinematic-shot-meta {
+  .cinematic-project-controls {
     grid-template-columns: 1fr;
   }
 

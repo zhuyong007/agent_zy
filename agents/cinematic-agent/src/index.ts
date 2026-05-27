@@ -35,6 +35,112 @@ function asPositiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function sanitizeFramePrompt(value: string, language: "zh" | "en") {
+  const separators = language === "zh" ? /([，。；；])/ : /([,.；;])/;
+  const forbiddenClausePattern =
+    language === "zh"
+      ? /(镜头|摄影机|运镜|推进|推近|拉远|后退|摇移|跟拍|转场|声音|音效|低频|环境音|嗡声|旁白)/
+      : /(camera|pushes?|push in|pulls?|dolly|tracking|pan|tilt|transition|sound|audio|hum|voice|music)/i;
+  const normalized =
+    language === "zh"
+      ? value
+          .replace(/急剧收缩成/g, "呈")
+          .replace(/迅速收缩成/g, "呈")
+          .replace(/逐渐收缩成/g, "呈")
+          .replace(/慢慢收缩成/g, "呈")
+          .replace(/正在/g, "")
+          .replace(/开始/g, "")
+          .replace(/逐渐/g, "")
+          .replace(/急剧/g, "")
+          .replace(/迅速/g, "")
+          .replace(/转头看向/g, "面向")
+      : value
+          .replace(/rapidly shrinks? into/gi, "appears as")
+          .replace(/slowly pushes? in/gi, "")
+          .replace(/\bis turning\b/gi, "faces")
+          .replace(/\bturning\b/gi, "facing");
+  const parts = normalized.split(separators);
+  const kept: string[] = [];
+
+  for (let index = 0; index < parts.length; index += 2) {
+    const clause = parts[index]?.trim();
+    const punctuation = parts[index + 1] ?? (language === "zh" ? "，" : ",");
+
+    if (!clause || forbiddenClausePattern.test(clause)) {
+      continue;
+    }
+
+    kept.push(`${clause}${punctuation}`);
+  }
+
+  return (kept.join("").trim() || normalized.trim()).replace(/\s+/g, " ");
+}
+
+function normalizeFieldName(value: string) {
+  return value.replace(/[\s_-]/g, "").toLowerCase();
+}
+
+function getField(record: Record<string, unknown> | null | undefined, ...keys: string[]): unknown {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    if (key in record) {
+      return record[key];
+    }
+  }
+
+  const normalizedKeys = new Set(keys.map(normalizeFieldName));
+  const entry = Object.entries(record).find(([key]) => normalizedKeys.has(normalizeFieldName(key)));
+
+  return entry?.[1];
+}
+
+function getStringField(record: Record<string, unknown> | null | undefined, ...keys: string[]): string | null {
+  return asString(getField(record, ...keys));
+}
+
+function getPositiveIntegerField(record: Record<string, unknown> | null | undefined, ...keys: string[]): number | null {
+  return asPositiveInteger(getField(record, ...keys));
+}
+
+function getArrayField(record: Record<string, unknown> | null | undefined, ...keys: string[]): unknown[] {
+  const value = getField(record, ...keys);
+
+  return Array.isArray(value) ? value : [];
+}
+
+function getProjectPayload(value: unknown): unknown {
+  const normalized = normalizeModelOutput(value);
+  const record = asRecord(normalized);
+
+  if (!record) {
+    return normalized;
+  }
+
+  if (getArrayField(record, "storyboard", "shots").length > 0) {
+    return record;
+  }
+
+  for (const key of ["project", "cinematicProject", "cinematic_project", "data", "result", "output"]) {
+    const candidate = normalizeModelOutput(getField(record, key));
+    const candidateRecord = asRecord(candidate);
+
+    if (candidateRecord && getArrayField(candidateRecord, "storyboard", "shots").length > 0) {
+      return candidateRecord;
+    }
+  }
+
+  const nestedProject = Object.values(record).find((candidate) => {
+    const candidateRecord = asRecord(normalizeModelOutput(candidate));
+
+    return Boolean(candidateRecord && getArrayField(candidateRecord, "storyboard", "shots").length > 0);
+  });
+
+  return nestedProject ?? record;
+}
+
 function validateShot(value: unknown, index: number): StoryboardShot {
   const record = asRecord(value);
 
@@ -42,21 +148,21 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     throw new Error(`第 ${index + 1} 个分镜不是对象`);
   }
 
-  const prompt = asRecord(record.prompt);
-  const zhPrompt = asString(prompt?.zh);
-  const enPrompt = asString(prompt?.en);
-  const sceneId = asString(record.sceneId);
-  const sceneAnchor = asString(record.sceneAnchor);
-  const title = asString(record.title);
-  const purpose = asString(record.purpose);
-  const duration = asString(record.duration);
-  const cameraMovement = asString(record.cameraMovement);
-  const shotType = asString(record.shotType);
-  const composition = asString(record.composition);
-  const transition = asString(record.transition);
-  const audioHint = asString(record.audioHint);
-  const emotionalBeat = asString(record.emotionalBeat);
-  const handoff = asString(record.handoff);
+  const prompt = asRecord(getField(record, "prompt"));
+  const zhPrompt = getStringField(prompt, "zh") ?? getStringField(record, "zhPrompt", "promptZh", "prompt_zh");
+  const enPrompt = getStringField(prompt, "en") ?? getStringField(record, "enPrompt", "promptEn", "prompt_en");
+  const sceneId = getStringField(record, "sceneId", "scene_id");
+  const sceneAnchor = getStringField(record, "sceneAnchor", "scene_anchor");
+  const title = getStringField(record, "title");
+  const purpose = getStringField(record, "purpose");
+  const duration = getStringField(record, "duration");
+  const cameraMovement = getStringField(record, "cameraMovement", "camera_movement");
+  const shotType = getStringField(record, "shotType", "shot_type");
+  const composition = getStringField(record, "composition");
+  const transition = getStringField(record, "transition");
+  const audioHint = getStringField(record, "audioHint", "audio_hint");
+  const emotionalBeat = getStringField(record, "emotionalBeat", "emotional_beat");
+  const handoff = getStringField(record, "handoff");
 
   if (
     !title ||
@@ -75,7 +181,7 @@ function validateShot(value: unknown, index: number): StoryboardShot {
   }
 
   return {
-    id: asString(record.id) ?? `shot-${index + 1}`,
+    id: getStringField(record, "id") ?? `shot-${index + 1}`,
     ...(sceneId ? { sceneId } : {}),
     ...(sceneAnchor ? { sceneAnchor } : {}),
     title,
@@ -89,8 +195,8 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     emotionalBeat,
     ...(handoff ? { handoff } : {}),
     prompt: {
-      zh: zhPrompt,
-      en: enPrompt
+      zh: sanitizeFramePrompt(zhPrompt, "zh"),
+      en: sanitizeFramePrompt(enPrompt, "en")
     }
   };
 }
@@ -103,11 +209,11 @@ function validateContinuity(value: unknown): CinematicContinuity | undefined {
   }
 
   const continuity = {
-    actionLine: asString(record.actionLine),
-    spatialLine: asString(record.spatialLine),
-    emotionalLine: asString(record.emotionalLine),
-    visualLine: asString(record.visualLine),
-    audioLine: asString(record.audioLine)
+    actionLine: getStringField(record, "actionLine", "action_line"),
+    spatialLine: getStringField(record, "spatialLine", "spatial_line"),
+    emotionalLine: getStringField(record, "emotionalLine", "emotional_line"),
+    visualLine: getStringField(record, "visualLine", "visual_line"),
+    audioLine: getStringField(record, "audioLine", "audio_line")
   };
 
   return continuity.actionLine &&
@@ -126,14 +232,15 @@ function validateScenePlan(value: unknown): CinematicScenePlan | undefined {
     return undefined;
   }
 
-  const scenes = Array.isArray(record.scenes)
-    ? record.scenes
+  const rawScenes = getArrayField(record, "scenes");
+  const scenes = rawScenes.length
+    ? rawScenes
         .map((item, index) => {
           const scene = asRecord(item);
-          const id = asString(scene?.id) ?? `scene-${index + 1}`;
-          const name = asString(scene?.name) ?? id;
-          const anchor = asString(scene?.anchor);
-          const role = asString(scene?.role) ?? "";
+          const id = getStringField(scene, "id") ?? `scene-${index + 1}`;
+          const name = getStringField(scene, "name") ?? id;
+          const anchor = getStringField(scene, "anchor");
+          const role = getStringField(scene, "role") ?? "";
 
           return anchor
             ? {
@@ -152,8 +259,8 @@ function validateScenePlan(value: unknown): CinematicScenePlan | undefined {
     return undefined;
   }
 
-  const sceneCount = Math.min(Math.max(asPositiveInteger(record.sceneCount) ?? scenes.length, 1), 3);
-  const maxDurationSeconds = Math.min(asPositiveInteger(record.maxDurationSeconds) ?? 15, 15);
+  const sceneCount = Math.min(Math.max(getPositiveIntegerField(record, "sceneCount", "scene_count") ?? scenes.length, 1), 3);
+  const maxDurationSeconds = Math.min(getPositiveIntegerField(record, "maxDurationSeconds", "max_duration_seconds") ?? 15, 15);
   const limitedSceneCount = Math.min(sceneCount, scenes.length);
 
   return {
@@ -234,22 +341,22 @@ function buildFallbackContinuity(input: {
 }
 
 function validateProject(value: unknown, input: CinematicGenerationInput, requestedAt: string): CinematicProject {
-  const record = asRecord(normalizeModelOutput(value));
+  const record = asRecord(getProjectPayload(value));
 
   if (!record) {
     throw new Error("电影镜头设计输出不是 JSON 对象");
   }
 
-  const title = asString(record.title);
-  const concept = asString(record.concept) ?? input.concept;
-  const mood = asString(record.mood);
-  const script = asString(record.script);
-  const rawStoryboard = Array.isArray(record.storyboard)
-    ? record.storyboard.map(validateShot)
+  const title = getStringField(record, "title");
+  const concept = getStringField(record, "concept") ?? input.concept;
+  const mood = getStringField(record, "mood");
+  const script = getStringField(record, "script");
+  const rawStoryboard = getArrayField(record, "storyboard", "shots").length
+    ? getArrayField(record, "storyboard", "shots").map(validateShot)
     : [];
-  const style = asString(record.style) ?? input.style ?? "电影感镜头设计";
-  const pace = asString(record.pace) ?? input.pace ?? "情绪递进";
-  const targetShotCount = asPositiveInteger(record.targetShotCount) ?? input.targetShotCount ?? rawStoryboard.length;
+  const style = getStringField(record, "style") ?? input.style ?? "电影感镜头设计";
+  const pace = getStringField(record, "pace") ?? input.pace ?? "情绪递进";
+  const targetShotCount = getPositiveIntegerField(record, "targetShotCount", "target_shot_count") ?? input.targetShotCount ?? rawStoryboard.length;
 
   if (!title || !concept || !mood || !script) {
     throw new Error("电影镜头设计输出缺少 title、concept、mood 或 script");
@@ -260,7 +367,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
   }
 
   const scenePlan =
-    validateScenePlan(record.scenePlan) ??
+    validateScenePlan(getField(record, "scenePlan", "scene_plan")) ??
     buildFallbackScenePlan({
       concept,
       style,
@@ -268,7 +375,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     });
   const storyboard = withContinuityHandoffs(withSceneAnchors(rawStoryboard, scenePlan));
   const continuity =
-    validateContinuity(record.continuity) ??
+    validateContinuity(getField(record, "continuity")) ??
     buildFallbackContinuity({
       concept,
       mood,
@@ -278,7 +385,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     });
 
   return {
-    id: asString(record.id) ?? `cinematic-${randomUUID()}`,
+    id: getStringField(record, "id") ?? `cinematic-${randomUUID()}`,
     title,
     concept,
     mood,
@@ -286,9 +393,9 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
     storyboard,
     scenePlan,
     continuity,
-    createdAt: asString(record.createdAt) ?? requestedAt,
+    createdAt: getStringField(record, "createdAt", "created_at") ?? requestedAt,
     updatedAt: requestedAt,
-    tags: asStringArray(record.tags).slice(0, 12),
+    tags: asStringArray(getField(record, "tags")).slice(0, 12),
     style,
     pace,
     targetShotCount
@@ -333,7 +440,10 @@ function resolveInput(input: AgentExecutionRequest): CinematicGenerationInput {
   return {
     concept,
     style: asString(meta.style) ?? undefined,
+    visualStyle: asString(meta.visualStyle) ?? undefined,
     pace: asString(meta.pace) ?? undefined,
+    visualFocus: asString(meta.visualFocus) ?? undefined,
+    negativePrompt: asString(meta.negativePrompt) ?? undefined,
     targetShotCount: targetShotCount ?? undefined
   };
 }

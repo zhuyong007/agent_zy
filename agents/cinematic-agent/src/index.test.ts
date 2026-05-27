@@ -200,7 +200,9 @@ describe("cinematic agent", () => {
     expect(project?.storyboard).toHaveLength(4);
     expect(new Set(project?.storyboard.map((shot) => shot.sceneId)).size).toBeLessThanOrEqual(3);
     expect(project?.storyboard[0]?.handoff).toContain("积水倒影");
-    expect(project?.storyboard[0]?.prompt.zh.length).toBeGreaterThan(300);
+    expect(project?.storyboard[0]?.prompt.zh.length).toBeGreaterThan(200);
+    expect(project?.storyboard[0]?.prompt.zh).not.toContain("摄影机移动");
+    expect(project?.storyboard[0]?.prompt.zh).not.toContain("声音");
     expect(project?.storyboard[0]?.prompt.en).toContain("cinematic");
     expect(result.domainUpdates?.cinematic?.recentProjectIds).toEqual(["cinematic-fixture"]);
   });
@@ -242,6 +244,67 @@ describe("cinematic agent", () => {
     expect(project?.scenePlan?.maxDurationSeconds).toBe(15);
     expect(project?.storyboard[0]?.handoff).toBeTruthy();
     expect(project?.storyboard[0]?.sceneId).toBe("scene-1");
+  });
+
+  it("accepts model JSON that changes top-level field casing", async () => {
+    const casingProject = createFixture({ id: "cinematic-casing" }) as any;
+    casingProject.TITLE = casingProject.title;
+    casingProject.CONCEPT = casingProject.concept;
+    casingProject.MOOD = casingProject.mood;
+    casingProject.SCRIPT = casingProject.script;
+    casingProject.STYLE = casingProject.style;
+    casingProject.PACE = casingProject.pace;
+    casingProject.TARGETSHOTCOUNT = casingProject.targetShotCount;
+    delete casingProject.title;
+    delete casingProject.concept;
+    delete casingProject.mood;
+    delete casingProject.script;
+    delete casingProject.style;
+    delete casingProject.pace;
+    delete casingProject.targetShotCount;
+    mockModelRuntimeText(JSON.stringify(casingProject));
+
+    const result = await agent.execute(createRequest());
+    const project = result.domainUpdates?.cinematic?.projects[0];
+
+    expect(result.status).toBe("completed");
+    expect(project).toMatchObject({
+      id: "cinematic-casing",
+      title: "凌晨两点的城市",
+      concept: "孤独感的城市夜晚",
+      mood: "孤独、压抑、清醒",
+      targetShotCount: 4
+    });
+  });
+
+  it("accepts model JSON wrapped in a project object", async () => {
+    mockModelRuntimeText(JSON.stringify({ project: createFixture({ id: "cinematic-wrapped" }) }));
+
+    const result = await agent.execute(createRequest());
+
+    expect(result.status).toBe("completed");
+    expect(result.domainUpdates?.cinematic?.projects[0]?.id).toBe("cinematic-wrapped");
+  });
+
+  it("normalizes storyboard frame prompts into static image descriptions", async () => {
+    const dynamicProject = createFixture({ id: "cinematic-static-frame" }) as any;
+    dynamicProject.storyboard[0].prompt.zh =
+      "中心瞳孔急剧收缩成针尖大小，镜头缓慢推进，低频嗡声增强，人物正在转头看向窗外。雨夜街口、冷蓝霓虹、湿润柏油路、便利店白光、浅景深、胶片颗粒。";
+    dynamicProject.storyboard[0].prompt.en =
+      "The central pupil rapidly shrinks into a pin point, the camera slowly pushes in, low hum rises, the subject is turning toward the window. Rainy neon street, wet asphalt, shallow depth of field.";
+    mockModelRuntimeText(JSON.stringify(dynamicProject));
+
+    const result = await agent.execute(createRequest());
+    const shot = result.domainUpdates?.cinematic?.projects[0]?.storyboard[0];
+
+    expect(result.status).toBe("completed");
+    expect(shot?.prompt.zh).toContain("针尖大小");
+    expect(shot?.prompt.zh).not.toContain("急剧收缩成");
+    expect(shot?.prompt.zh).not.toContain("镜头缓慢推进");
+    expect(shot?.prompt.zh).not.toContain("低频嗡声");
+    expect(shot?.prompt.zh).not.toContain("正在转头");
+    expect(shot?.prompt.en).not.toContain("camera slowly pushes");
+    expect(shot?.prompt.en).not.toContain("low hum");
   });
 
   it("rejects model output with missing storyboard fields", async () => {

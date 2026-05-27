@@ -13,13 +13,25 @@ export function buildCinematicPrompt(input: CinematicGenerationInput) {
     typeof input.targetShotCount === "number" && input.targetShotCount > 0
       ? `用户期望约 ${input.targetShotCount} 个分镜；如情绪表达明显不足，可在合理范围内微调。`
       : "请根据概念自动判断合理分镜数量，通常 5 到 9 个镜头，必须包含建立、递进、高潮或留白、结尾收束。";
+  const visualStyleRule = input.visualStyle?.trim()
+    ? input.visualStyle.trim()
+    : "由你根据内容判断，但必须保持统一，不要在同一项目里混用真实、动漫、插画等不同画面风格类型";
+  const visualFocusRule = input.visualFocus?.trim()
+    ? `用户指定必须强相关的静态画面元素：${input.visualFocus.trim()}`
+    : "用户没有指定额外静态画面元素，请严格围绕概念本身延展，不要生成与用户输入无关的奇观内容。";
+  const negativePromptRule = input.negativePrompt?.trim()
+    ? `用户指定不要出现的内容：${input.negativePrompt.trim()}`
+    : "不要加入用户没有要求的怪物化、惊悚化、科幻化、文字水印、夸张瞳孔变化或无关符号。";
 
   return `请为以下视频概念生成电影镜头设计方案。
 
 概念：${input.concept}
 风格偏好：${input.style?.trim() || "由你根据内容判断，偏电影感和高级审美"}
+画面风格类型：${visualStyleRule}
 节奏偏好：${input.pace?.trim() || "由情绪自然决定"}
 镜头数量要求：${shotCountRule}
+静态画面要求：${visualFocusRule}
+禁止内容：${negativePromptRule}
 
 输出字段必须是：
 {
@@ -66,8 +78,8 @@ export function buildCinematicPrompt(input: CinematicGenerationInput) {
       "emotionalBeat": "情绪变化",
       "handoff": "本镜头如何接到下一镜：使用动作延续、视线方向、声音先行、光影变化、同一物体/构图匹配或转场钩子，不要只写转场名称",
       "prompt": {
-        "zh": "300-500 字中文视频提示词，必须包含场景、人物、光线、色彩、材质、摄影机运动、焦段、景深、空气感、环境细节、时间、天气、构图、镜头节奏、情绪、美术风格、动态元素、前景/中景/背景、画面噪点、胶片感、呼吸感、慢动作或推进/摇移/留白、情绪隐喻。",
-        "en": "Detailed English video prompt with equivalent cinematic detail, ready for AI video/image tools."
+        "zh": "300-500 字中文静态单帧画面提示词，只描述这一帧里已经可见的画面状态：场景、人物外观、固定姿态、视线落点、光线、色彩、材质、焦段观感、景深、空气感、环境细节、时间、天气、构图、前景/中景/背景、画面噪点、胶片质感和画面中可见元素；不要写摄影机运动、运镜、推进、摇移、跟拍、转场、声音、情绪说明或任何动态变化。",
+        "en": "Detailed English static single-frame prompt with equivalent visual detail only; describe visible state and fixed pose, not camera movement, transitions, sound, emotion, or any changing action."
       }
     }
   ]
@@ -80,6 +92,9 @@ export function buildCinematicPrompt(input: CinematicGenerationInput) {
 - storyboard 至少 4 个分镜，简单概念也要有完整情绪递进。
 - continuity 必须先建立整条视频的动作线、空间线、情绪线、视觉线和声音线；分镜必须服务于这条连续线，不要写成互不相干的漂亮画面。
 - 每个 storyboard 项都必须有 handoff，说明这一镜如何自然接到下一镜；最后一镜的 handoff 写如何收束或留白。
+- 每个分镜画面提示词都必须遵循这个画面风格类型；如果用户选择“动漫”，prompt.zh/prompt.en 要写清动漫质感、线条、上色和光影；如果用户选择“真实影像”，要保持实拍摄影、真实材质、自然皮肤和镜头质感。
+- 单个分镜 prompt.zh 和 prompt.en 只描述静态单帧画面本身；不要写摄影机运动、运镜、推进、摇移、跟拍、转场、声音或情绪说明。镜头运动只写在 cameraMovement 字段和分镜串联视频提示词中。
+- prompt.zh/prompt.en 禁止写“正在、开始、逐渐、急剧、收缩成、转头、走向、推近、拉远”等动态变化；例如不要写“中心瞳孔急剧收缩成针尖大小”，应写成“中心瞳孔呈针尖大小的静止状态”。
 - 每个中文 prompt 必须是电影级镜头描述，不要写成“一个人站在雨里”这类简单提示。
 - 不要声明会生成图片或视频，不要接入或提及正在调用任何生成 API。
 - 英文 prompt 必须保留镜头语言，不要只翻译成简短关键词。`;

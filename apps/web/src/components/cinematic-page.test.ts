@@ -111,7 +111,7 @@ vi.mock("../api", () => ({
   restartProject: vi.fn(async () => ({ ok: true }))
 }));
 
-import { deleteCinematicProject } from "../api";
+import { deleteCinematicProject, generateCinematic } from "../api";
 import { buildCinematicMarkdown, buildStoryboardVideoPrompt, CinematicPage } from "./cinematic-page";
 
 describe("CinematicPage", () => {
@@ -127,6 +127,7 @@ describe("CinematicPage", () => {
       });
     }
     container?.remove();
+    vi.clearAllMocks();
   });
 
   it("renders the three-column cinematic workspace controls", async () => {
@@ -153,6 +154,11 @@ describe("CinematicPage", () => {
     expect(container.textContent).toContain("分镜结构");
     expect(container.textContent).toContain("中文提示词");
     expect(container.textContent).toContain("English Prompt");
+    expect(container.textContent).toContain("画面风格（可选）");
+    expect(container.querySelector('select[aria-label="画面风格"]')).not.toBeNull();
+    expect(container.textContent).toContain("必须出现的静态画面元素");
+    expect(container.textContent).toContain("不要出现的内容");
+    expect(container.querySelector(".cinematic-shot-meta")).toBeNull();
     expect(container.textContent).toContain("导出 markdown");
     expect(container.textContent).toContain("导出 JSON");
     expect(container.textContent).toContain("一键复制提示词");
@@ -168,22 +174,108 @@ describe("CinematicPage", () => {
     expect(markdown).toContain("分镜串联视频提示词");
   });
 
+  it("submits the selected visual style when generating cinematic storyboards", async () => {
+    const queryClient = new QueryClient();
+
+    queryClient.setQueryData(["cinematic"], cinematicState);
+    queryClient.setQueryData(["home-layout"], []);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(CinematicPage)
+        )
+      );
+    });
+
+    const visualStyleSelect = container.querySelector('select[aria-label="画面风格"]') as HTMLSelectElement | null;
+    expect(visualStyleSelect).not.toBeNull();
+
+    await act(async () => {
+      visualStyleSelect!.value = "动漫";
+      visualStyleSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const generateButton = container.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+    expect(generateButton).not.toBeNull();
+
+    await act(async () => {
+      generateButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(vi.mocked(generateCinematic).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      visualStyle: "动漫"
+    }));
+  });
+
   it("builds a storyboard video prompt for turning ordered storyboard images into one video", () => {
     const prompt = buildStoryboardVideoPrompt(project);
 
-    expect(prompt).toContain("请根据按顺序上传的 1 张分镜图生成一条连贯视频");
-    expect(prompt).toContain("不要重新设计角色、服装、场景空间或主体构图");
-    expect(prompt).toContain("第 1 张分镜图：雨后街口");
-    expect(prompt).toContain("时长：5 秒");
-    expect(prompt).toContain("镜头运动：缓慢推进");
-    expect(prompt).toContain("转场：溶接");
-    expect(prompt).toContain("场景数量：1 个；整条视频必须控制在 1-3 个连续场景内");
-    expect(prompt).toContain("所属场景：scene-1");
-    expect(prompt).toContain("视频总时长：不超过 15 秒");
+    expect(prompt.length).toBeLessThanOrEqual(500);
+    expect(prompt).toContain("请按上传顺序把1张分镜图生成一条连贯视频");
+    expect(prompt).toContain("画面连贯");
+    expect(prompt).toContain("镜头运动");
+    expect(prompt).toContain("总长≤15秒");
+    expect(prompt).toContain("只用1个连续场景");
+    expect(prompt).toContain("不要一图一景");
+    expect(prompt).toContain("scene-1");
+    expect(prompt).toContain("镜头链：1.雨后街口/缓慢推进/溶接");
+    expect(prompt).toContain("禁止变脸、跳切、场景漂移");
     expect(prompt).toContain("整体风格：冷蓝霓虹");
-    expect(prompt).toContain("连续动作线：人物从便利店门口走向街角，动作始终克制缓慢。");
-    expect(prompt).toContain("空间连续性：所有镜头发生在同一条雨后街道，便利店、积水和街角霓虹保持方位连续。");
-    expect(prompt).toContain("镜头衔接：镜头停在积水倒影，下一镜从同一片倒影抬起进入人物背影。");
+    expect(prompt).not.toContain("情绪");
+    expect(prompt).not.toContain("声音");
+    expect(prompt).not.toContain("压抑");
+    expect(prompt).not.toContain("低频城市环境音");
+  });
+
+  it("summarizes long storyboard video prompts without hard truncating the final text", () => {
+    const longProject = {
+      ...project,
+      style: "冷蓝霓虹、雨夜反光、低饱和胶片颗粒、浅景深、湿润街面、便利店白光、红色信号灯".repeat(8),
+      continuity: {
+        ...project.continuity,
+        spatialLine: "所有镜头都发生在同一条雨后街道，人物始终沿便利店门口、积水倒影、街角霓虹这一条连续路径移动，前景雨滴、中景人物、背景高楼窗口的层次关系不能断裂。".repeat(4)
+      },
+      scenePlan: {
+        sceneCount: 2,
+        maxDurationSeconds: 15,
+        scenes: [
+          {
+            id: "scene-1",
+            name: "rainy-street",
+            anchor: "同一条雨后街道，便利店白光在右侧，积水倒影在前景，冷蓝霓虹从街角打入画面".repeat(4),
+            role: "主场景"
+          },
+          {
+            id: "scene-2",
+            name: "street-corner",
+            anchor: "同一街区末端的街角红灯，人物从便利店门口走到这里，空间方向保持一致".repeat(4),
+            role: "收束场景"
+          }
+        ]
+      },
+      storyboard: Array.from({ length: 8 }, (_, index) => ({
+        ...project.storyboard[0],
+        id: `shot-${index + 1}`,
+        title: `雨夜镜头${index + 1}`,
+        cameraMovement: index % 2 === 0 ? "缓慢推进" : "轻微横移",
+        transition: index % 2 === 0 ? "积水倒影匹配转场" : "动作延续转场"
+      }))
+    };
+    const prompt = buildStoryboardVideoPrompt(longProject);
+
+    expect(prompt.length).toBeLessThanOrEqual(500);
+    expect(prompt.endsWith("…")).toBe(false);
+    expect(prompt).toContain("镜头链");
+    expect(prompt).toContain("雨夜镜头1");
+    expect(prompt).toContain("后续");
+    expect(prompt).toContain("总长≤15秒");
   });
 
   it("deletes a cinematic generation history item from the project list", async () => {
