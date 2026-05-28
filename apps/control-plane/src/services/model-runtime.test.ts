@@ -190,6 +190,78 @@ describe("model runtime", () => {
     });
   });
 
+  it("sends OpenAI-compatible multimodal messages with image URLs", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-vision-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const profile = store.createModelProfile({
+      id: "vision-profile",
+      displayName: "Vision profile",
+      provider: "openai",
+      modelName: "gpt-vision",
+      baseUrl: "https://vision.example/v1",
+      apiKeyRef: "secret:vision-profile",
+      capabilities: ["chat", "text", "vision"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["vision"]
+    });
+    secrets.save(profile.id, "sk-vision-secret");
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      timeoutMs: 1000,
+      retries: 0
+    });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
+        status: 200
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runtime.chat({
+      purpose: "vision",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "分析这帧" },
+            { type: "image_url", image_url: { url: "data:image/jpeg;base64,ZmFrZQ==" } }
+          ]
+        }
+      ]
+    } as any);
+
+    const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(requestInit.body as string).messages[0].content).toEqual([
+      { type: "text", text: "分析这帧" },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,ZmFrZQ==" } }
+    ]);
+  });
+
+  it("rejects multimodal messages when the selected profile lacks vision capability", async () => {
+    const runtime = setupRuntime();
+
+    await expect(
+      runtime.chat({
+        purpose: "general",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "分析这帧" },
+              { type: "image_url", image_url: { url: "data:image/jpeg;base64,ZmFrZQ==" } }
+            ]
+          }
+        ]
+      } as any)
+    ).rejects.toThrow("支持视觉能力");
+  });
+
   it("redacts API keys from provider errors", async () => {
     const runtime = setupRuntime();
     vi.stubGlobal(

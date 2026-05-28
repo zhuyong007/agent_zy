@@ -785,7 +785,15 @@ function normalizeClassicShotStoryboard(
       : [],
     visualKeywords: Array.isArray(shot.visualKeywords)
       ? shot.visualKeywords.filter((item): item is string => typeof item === "string")
-      : []
+      : [],
+    ...(typeof shot.sourceFrame?.index === "number" && typeof shot.sourceFrame?.timestampSeconds === "number"
+      ? {
+          sourceFrame: {
+            index: shot.sourceFrame.index,
+            timestampSeconds: shot.sourceFrame.timestampSeconds
+          }
+        }
+      : {})
   };
 }
 
@@ -799,6 +807,7 @@ function normalizeClassicShotProject(project: Partial<ClassicShotProject>, index
     id: typeof project.id === "string" && project.id ? project.id : `classic-shot-${index}`,
     rawInput: typeof project.rawInput === "string" ? project.rawInput : "",
     title: typeof project.title === "string" && project.title ? project.title : "未命名经典镜头复刻",
+    referenceType: project.referenceType === "uploaded-video" ? "uploaded-video" : "classic-film",
     source: {
       director: typeof project.source?.director === "string" ? project.source.director : "",
       film: typeof project.source?.film === "string" ? project.source.film : "",
@@ -807,6 +816,19 @@ function normalizeClassicShotProject(project: Partial<ClassicShotProject>, index
       shotPosition: typeof project.source?.shotPosition === "string" ? project.source.shotPosition : "",
       ...(typeof project.source?.context === "string" ? { context: project.source.context } : {})
     },
+    ...(project.videoReference
+      ? {
+          videoReference: {
+            fileName: typeof project.videoReference.fileName === "string" ? project.videoReference.fileName : "",
+            durationSeconds:
+              typeof project.videoReference.durationSeconds === "number" ? project.videoReference.durationSeconds : 0,
+            extractedFrameCount:
+              typeof project.videoReference.extractedFrameCount === "number" ? project.videoReference.extractedFrameCount : 0,
+            revisionInstruction:
+              typeof project.videoReference.revisionInstruction === "string" ? project.videoReference.revisionInstruction : ""
+          }
+        }
+      : {}),
     coreValue: typeof project.coreValue === "string" ? project.coreValue : "",
     analysis: {
       cameraMovement: typeof project.analysis?.cameraMovement === "string" ? project.analysis.cameraMovement : "",
@@ -827,6 +849,7 @@ function normalizeClassicShotProject(project: Partial<ClassicShotProject>, index
       colorContinuity: typeof project.continuity?.colorContinuity === "string" ? project.continuity.colorContinuity : "",
       antiJumpGuidance: typeof project.continuity?.antiJumpGuidance === "string" ? project.continuity.antiJumpGuidance : ""
     },
+    ...(typeof project.storyboardVideoPrompt === "string" ? { storyboardVideoPrompt: project.storyboardVideoPrompt } : {}),
     markdown: typeof project.markdown === "string" ? project.markdown : "",
     targetPlatform: project.targetPlatform ?? "generic",
     createdAt: typeof project.createdAt === "string" ? project.createdAt : now,

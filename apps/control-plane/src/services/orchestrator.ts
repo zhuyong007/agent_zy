@@ -81,6 +81,7 @@ export interface ControlPlaneOrchestrator {
   generateCinematicProject(input?: Record<string, unknown>): Promise<CinematicState>;
   getClassicShots(): ClassicShotState;
   generateClassicShotProject(input?: Record<string, unknown>): Promise<ClassicShotState>;
+  generateClassicShotProjectFromVideo(input: Record<string, unknown>): Promise<ClassicShotState>;
   generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
   syncHistoryXhs(): Promise<HistoryXhsState>;
   listSummaries(query?: SummaryListQuery): { entries: SummaryEntry[] };
@@ -800,6 +801,23 @@ export function createControlPlaneOrchestrator(options: {
 
       if (task.status === "failed") {
         throw new Error(task.resultSummary ?? "classic shot generation failed");
+      }
+
+      return options.store.getState().classicShots;
+    },
+    async generateClassicShotProjectFromVideo(input) {
+      const task = await this.runSystemTask({
+        agentId: "classic-shot-agent",
+        trigger: "system",
+        summary: "根据上传视频生成相似视频分镜",
+        meta: {
+          ...input,
+          action: "generateFromVideoFrames"
+        }
+      });
+
+      if (task.status === "failed") {
+        throw new Error(task.resultSummary ?? "classic shot video generation failed");
       }
 
       return options.store.getState().classicShots;

@@ -4,9 +4,21 @@ import type { createModelSecretsRepository } from "./model-secrets";
 import { getModelProvider } from "./model-providers";
 import type { ControlPlaneStore } from "./store";
 
+export type ModelContentPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+      };
+    };
+
 export type ModelChatMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ModelContentPart[];
 };
 
 export type ModelRuntimeRequest =
@@ -72,6 +84,12 @@ function extractText(data: any): string {
     data?.message?.content ??
     data?.response ??
     ""
+  );
+}
+
+function hasImageContent(messages: ModelChatMessage[]): boolean {
+  return messages.some(
+    (message) => Array.isArray(message.content) && message.content.some((part) => part.type === "image_url")
   );
 }
 
@@ -176,6 +194,16 @@ export function createModelRuntime(options: {
   async function chat(input: Extract<ModelRuntimeRequest, { kind: "chat" }>) {
     const profile = resolveProfile(input);
     const { provider, apiKey } = resolveAuth(profile);
+    const needsVision = hasImageContent(input.messages);
+
+    if (needsVision && !profile.capabilities.includes("vision")) {
+      throw new Error("当前模型配置不支持视觉能力，请切换到支持视觉能力的模型配置");
+    }
+
+    if (needsVision && provider.compatibleMode === "ollama") {
+      throw new Error("当前模型供应商不支持图像输入，请切换到支持视觉能力的 OpenAI-compatible 模型配置");
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json"
     };

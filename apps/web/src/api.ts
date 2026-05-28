@@ -380,6 +380,19 @@ export async function generateClassicShot(input: ClassicShotGenerateInput): Prom
   return response.json();
 }
 
+export async function generateClassicShotFromVideo(input: FormData): Promise<ClassicShotState> {
+  const response = await fetch(`${API_BASE}/api/classic-shots/generate-from-video`, {
+    method: "POST",
+    body: input
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to generate classic shot storyboard from video"));
+  }
+
+  return response.json();
+}
+
 export type SummaryListInput = {
   summaryType?: SummaryType;
   q?: string;

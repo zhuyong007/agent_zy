@@ -545,6 +545,10 @@ export interface ClassicShotStoryboard {
   prompt: string;
   movementKeywords: string[];
   visualKeywords: string[];
+  sourceFrame?: {
+    index: number;
+    timestampSeconds: number;
+  };
 }
 
 export interface ClassicShotContinuity {
@@ -559,12 +563,20 @@ export interface ClassicShotProject {
   id: string;
   rawInput: string;
   title: string;
+  referenceType?: "classic-film" | "uploaded-video";
   source: ClassicShotSource;
+  videoReference?: {
+    fileName: string;
+    durationSeconds: number;
+    extractedFrameCount: number;
+    revisionInstruction: string;
+  };
   coreValue: string;
   analysis: ClassicShotAnalysis;
   minimumStoryboardCount: number;
   storyboard: ClassicShotStoryboard[];
   continuity: ClassicShotContinuity;
+  storyboardVideoPrompt?: string;
   markdown: string;
   targetPlatform: ClassicShotTargetPlatform;
   createdAt: string;

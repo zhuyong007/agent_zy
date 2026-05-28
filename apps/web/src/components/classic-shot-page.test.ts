@@ -67,6 +67,10 @@ const classicShotState: ClassicShotState = {
   lastError: null
 };
 
+const apiMocks = vi.hoisted(() => ({
+  generateClassicShotFromVideo: vi.fn()
+}));
+
 vi.mock("../api", () => ({
   fetchClassicShots: vi.fn(async () => classicShotState),
   fetchDashboard: vi.fn(async () => ({
@@ -86,6 +90,7 @@ vi.mock("../api", () => ({
   fetchHomeLayout: vi.fn(async () => []),
   saveHomeLayout: vi.fn(async (layout) => layout),
   generateClassicShot: vi.fn(async () => classicShotState),
+  generateClassicShotFromVideo: apiMocks.generateClassicShotFromVideo,
   openDashboardStream: vi.fn(() => () => undefined),
   restartProject: vi.fn(async () => ({ ok: true }))
 }));
@@ -99,6 +104,7 @@ describe("ClassicShotPage", () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
   afterEach(() => {
+    apiMocks.generateClassicShotFromVideo.mockReset();
     if (root) {
       act(() => {
         root.unmount();
@@ -133,5 +139,62 @@ describe("ClassicShotPage", () => {
     expect(container.textContent).toContain("五、镜头衔接设计");
     expect(container.textContent).toContain("复制完整 Markdown");
     expect(container.textContent).toContain("复制分镜提示词");
+  });
+
+  it("uploads a video with revision instructions through FormData", async () => {
+    apiMocks.generateClassicShotFromVideo.mockResolvedValue(classicShotState);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["classic-shots"], classicShotState);
+    queryClient.setQueryData(["home-layout"], []);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(ClassicShotPage)
+        )
+      );
+    });
+
+    expect(container.textContent).toContain("上传视频复刻");
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-testid='classic-shot-video-tab']")?.click();
+    });
+
+    const file = new File(["fake-video"], "reference.mp4", { type: "video/mp4" });
+    const fileInput = container.querySelector<HTMLInputElement>("input[type='file']");
+    expect(fileInput).not.toBeNull();
+    Object.defineProperty(fileInput, "files", {
+      configurable: true,
+      value: [file]
+    });
+
+    await act(async () => {
+      fileInput?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const revisionInput = container.querySelector<HTMLTextAreaElement>("[name='revisionInstruction']");
+    expect(revisionInput).not.toBeNull();
+    await act(async () => {
+      revisionInput!.value = "切换到雨夜赛博朋克市场";
+      revisionInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLFormElement>("[data-testid='classic-shot-video-form']")?.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(apiMocks.generateClassicShotFromVideo).toHaveBeenCalledTimes(1);
+    const formData = apiMocks.generateClassicShotFromVideo.mock.calls[0]?.[0] as FormData;
+    expect(formData.get("video")).toBe(file);
+    expect(formData.get("revisionInstruction")).toBe("切换到雨夜赛博朋克市场");
+    expect(formData.get("frameCount")).toBe("6");
   });
 });
