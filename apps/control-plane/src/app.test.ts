@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -114,6 +114,68 @@ function createClassicShotFixture() {
       antiJumpGuidance: "不要切换场景、服装、人物脸型或镜头方向。"
     }
   };
+}
+
+function createClassicShotVideoFixture() {
+  return {
+    ...createClassicShotFixture(),
+    id: "classic-shot-video-app-fixture",
+    rawInput: "上传视频复刻",
+    title: "上传视频的相似视频分镜",
+    source: {
+      director: "用户上传视频",
+      film: "reference.mp4",
+      year: 2026,
+      shotName: "上传视频参考",
+      shotPosition: "按上传视频抽帧顺序分析"
+    },
+    referenceType: "uploaded-video",
+    videoReference: {
+      fileName: "reference.mp4",
+      durationSeconds: 9,
+      extractedFrameCount: 3,
+      revisionInstruction: "切换到雨夜赛博朋克市场"
+    },
+    storyboardVideoPrompt: "请把 3 个上传视频参考帧视为同一段连续镜头的关键节点，保持人物移动方向、摄影机横移跟随、雨夜反光和霓虹光线连续，生成一条相似但不相同的视频；新视频发生在赛博朋克夜市，不要复刻原视频的具体地点、人物脸型或品牌标识。",
+    storyboard: Array.from({ length: 3 }, (_, index) => ({
+      id: `shot-${index + 1}`,
+      title: `参考帧 ${index + 1} 改写`,
+      function: "根据上传视频帧反推画面结构并改写成相似但不相同的视频提示词。",
+      prompt: longClassicShotPrompt(),
+      movementKeywords: ["slow tracking shot", "long take"],
+      visualKeywords: ["film grain", "cinematic lighting"],
+      sourceFrame: {
+        index: index + 1,
+        timestampSeconds: index * 4
+      }
+    }))
+  };
+}
+
+function createMultipartVideoPayload(input: {
+  boundary: string;
+  filename: string;
+  mimeType: string;
+  fields?: Record<string, string>;
+}) {
+  const chunks: Buffer[] = [];
+
+  for (const [name, value] of Object.entries(input.fields ?? {})) {
+    chunks.push(Buffer.from(`--${input.boundary}\r\n`));
+    chunks.push(Buffer.from(`Content-Disposition: form-data; name="${name}"\r\n\r\n`));
+    chunks.push(Buffer.from(`${value}\r\n`));
+  }
+
+  chunks.push(Buffer.from(`--${input.boundary}\r\n`));
+  chunks.push(
+    Buffer.from(
+      `Content-Disposition: form-data; name="video"; filename="${input.filename}"\r\nContent-Type: ${input.mimeType}\r\n\r\n`
+    )
+  );
+  chunks.push(Buffer.from("fake-video-bytes"));
+  chunks.push(Buffer.from(`\r\n--${input.boundary}--\r\n`));
+
+  return Buffer.concat(chunks);
 }
 
 describe("control-plane app", () => {
@@ -525,6 +587,108 @@ describe("control-plane app", () => {
           title: "走廊擦肩的压抑长镜头"
         })
       });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("generates classic shot projects from uploaded video frames and cleans temporary files", async () => {
+    process.env.CLASSIC_SHOT_PROJECT_FIXTURE_JSON = JSON.stringify(createClassicShotVideoFixture());
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-classic-video-test-"));
+    let observedWorkDir = "";
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false,
+      classicShotVideoProcessor: {
+        async extractFrames(input) {
+          observedWorkDir = input.workDir;
+
+          return {
+            durationSeconds: 9,
+            frames: [
+              { index: 1, timestampSeconds: 0, dataUrl: "data:image/jpeg;base64,ZmFrZS0x" },
+              { index: 2, timestampSeconds: 4, dataUrl: "data:image/jpeg;base64,ZmFrZS0y" },
+              { index: 3, timestampSeconds: 8, dataUrl: "data:image/jpeg;base64,ZmFrZS0z" }
+            ]
+          };
+        }
+      }
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const boundary = "----agent-zy-test-boundary";
+      const generateResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/classic-shots/generate-from-video",
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`
+        },
+        payload: createMultipartVideoPayload({
+          boundary,
+          filename: "reference.mp4",
+          mimeType: "video/mp4",
+          fields: {
+            targetPlatform: "runway",
+            frameCount: "3",
+            revisionInstruction: "切换到雨夜赛博朋克市场"
+          }
+        })
+      });
+
+      expect(generateResponse.statusCode).toBe(200);
+      expect(generateResponse.json().projects[0]).toMatchObject({
+        referenceType: "uploaded-video",
+        targetPlatform: "runway",
+        videoReference: expect.objectContaining({
+          fileName: "reference.mp4",
+          durationSeconds: 9,
+          extractedFrameCount: 3
+        }),
+        storyboardVideoPrompt: expect.stringContaining("相似但不相同")
+      });
+      expect(observedWorkDir).toContain("classic-shots");
+      expect(existsSync(observedWorkDir)).toBe(false);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("rejects unsupported classic shot video uploads", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-classic-video-invalid-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const boundary = "----agent-zy-test-boundary";
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/classic-shots/generate-from-video",
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`
+        },
+        payload: createMultipartVideoPayload({
+          boundary,
+          filename: "reference.txt",
+          mimeType: "text/plain"
+        })
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().message).toContain("仅支持");
     } finally {
       await isolatedApp.close();
       rmSync(isolatedDataDir, {

@@ -11,8 +11,8 @@ import type {
   ClassicShotTargetPlatform
 } from "@agent-zy/shared-types";
 
-import { buildClassicShotPrompt, CLASSIC_SHOT_SYSTEM_PROMPT } from "./prompts";
-import type { ClassicShotGenerationInput } from "./types";
+import { buildClassicShotPrompt, buildClassicShotVideoFramePrompt, CLASSIC_SHOT_SYSTEM_PROMPT } from "./prompts";
+import type { ClassicShotGenerationInput, ClassicShotVideoFrameInput } from "./types";
 
 const HISTORY_LIMIT = 50;
 const TARGET_PLATFORMS = new Set<ClassicShotTargetPlatform>([
@@ -90,13 +90,23 @@ function validateStoryboardShot(value: unknown, index: number): ClassicShotStory
     throw new Error(`第 ${index + 1} 个分镜必须包含运镜关键词和画面关键词`);
   }
 
+  const sourceFrame = asRecord(record.sourceFrame);
+  const sourceFrameIndex = asPositiveInteger(sourceFrame?.index);
+  const sourceFrameTimestamp =
+    typeof sourceFrame?.timestampSeconds === "number" && Number.isFinite(sourceFrame.timestampSeconds)
+      ? sourceFrame.timestampSeconds
+      : null;
+
   return {
     id: asString(record.id) ?? `shot-${index + 1}`,
     title,
     function: shotFunction,
     prompt,
     movementKeywords,
-    visualKeywords
+    visualKeywords,
+    ...(sourceFrameIndex && sourceFrameTimestamp !== null
+      ? { sourceFrame: { index: sourceFrameIndex, timestampSeconds: sourceFrameTimestamp } }
+      : {})
   };
 }
 
@@ -177,6 +187,11 @@ ${project.analysis.emotionCurve}
 
 ${storyboard}
 
+${project.storyboardVideoPrompt ? `分镜串联提示词
+
+${project.storyboardVideoPrompt}
+` : ""}
+
 五、镜头衔接设计（必须有）
 
 人物动作如何衔接：${project.continuity.actionContinuity}
@@ -206,6 +221,33 @@ function validateProject(value: unknown, input: ClassicShotGenerationInput, requ
     ? record.storyboard.map(validateStoryboardShot)
     : [];
   const minimumStoryboardCount = asPositiveInteger(record.minimumStoryboardCount) ?? storyboard.length;
+  const referenceType: ClassicShotProject["referenceType"] =
+    record.referenceType === "uploaded-video" || input.action === "generateFromVideoFrames"
+      ? "uploaded-video"
+      : "classic-film";
+  const videoReferenceRecord = asRecord(record.videoReference);
+  const videoReference =
+    referenceType === "uploaded-video"
+      ? {
+          fileName:
+            asString(videoReferenceRecord?.fileName) ??
+            input.videoReference?.fileName ??
+            "uploaded-video",
+          durationSeconds:
+            typeof videoReferenceRecord?.durationSeconds === "number" && Number.isFinite(videoReferenceRecord.durationSeconds)
+              ? videoReferenceRecord.durationSeconds
+              : input.videoReference?.durationSeconds ?? 0,
+          extractedFrameCount:
+            asPositiveInteger(videoReferenceRecord?.extractedFrameCount) ??
+            input.videoReference?.extractedFrameCount ??
+            storyboard.length,
+          revisionInstruction:
+            asString(videoReferenceRecord?.revisionInstruction) ??
+            input.revisionInstruction ??
+            "保留镜头结构，改变画面风格和场景，避免生成一模一样的视频"
+        }
+      : undefined;
+  const storyboardVideoPrompt = asString(record.storyboardVideoPrompt);
 
   if (!title || !coreValue || !analysis.cameraMovement || !analysis.lighting || !analysis.emotionCurve) {
     throw new Error("经典镜头复刻输出缺少标题、核心价值或镜头结构拆解");
@@ -219,16 +261,33 @@ function validateProject(value: unknown, input: ClassicShotGenerationInput, requ
     throw new Error("经典镜头复刻至少需要 1 个 AI 视频生成分镜");
   }
 
+  if (referenceType === "uploaded-video") {
+    if (!videoReference) {
+      throw new Error("上传视频复刻必须包含视频参考信息");
+    }
+
+    if (!storyboardVideoPrompt) {
+      throw new Error("上传视频复刻必须包含分镜串联提示词");
+    }
+
+    if (input.frames && storyboard.length !== input.frames.length) {
+      throw new Error("上传视频复刻的分镜数量必须与抽帧数量一致");
+    }
+  }
+
   const projectWithoutMarkdown = {
     id: asString(record.id) ?? `classic-shot-${randomUUID()}`,
     rawInput: asString(record.rawInput) ?? input.input,
     title,
+    referenceType,
     source,
+    ...(videoReference ? { videoReference } : {}),
     coreValue,
     analysis: analysis as ClassicShotProject["analysis"],
     minimumStoryboardCount,
     storyboard,
     continuity: validateContinuity(record.continuity),
+    ...(storyboardVideoPrompt ? { storyboardVideoPrompt } : {}),
     targetPlatform: input.targetPlatform ?? "generic",
     createdAt: asString(record.createdAt) ?? requestedAt,
     updatedAt: requestedAt
@@ -268,14 +327,44 @@ function upsertProject(state: ClassicShotState, project: ClassicShotProject, gen
 
 function resolveInput(input: AgentExecutionRequest): ClassicShotGenerationInput {
   const meta = input.meta ?? {};
+  const action = meta.action === "generateFromVideoFrames" ? "generateFromVideoFrames" : "generate";
   const rawInput = asString(meta.input) ?? asString(meta.message) ?? asString(input.message) ?? "随机生成一个经典镜头";
   const platform = asString(meta.targetPlatform);
+  const videoReferenceRecord = asRecord(meta.videoReference);
+  const frames = Array.isArray(meta.frames)
+    ? meta.frames.map((frame): ClassicShotVideoFrameInput | null => {
+        const record = asRecord(frame);
+        const index = asPositiveInteger(record?.index);
+        const timestampSeconds =
+          typeof record?.timestampSeconds === "number" && Number.isFinite(record.timestampSeconds)
+            ? record.timestampSeconds
+            : null;
+        const dataUrl = asString(record?.dataUrl);
+
+        return index && timestampSeconds !== null && dataUrl
+          ? { index, timestampSeconds, dataUrl }
+          : null;
+      }).filter((frame): frame is ClassicShotVideoFrameInput => frame !== null)
+    : undefined;
 
   return {
+    action,
     input: rawInput,
     targetPlatform: platform && TARGET_PLATFORMS.has(platform as ClassicShotTargetPlatform)
       ? (platform as ClassicShotTargetPlatform)
-      : "generic"
+      : "generic",
+    revisionInstruction: asString(meta.revisionInstruction) ?? undefined,
+    videoReference: videoReferenceRecord
+      ? {
+          fileName: asString(videoReferenceRecord.fileName) ?? "uploaded-video",
+          durationSeconds:
+            typeof videoReferenceRecord.durationSeconds === "number" && Number.isFinite(videoReferenceRecord.durationSeconds)
+              ? videoReferenceRecord.durationSeconds
+              : 0,
+          extractedFrameCount: asPositiveInteger(videoReferenceRecord.extractedFrameCount) ?? frames?.length ?? 0
+        }
+      : undefined,
+    frames
   };
 }
 
@@ -284,6 +373,39 @@ async function generateProject(input: ClassicShotGenerationInput, requestedAt: s
 
   if (fixture) {
     return validateProject(parseModelJson(fixture), input, requestedAt);
+  }
+
+  if (input.action === "generateFromVideoFrames") {
+    if (!input.frames || input.frames.length === 0) {
+      throw new Error("上传视频复刻至少需要 1 帧画面");
+    }
+
+    const result = await getModelClient().chat({
+      agentId: "classic-shot-agent",
+      purpose: "vision",
+      temperature: 0.55,
+      maxTokens: 9000,
+      responseFormat: "json",
+      messages: [
+        { role: "system", content: CLASSIC_SHOT_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: buildClassicShotVideoFramePrompt(input) },
+            ...input.frames.map((frame) => ({
+              type: "image_url" as const,
+              image_url: { url: frame.dataUrl }
+            }))
+          ]
+        }
+      ]
+    });
+
+    if (!result.text) {
+      throw new Error("模型返回内容为空");
+    }
+
+    return validateProject(result.text, input, requestedAt);
   }
 
   const result = await getModelClient().generateText({

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ClassicShotProject, ClassicShotStoryboard, ClassicShotTargetPlatform } from "@agent-zy/shared-types";
 
-import { fetchClassicShots, generateClassicShot } from "../api";
+import { fetchClassicShots, generateClassicShot, generateClassicShotFromVideo } from "../api";
 
 const platformOptions: Array<{ value: ClassicShotTargetPlatform; label: string }> = [
   { value: "generic", label: "通用" },
@@ -102,7 +102,11 @@ function MarkdownPanel({ project }: { project: ClassicShotProject }) {
 
 export function ClassicShotPage() {
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<"text" | "video">("text");
   const [input, setInput] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [revisionInstruction, setRevisionInstruction] = useState("保留镜头结构，改变画面风格和场景，避免生成一模一样的视频");
+  const [frameCount, setFrameCount] = useState(6);
   const [targetPlatform, setTargetPlatform] = useState<ClassicShotTargetPlatform>("generic");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
@@ -123,6 +127,27 @@ export function ClassicShotPage() {
       setInput("");
     }
   });
+  const videoGenerateMutation = useMutation({
+    mutationFn: () => {
+      if (!videoFile) {
+        throw new Error("请先选择视频文件");
+      }
+
+      const formData = new FormData();
+      formData.append("video", videoFile);
+      formData.append("targetPlatform", targetPlatform);
+      formData.append("frameCount", String(frameCount));
+      formData.append("revisionInstruction", revisionInstruction.trim());
+
+      return generateClassicShotFromVideo(formData);
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(["classic-shots"], next);
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setSelectedProjectId(next.recentProjectIds[0] ?? next.projects[0]?.id ?? null);
+      setVideoFile(null);
+    }
+  });
 
   const projects = classicShotsQuery.data?.projects ?? [];
   const selectedProject = useMemo(
@@ -135,6 +160,14 @@ export function ClassicShotPage() {
 
     if (!generateMutation.isPending) {
       generateMutation.mutate();
+    }
+  }
+
+  function handleVideoSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!videoGenerateMutation.isPending) {
+      videoGenerateMutation.mutate();
     }
   }
 
@@ -153,34 +186,99 @@ export function ClassicShotPage() {
 
       <section className="cinematic-workbench">
         <aside className="cinematic-sidebar">
-          <form className="cinematic-generate-form" onSubmit={handleSubmit}>
-            <label>
-              输入导演、电影、经典镜头或风格
-              <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="例如：王家卫 花样年华 走廊擦肩镜头"
-                disabled={generateMutation.isPending}
-              />
-            </label>
-            <label>
-              目标平台
-              <select
-                value={targetPlatform}
-                onChange={(event) => setTargetPlatform(event.target.value as ClassicShotTargetPlatform)}
-                disabled={generateMutation.isPending}
-              >
-                {platformOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" disabled={generateMutation.isPending}>
-              {generateMutation.isPending ? "生成中" : "生成复刻方案"}
+          <div className="cinematic-mode-tabs" aria-label="经典镜头复刻模式">
+            <button type="button" className={mode === "text" ? "is-active" : ""} onClick={() => setMode("text")}>
+              文本复刻
             </button>
-          </form>
+            <button
+              type="button"
+              className={mode === "video" ? "is-active" : ""}
+              onClick={() => setMode("video")}
+              data-testid="classic-shot-video-tab"
+            >
+              上传视频复刻
+            </button>
+          </div>
+          {mode === "text" ? (
+            <form className="cinematic-generate-form" onSubmit={handleSubmit}>
+              <label>
+                输入导演、电影、经典镜头或风格
+                <textarea
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  placeholder="例如：王家卫 花样年华 走廊擦肩镜头"
+                  disabled={generateMutation.isPending}
+                />
+              </label>
+              <label>
+                目标平台
+                <select
+                  value={targetPlatform}
+                  onChange={(event) => setTargetPlatform(event.target.value as ClassicShotTargetPlatform)}
+                  disabled={generateMutation.isPending}
+                >
+                  {platformOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" disabled={generateMutation.isPending}>
+                {generateMutation.isPending ? "生成中" : "生成复刻方案"}
+              </button>
+            </form>
+          ) : (
+            <form className="cinematic-generate-form" onSubmit={handleVideoSubmit} data-testid="classic-shot-video-form">
+              <label>
+                上传视频
+                <input
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm"
+                  onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)}
+                  disabled={videoGenerateMutation.isPending}
+                />
+              </label>
+              <label>
+                改写要求
+                <textarea
+                  name="revisionInstruction"
+                  value={revisionInstruction}
+                  onChange={(event) => setRevisionInstruction(event.target.value)}
+                  onInput={(event) => setRevisionInstruction(event.currentTarget.value)}
+                  disabled={videoGenerateMutation.isPending}
+                />
+              </label>
+              <label>
+                抽帧数量
+                <input
+                  type="number"
+                  min={3}
+                  max={8}
+                  value={frameCount}
+                  onChange={(event) => setFrameCount(Number(event.target.value))}
+                  disabled={videoGenerateMutation.isPending}
+                />
+              </label>
+              <label>
+                目标平台
+                <select
+                  value={targetPlatform}
+                  onChange={(event) => setTargetPlatform(event.target.value as ClassicShotTargetPlatform)}
+                  disabled={videoGenerateMutation.isPending}
+                >
+                  {platformOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" disabled={videoGenerateMutation.isPending || !videoFile}>
+                {videoGenerateMutation.isPending ? "分析中" : "根据视频生成"}
+              </button>
+            </form>
+          )}
           <div className="cinematic-shot-list" aria-label="经典镜头历史">
             {projects.map((project, index) => (
               <button
@@ -192,7 +290,7 @@ export function ClassicShotPage() {
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{project.title}</strong>
                 <p>{project.source.director}《{project.source.film}》</p>
-                <small>{project.minimumStoryboardCount} 分镜 · {project.targetPlatform}</small>
+                <small>{project.storyboard.length} 分镜 · {project.targetPlatform}</small>
               </button>
             ))}
           </div>
@@ -214,7 +312,31 @@ export function ClassicShotPage() {
                   <div><span>最少分镜</span><strong>{selectedProject.minimumStoryboardCount}</strong></div>
                 </div>
                 <SourceBlock project={selectedProject} />
+                {selectedProject.videoReference ? (
+                  <section className="cinematic-prompt-block">
+                    <div>
+                      <h3>上传视频参考</h3>
+                    </div>
+                    <p>
+                      文件：{selectedProject.videoReference.fileName}
+                      <br />
+                      时长：{selectedProject.videoReference.durationSeconds} 秒
+                      <br />
+                      抽帧：{selectedProject.videoReference.extractedFrameCount} 帧
+                      <br />
+                      改写：{selectedProject.videoReference.revisionInstruction}
+                    </p>
+                  </section>
+                ) : null}
                 <MarkdownPanel project={selectedProject} />
+                {selectedProject.storyboardVideoPrompt ? (
+                  <section className="cinematic-prompt-block cinematic-prompt-block--video">
+                    <div>
+                      <h3>分镜串联提示词</h3>
+                    </div>
+                    <p>{selectedProject.storyboardVideoPrompt}</p>
+                  </section>
+                ) : null}
                 {selectedProject.storyboard.map((shot) => (
                   <ShotPrompt key={shot.id} shot={shot} />
                 ))}
@@ -229,6 +351,14 @@ export function ClassicShotPage() {
               {generateMutation.error instanceof Error
                 ? generateMutation.error.message
                 : "经典镜头复刻生成失败"}
+            </div>
+          ) : null}
+          {videoGenerateMutation.isError ? (
+            <div className="news-error">
+              错误：
+              {videoGenerateMutation.error instanceof Error
+                ? videoGenerateMutation.error.message
+                : "上传视频复刻生成失败"}
             </div>
           ) : null}
         </section>

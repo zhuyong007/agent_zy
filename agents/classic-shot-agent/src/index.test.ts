@@ -116,10 +116,80 @@ function createRequest(input = "王家卫 花样年华 走廊擦肩镜头"): Age
   };
 }
 
+function createVideoFrameRequest(): AgentExecutionRequest {
+  return {
+    taskId: "task-classic-shot-video",
+    trigger: "system",
+    requestedAt: "2026-05-25T08:00:00.000Z",
+    meta: {
+      action: "generateFromVideoFrames",
+      input: "上传视频复刻",
+      targetPlatform: "runway",
+      revisionInstruction: "把现代城市街头改成雨夜赛博朋克市场，保留镜头节奏，避免生成一模一样的视频",
+      videoReference: {
+        fileName: "reference.mp4",
+        durationSeconds: 9,
+        extractedFrameCount: 3
+      },
+      frames: [
+        { index: 1, timestampSeconds: 0.5, dataUrl: "data:image/jpeg;base64,ZmFrZS0x" },
+        { index: 2, timestampSeconds: 4.5, dataUrl: "data:image/jpeg;base64,ZmFrZS0y" },
+        { index: 3, timestampSeconds: 8.5, dataUrl: "data:image/jpeg;base64,ZmFrZS0z" }
+      ]
+    },
+    state: createState()
+  };
+}
+
 function mockModelRuntimeText(text: string) {
   (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
-    generateText: vi.fn(async () => ({ text }))
+    generateText: vi.fn(async () => ({ text })),
+    chat: vi.fn(async () => ({ text }))
   };
+}
+
+function createVideoProject(overrides: Partial<ClassicShotProject> = {}): ClassicShotProject {
+  return createProject({
+    id: "classic-shot-video-fixture",
+    rawInput: "上传视频复刻",
+    title: "上传视频的雨夜市场复刻",
+    source: {
+      director: "用户上传视频",
+      film: "reference.mp4",
+      year: 2026,
+      shotName: "上传视频参考",
+      shotPosition: "按上传视频抽帧顺序分析"
+    },
+    referenceType: "uploaded-video",
+    videoReference: {
+      fileName: "reference.mp4",
+      durationSeconds: 9,
+      extractedFrameCount: 3,
+      revisionInstruction: "把现代城市街头改成雨夜赛博朋克市场，保留镜头节奏，避免生成一模一样的视频"
+    },
+    storyboardVideoPrompt: "请把 3 个上传视频参考帧视为同一段连续镜头的关键节点，保持人物从左向右移动、摄影机横移跟随、雨夜反光和霓虹光线连续，生成一条相似但不相同的视频；新视频发生在赛博朋克夜市，人物服装、摊位、灯牌和背景建筑必须统一，不要复刻原视频的具体地点、人物脸型或品牌标识，镜头之间用动作延续、光线方向和同一运动轴线串联。",
+    storyboard: [
+      {
+        ...createProject().storyboard[0],
+        id: "shot-1",
+        title: "参考帧 1 改写",
+        sourceFrame: { index: 1, timestampSeconds: 0.5 }
+      },
+      {
+        ...createProject().storyboard[0],
+        id: "shot-2",
+        title: "参考帧 2 改写",
+        sourceFrame: { index: 2, timestampSeconds: 4.5 }
+      },
+      {
+        ...createProject().storyboard[0],
+        id: "shot-3",
+        title: "参考帧 3 改写",
+        sourceFrame: { index: 3, timestampSeconds: 8.5 }
+      }
+    ],
+    ...overrides
+  });
 }
 
 describe("classic-shot agent", () => {
@@ -195,5 +265,51 @@ describe("classic-shot agent", () => {
 
     expect(result.status).toBe("failed");
     expect(result.summary).toContain("300");
+  });
+
+  it("generates an uploaded-video recreation project from ordered video frames", async () => {
+    mockModelRuntimeText(JSON.stringify(createVideoProject()));
+
+    const result = await agent.execute(createVideoFrameRequest());
+    const project = result.domainUpdates?.classicShots?.projects[0];
+
+    expect(result.status).toBe("completed");
+    expect(project).toMatchObject({
+      referenceType: "uploaded-video",
+      targetPlatform: "runway",
+      videoReference: expect.objectContaining({
+        fileName: "reference.mp4",
+        durationSeconds: 9,
+        extractedFrameCount: 3
+      })
+    });
+    expect(project?.storyboard).toHaveLength(3);
+    expect(project?.storyboard[0]?.sourceFrame).toEqual({ index: 1, timestampSeconds: 0.5 });
+    expect(project?.storyboardVideoPrompt).toContain("相似但不相同");
+    expect(project?.markdown).toContain("分镜串联提示词");
+  });
+
+  it("rejects uploaded-video generation without frames", async () => {
+    const result = await agent.execute({
+      ...createVideoFrameRequest(),
+      meta: {
+        action: "generateFromVideoFrames",
+        frames: []
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.domainUpdates?.classicShots).toBeUndefined();
+    expect(result.summary).toContain("至少需要 1 帧");
+  });
+
+  it("rejects uploaded-video output without storyboard video prompt", async () => {
+    mockModelRuntimeText(JSON.stringify(createVideoProject({ storyboardVideoPrompt: "" })));
+
+    const result = await agent.execute(createVideoFrameRequest());
+
+    expect(result.status).toBe("failed");
+    expect(result.domainUpdates?.classicShots).toBeUndefined();
+    expect(result.summary).toContain("分镜串联提示词");
   });
 });

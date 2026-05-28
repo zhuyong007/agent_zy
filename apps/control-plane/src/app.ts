@@ -1,6 +1,9 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { createAgentRegistry } from "@agent-zy/agent-registry";
 import { SUB_AGENT_MANIFESTS } from "@agent-zy/agent-registry/sub-agents";
@@ -19,7 +22,15 @@ import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
 import { normalizeExternalUrl, openExternalUrlInBrowser, type ExternalUrlOpener } from "./services/browser-opener";
+import {
+  cleanupClassicShotVideoWorkDir,
+  createClassicShotVideoProcessor,
+  type ClassicShotVideoProcessor
+} from "./services/classic-shot-video-service";
 import { restartProjectWithScript, type ProjectRestarter } from "./services/system-restart";
+
+const CLASSIC_SHOT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+const CLASSIC_SHOT_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
@@ -27,6 +38,7 @@ export function createControlPlaneApp(options?: {
   openExternalUrl?: ExternalUrlOpener;
   restartProject?: ProjectRestarter;
   historyXhsService?: HistoryXhsService;
+  classicShotVideoProcessor?: ClassicShotVideoProcessor;
 }) {
   const app = Fastify();
   const startedAt = new Date().toISOString();
@@ -45,6 +57,7 @@ export function createControlPlaneApp(options?: {
   const ledgerReportService = createLedgerReportService();
   const summaryService = createSummaryService(store);
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
+  const classicShotVideoProcessor = options?.classicShotVideoProcessor ?? createClassicShotVideoProcessor();
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
   });
@@ -70,6 +83,11 @@ export function createControlPlaneApp(options?: {
 
   void app.register(cors, {
     origin: true
+  });
+  void app.register(multipart, {
+    limits: {
+      fileSize: CLASSIC_SHOT_VIDEO_MAX_BYTES
+    }
   });
 
   app.get("/api/health", async () => ({
@@ -122,6 +140,81 @@ export function createControlPlaneApp(options?: {
       enabled: Boolean(body.enabled),
       isDefault: Boolean(body.isDefault),
       apiKey: typeof body.apiKey === "string" && body.apiKey.trim() ? body.apiKey.trim() : null
+    };
+  }
+
+  function parseFrameCount(value: unknown) {
+    const parsed = typeof value === "string" ? Number.parseInt(value, 10) : NaN;
+
+    if (!Number.isInteger(parsed)) {
+      return 6;
+    }
+
+    if (parsed < 3 || parsed > 8) {
+      throw new Error("抽帧数量必须在 3 到 8 之间");
+    }
+
+    return parsed;
+  }
+
+  async function parseClassicShotVideoUpload(request: any) {
+    const parts = request.parts();
+    const fields: Record<string, string> = {};
+    let video:
+      | {
+          filename: string;
+          mimetype: string;
+          buffer: Buffer;
+        }
+      | null = null;
+
+    for await (const part of parts) {
+      if (part.type === "file") {
+        if (part.fieldname !== "video") {
+          part.file.resume();
+          continue;
+        }
+
+        const chunks: Buffer[] = [];
+        let size = 0;
+
+        for await (const chunk of part.file) {
+          const buffer = Buffer.from(chunk);
+          size += buffer.length;
+
+          if (size > CLASSIC_SHOT_VIDEO_MAX_BYTES) {
+            throw new Error("上传视频不能超过 100MB");
+          }
+
+          chunks.push(buffer);
+        }
+
+        video = {
+          filename: part.filename || "uploaded-video",
+          mimetype: part.mimetype || "",
+          buffer: Buffer.concat(chunks)
+        };
+        continue;
+      }
+
+      fields[part.fieldname] = String(part.value ?? "");
+    }
+
+    if (!video) {
+      throw new Error("请上传 video 文件");
+    }
+
+    if (!CLASSIC_SHOT_VIDEO_TYPES.has(video.mimetype)) {
+      throw new Error("仅支持 mp4、mov、webm 视频文件");
+    }
+
+    return {
+      video,
+      targetPlatform: fields.targetPlatform,
+      revisionInstruction:
+        fields.revisionInstruction?.trim() ||
+        "保留镜头结构，改变画面风格和场景，避免生成一模一样的视频",
+      frameCount: parseFrameCount(fields.frameCount)
     };
   }
 
@@ -352,6 +445,46 @@ export function createControlPlaneApp(options?: {
     const body = (request.body ?? {}) as Record<string, unknown>;
 
     return orchestrator.generateClassicShotProject(body);
+  });
+
+  app.post("/api/classic-shots/generate-from-video", async (request, reply) => {
+    let workDir: string | null = null;
+
+    try {
+      const upload = await parseClassicShotVideoUpload(request);
+      const taskId = randomUUID();
+      workDir = join(dataDir, "tmp", "classic-shots", taskId);
+      await mkdir(workDir, { recursive: true });
+      const videoPath = join(workDir, upload.video.filename.replace(/[^\w.-]/g, "_") || "uploaded-video");
+
+      await writeFile(videoPath, upload.video.buffer);
+
+      const extracted = await classicShotVideoProcessor.extractFrames({
+        videoPath,
+        workDir,
+        frameCount: upload.frameCount
+      });
+
+      return await orchestrator.generateClassicShotProjectFromVideo({
+        input: `上传视频复刻：${upload.video.filename}`,
+        targetPlatform: upload.targetPlatform,
+        revisionInstruction: upload.revisionInstruction,
+        videoReference: {
+          fileName: upload.video.filename,
+          durationSeconds: extracted.durationSeconds,
+          extractedFrameCount: extracted.frames.length
+        },
+        frames: extracted.frames
+      });
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "classic shot video generation failed"
+      });
+    } finally {
+      if (workDir) {
+        await cleanupClassicShotVideoWorkDir(workDir);
+      }
+    }
   });
 
   app.get("/api/summaries", async (request) => {

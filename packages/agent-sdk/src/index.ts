@@ -118,9 +118,21 @@ export interface AgentModule {
   execute(input: AgentExecutionRequest): Promise<AgentExecutionResult>;
 }
 
+export type AgentModelContentPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+      };
+    };
+
 export type AgentModelChatMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | AgentModelContentPart[];
 };
 
 export type AgentModelRequest =

@@ -7843,6 +7843,28 @@ body[data-theme="day"] .cinematic-project-controls input {
   padding-block: 4px 8px;
 }
 
+.cinematic-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cinematic-mode-tabs button {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(4, 10, 20, 0.28);
+  color: var(--muted);
+  padding: 9px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cinematic-mode-tabs button.is-active {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
 .cinematic-generate-form__lead {
   display: grid;
   gap: 4px;
