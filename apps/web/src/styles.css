@@ -7634,6 +7634,37 @@ body[data-theme="day"] .cinematic-project-controls input {
   overflow: hidden;
 }
 
+.cinematic-reference-module,
+.cinematic-reference-asset,
+.cinematic-reference-prompt-pair {
+  display: grid;
+  gap: 12px;
+}
+
+.cinematic-reference-module > header {
+  display: grid;
+  gap: 4px;
+}
+
+.cinematic-reference-module > header span,
+.cinematic-reference-asset > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cinematic-reference-module h3,
+.cinematic-reference-asset h4 {
+  margin: 0;
+}
+
+.cinematic-reference-asset {
+  padding-top: 4px;
+}
+
+.cinematic-reference-prompt-pair > strong {
+  color: var(--text);
+}
+
 .cinematic-panel__projects,
 .cinematic-project-list,
 .cinematic-shot-list {

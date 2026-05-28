@@ -224,6 +224,11 @@ describe("CinematicPage", () => {
     expect(container.textContent).toContain("导出 JSON");
     expect(container.textContent).toContain("一键复制提示词");
     expect(container.textContent).toContain("分镜串联视频提示词");
+    expect(container.textContent).toContain("Front character reference sheet");
+    expect(container.textContent).toContain("Scene reference image");
+    expect(container.textContent).toContain("人物参考图提示词");
+    expect(container.textContent).toContain("场景参考图提示词");
+    expect(container.querySelectorAll(".cinematic-reference-module .cinematic-prompt-block").length).toBeGreaterThanOrEqual(8);
   });
 
   it("keeps the cinematic workspace scrollable when generated content exceeds the viewport", () => {

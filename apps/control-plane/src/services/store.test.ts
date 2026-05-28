@@ -104,6 +104,72 @@ describe("control-plane store", () => {
     expect("newsBodies" in state).toBe(false);
   });
 
+  it("fills standalone cinematic character and scene reference prompts when missing", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+
+    const next = store.setCinematicState({
+      projects: [
+        {
+          id: "cinematic-missing-refs",
+          title: "Leaning Sky",
+          concept: "girl on a yellow bench",
+          mood: "quiet",
+          script: "A girl waits under a leaning sky.",
+          style: "bright anime",
+          pace: "slow",
+          targetShotCount: 4,
+          tags: [],
+          createdAt: "2026-05-27T15:10:18.375Z",
+          updatedAt: "2026-05-27T15:10:18.375Z",
+          scenePlan: {
+            sceneCount: 1,
+            maxDurationSeconds: 15,
+            scenes: [
+              {
+                id: "scene-1",
+                name: "park bench",
+                anchor: "yellow bench, ferris wheel in the background, noon sunlight",
+                role: "main scene"
+              }
+            ]
+          },
+          storyboard: [
+            {
+              id: "shot-1",
+              sceneId: "scene-1",
+              sceneAnchor: "yellow bench, ferris wheel in the background, noon sunlight",
+              title: "bench",
+              purpose: "establish the girl and the place",
+              duration: "3s",
+              cameraMovement: "static",
+              shotType: "character shot",
+              composition: "12-year-old girl sitting sideways on yellow bench",
+              transition: "cut",
+              audioHint: "ambient",
+              emotionalBeat: "quiet",
+              prompt: {
+                zh: "12岁少女侧坐于黄色长椅，透明气球，背景摩天轮。",
+                en: "12-year-old girl sitting sideways on a yellow bench, translucent balloon, ferris wheel background."
+              }
+            }
+          ]
+        }
+      ],
+      recentProjectIds: ["cinematic-missing-refs"],
+      lastGeneratedAt: "2026-05-27T15:10:18.375Z",
+      status: "idle",
+      lastError: null
+    });
+    const project = next.projects[0];
+
+    expect(project.referenceAssets?.characters[0]?.views.front.en).toContain("Character reference prompt");
+    expect(project.referenceAssets?.scenes[0]?.prompt.en).toContain("Scene reference image prompt");
+    expect(project.storyboard[0]?.characterRefs).toEqual(["character-1"]);
+    expect(project.storyboard[0]?.sceneRef).toBe("scene-ref-1");
+  });
+
   it("normalizes missing summary state and exposes summary dashboard counts", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);

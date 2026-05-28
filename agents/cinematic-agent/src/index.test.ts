@@ -313,6 +313,24 @@ describe("cinematic agent", () => {
     expect(project?.storyboard[0]?.sceneId).toBe("scene-1");
   });
 
+  it("builds fallback character and scene reference prompts when the model omits reference assets", async () => {
+    const missingReferenceProject = createFixture({ id: "cinematic-missing-reference-assets" }) as any;
+    delete missingReferenceProject.referenceAssets;
+    missingReferenceProject.storyboard = missingReferenceProject.storyboard.map(
+      ({ characterRefs: _characterRefs, propRefs: _propRefs, sceneRef: _sceneRef, ...shot }: any) => shot
+    );
+    mockModelRuntimeText(JSON.stringify(missingReferenceProject));
+
+    const result = await agent.execute(createRequest());
+    const project = result.domainUpdates?.cinematic?.projects[0];
+
+    expect(result.status).toBe("completed");
+    expect(project?.referenceAssets?.characters[0]?.views.front.zh).toContain("人物参考图提示词");
+    expect(project?.referenceAssets?.scenes[0]?.prompt.zh).toContain("场景参考图提示词");
+    expect(project?.storyboard[0]?.characterRefs).toEqual(["character-1"]);
+    expect(project?.storyboard[0]?.sceneRef).toBe("scene-ref-1");
+  });
+
   it("accepts model JSON that changes top-level field casing", async () => {
     const casingProject = createFixture({ id: "cinematic-casing" }) as any;
     casingProject.TITLE = casingProject.title;
@@ -342,6 +360,25 @@ describe("cinematic agent", () => {
       mood: "孤独、压抑、清醒",
       targetShotCount: 4
     });
+  });
+
+  it("accepts bilingual prompt aliases inside storyboard prompt objects", async () => {
+    const aliasProject = createFixture({ id: "cinematic-prompt-aliases" }) as any;
+    aliasProject.storyboard = aliasProject.storyboard.map((shot: any) => ({
+      ...shot,
+      prompt: {
+        zhPrompt: shot.prompt.zh,
+        enPrompt: shot.prompt.en
+      }
+    }));
+    mockModelRuntimeText(JSON.stringify(aliasProject));
+
+    const result = await agent.execute(createRequest());
+    const firstShot = result.domainUpdates?.cinematic?.projects[0]?.storyboard[0];
+
+    expect(result.status).toBe("completed");
+    expect(firstShot?.prompt.zh).toContain("城市街口");
+    expect(firstShot?.prompt.en).toContain("cinematic");
   });
 
   it("accepts model JSON wrapped in a project object", async () => {

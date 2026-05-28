@@ -499,6 +499,131 @@ function normalizeCinematicReferenceAssets(
   return characters.length || props.length || scenes.length ? { characters, props, scenes } : undefined;
 }
 
+function compactCinematicText(value: string, maxLength = 160) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function cinematicStoryboardMentionsCharacter(storyboard: CinematicProject["storyboard"]) {
+  const text = storyboard
+    .flatMap((shot) => [
+      shot.title,
+      shot.purpose,
+      shot.shotType,
+      shot.composition,
+      shot.emotionalBeat,
+      shot.prompt.zh,
+      shot.prompt.en
+    ])
+    .join(" ");
+
+  return /(人物|主角|角色|女孩|女人|男人|少年|少女|老人|少女|subject|character|person|figure|woman|man|girl|boy)/i.test(text);
+}
+
+function buildFallbackCinematicScenePlan(project: Partial<CinematicProject>, storyboard: CinematicProject["storyboard"]) {
+  const firstShot = storyboard[0];
+  const anchor = firstShot?.sceneAnchor || firstShot?.composition || project.concept || project.style || "";
+
+  return anchor
+    ? {
+        sceneCount: 1,
+        maxDurationSeconds: 15,
+        scenes: [
+          {
+            id: "scene-1",
+            name: typeof project.concept === "string" && project.concept.trim() ? project.concept : "main-scene",
+            anchor,
+            role: "Main continuous scene for the cinematic storyboard."
+          }
+        ]
+      }
+    : undefined;
+}
+
+function buildFallbackCinematicReferenceAssets(input: {
+  project: Partial<CinematicProject>;
+  storyboard: CinematicProject["storyboard"];
+  scenePlan: CinematicProject["scenePlan"] | undefined;
+  referenceAssets: CinematicProject["referenceAssets"] | undefined;
+}) {
+  const characters = [...(input.referenceAssets?.characters ?? [])];
+  const props = input.referenceAssets?.props ?? [];
+  const scenes = [...(input.referenceAssets?.scenes ?? [])];
+  const concept = typeof input.project.concept === "string" && input.project.concept.trim() ? input.project.concept : "cinematic subject";
+  const mood = typeof input.project.mood === "string" && input.project.mood.trim() ? input.project.mood : "cinematic mood";
+  const style = typeof input.project.style === "string" && input.project.style.trim() ? input.project.style : "cinematic style";
+  const firstShot = input.storyboard[0];
+  const visualSeed = compactCinematicText([
+    concept,
+    firstShot?.purpose,
+    firstShot?.composition,
+    firstShot?.prompt.zh
+  ].filter(Boolean).join("，"));
+  const englishSeed = compactCinematicText([
+    concept,
+    firstShot?.purpose,
+    firstShot?.composition,
+    firstShot?.prompt.en
+  ].filter(Boolean).join(", "));
+
+  if (characters.length === 0 && cinematicStoryboardMentionsCharacter(input.storyboard)) {
+    characters.push({
+      id: "character-1",
+      name: `${concept}主角`,
+      description: `Standalone character reference for ${concept}, mood: ${mood}, style: ${style}.`,
+      views: {
+        front: {
+          zh: `人物参考图提示词（正面三视图）：纯色或极简背景，完整正面站姿，固定同一人物的脸型、发型、服装、比例、材质、色彩和识别特征；参考分镜视觉线索：${visualSeed}。`,
+          en: `Character reference prompt, front view sheet: plain or minimal background, full front standing pose, fixed face shape, hairstyle, costume, proportions, materials, colors, and identifying features; visual cues: ${englishSeed}.`
+        },
+        side: {
+          zh: `人物参考图提示词（侧面三视图）：纯色或极简背景，完整侧面站姿，保持与正面完全一致的人物脸型、发型、服装比例、材质、色彩和识别特征；风格保持${style}。`,
+          en: `Character reference prompt, side view sheet: plain or minimal background, full side standing pose, preserving the same face shape, hairstyle, costume proportions, materials, colors, and identifying features; keep the ${style} style.`
+        },
+        back: {
+          zh: "人物参考图提示词（背面三视图）：纯色或极简背景，完整背面站姿，明确服装背部结构、发型后轮廓、身形比例、材质和色彩；与正面、侧面设定完全一致。",
+          en: "Character reference prompt, back view sheet: plain or minimal background, full back standing pose, clear costume back structure, rear hairstyle silhouette, body proportions, materials, and colors; fully consistent with the front and side views."
+        }
+      }
+    });
+  }
+
+  if (scenes.length === 0 && input.scenePlan?.scenes.length) {
+    scenes.push(
+      ...input.scenePlan.scenes.map((scene, index) => ({
+        id: `scene-ref-${index + 1}`,
+        name: scene.name || `场景 ${index + 1}`,
+        description: scene.anchor,
+        prompt: {
+          zh: `场景参考图提示词：只生成一张场景基准图，不需要三视图；固定地点、空间布局、关键道具位置、人物活动区域、光线方向、色彩、天气、材质和环境质感。场景锚点：${scene.anchor}。整体风格：${style}。`,
+          en: `Scene reference image prompt: generate one baseline scene image only, no three-view sheet; lock the location, spatial layout, key prop positions, character activity area, light direction, colors, weather, materials, and atmosphere. Scene anchor: ${scene.anchor}. Overall style: ${style}.`
+        }
+      }))
+    );
+  }
+
+  return characters.length || props.length || scenes.length ? { characters, props, scenes } : undefined;
+}
+
+function applyCinematicReferenceRefs(
+  storyboard: CinematicProject["storyboard"],
+  referenceAssets: CinematicProject["referenceAssets"] | undefined
+) {
+  if (!referenceAssets) {
+    return storyboard;
+  }
+
+  const firstCharacterId = referenceAssets.characters[0]?.id;
+  const firstSceneId = referenceAssets.scenes[0]?.id;
+
+  return storyboard.map((shot) => ({
+    ...shot,
+    ...(firstCharacterId && !shot.characterRefs?.length ? { characterRefs: [firstCharacterId] } : {}),
+    ...(firstSceneId && !shot.sceneRef ? { sceneRef: firstSceneId } : {})
+  }));
+}
+
 function normalizeCinematicContinuity(
   continuity: Partial<CinematicProject["continuity"]> | undefined
 ): CinematicProject["continuity"] | undefined {
@@ -571,9 +696,15 @@ function normalizeCinematicProject(project: Partial<CinematicProject>, index: nu
   const storyboard = Array.isArray(project.storyboard)
     ? project.storyboard.map(normalizeStoryboardShot)
     : [];
-  const scenePlan = normalizeCinematicScenePlan(project.scenePlan);
+  const scenePlan = normalizeCinematicScenePlan(project.scenePlan) ?? buildFallbackCinematicScenePlan(project, storyboard);
   const continuity = normalizeCinematicContinuity(project.continuity);
-  const referenceAssets = normalizeCinematicReferenceAssets(project.referenceAssets);
+  const referenceAssets = buildFallbackCinematicReferenceAssets({
+    project,
+    storyboard,
+    scenePlan,
+    referenceAssets: normalizeCinematicReferenceAssets(project.referenceAssets)
+  });
+  const storyboardWithRefs = applyCinematicReferenceRefs(storyboard, referenceAssets);
 
   return {
     id: typeof project.id === "string" && project.id ? project.id : `cinematic-${index}`,
@@ -581,7 +712,7 @@ function normalizeCinematicProject(project: Partial<CinematicProject>, index: nu
     concept: typeof project.concept === "string" ? project.concept : "",
     mood: typeof project.mood === "string" ? project.mood : "",
     script: typeof project.script === "string" ? project.script : "",
-    storyboard,
+    storyboard: storyboardWithRefs,
     ...(referenceAssets ? { referenceAssets } : {}),
     ...(scenePlan ? { scenePlan } : {}),
     ...(continuity ? { continuity } : {}),

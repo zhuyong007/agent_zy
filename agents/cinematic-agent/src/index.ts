@@ -17,6 +17,8 @@ import { buildCinematicPrompt, CINEMATIC_SYSTEM_PROMPT } from "./prompts";
 import type { CinematicGenerationInput } from "./types";
 
 const HISTORY_LIMIT = 50;
+const ZH_PROMPT_KEYS = ["zh", "zhPrompt", "promptZh", "prompt_zh", "chinese", "chinesePrompt", "promptChinese", "cn", "中文", "中文提示词"];
+const EN_PROMPT_KEYS = ["en", "enPrompt", "promptEn", "prompt_en", "english", "englishPrompt", "promptEnglish", "英文", "英文提示词"];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -151,9 +153,9 @@ function validateShot(value: unknown, index: number): StoryboardShot {
     throw new Error(`第 ${index + 1} 个分镜不是对象`);
   }
 
-  const prompt = asRecord(getField(record, "prompt"));
-  const zhPrompt = getStringField(prompt, "zh") ?? getStringField(record, "zhPrompt", "promptZh", "prompt_zh");
-  const enPrompt = getStringField(prompt, "en") ?? getStringField(record, "enPrompt", "promptEn", "prompt_en");
+  const prompt = asRecord(getField(record, "prompt", "prompts", "imagePrompt", "image_prompt"));
+  const zhPrompt = getStringField(prompt, ...ZH_PROMPT_KEYS) ?? getStringField(record, ...ZH_PROMPT_KEYS);
+  const enPrompt = getStringField(prompt, ...EN_PROMPT_KEYS) ?? getStringField(record, ...EN_PROMPT_KEYS);
   const sceneId = getStringField(record, "sceneId", "scene_id");
   const sceneAnchor = getStringField(record, "sceneAnchor", "scene_anchor");
   const characterRefs = asStringArray(getField(record, "characterRefs", "character_refs"));
@@ -212,8 +214,8 @@ function validateShot(value: unknown, index: number): StoryboardShot {
 
 function validateReferencePrompt(value: unknown): CinematicReferencePrompt | null {
   const record = asRecord(value);
-  const zh = getStringField(record, "zh");
-  const en = getStringField(record, "en");
+  const zh = getStringField(record, ...ZH_PROMPT_KEYS);
+  const en = getStringField(record, ...EN_PROMPT_KEYS);
 
   return zh && en ? { zh, en } : null;
 }
@@ -383,6 +385,139 @@ function buildFallbackScenePlan(input: {
   };
 }
 
+function compactText(value: string, maxLength = 160) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function storyboardMentionsCharacter(storyboard: StoryboardShot[], input: CinematicGenerationInput) {
+  const text = [
+    input.concept,
+    input.visualFocus,
+    ...storyboard.flatMap((shot) => [
+      shot.title,
+      shot.purpose,
+      shot.shotType,
+      shot.composition,
+      shot.emotionalBeat,
+      shot.prompt.zh,
+      shot.prompt.en
+    ])
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join(" ");
+
+  return /(人物|主角|角色|女孩|女人|男人|少年|少女|老人|subject|character|person|figure|woman|man|girl|boy)/i.test(text);
+}
+
+function buildFallbackCharacterReference(input: {
+  concept: string;
+  mood: string;
+  style: string;
+  storyboard: StoryboardShot[];
+}) {
+  const firstShot = input.storyboard[0];
+  const visualSeed = compactText(
+    [
+      input.concept,
+      firstShot?.purpose,
+      firstShot?.composition,
+      firstShot?.prompt.zh
+    ]
+      .filter(Boolean)
+      .join("，")
+  );
+  const englishSeed = compactText(
+    [
+      input.concept,
+      firstShot?.purpose,
+      firstShot?.composition,
+      firstShot?.prompt.en
+    ]
+      .filter(Boolean)
+      .join(", ")
+  );
+
+  return {
+    id: "character-1",
+    name: `${input.concept}主角`,
+    description: `基于「${input.concept}」的核心人物，情绪为${input.mood}，整体保持${input.style}。`,
+    views: {
+      front: {
+        zh: `人物参考图提示词（正面三视图）：纯色或极简背景，完整正面站姿，固定同一人物的脸型、发型、服装、比例、材质、色彩和识别特征；参考分镜视觉线索：${visualSeed}。`,
+        en: `Character reference prompt, front view sheet: plain or minimal background, full front standing pose, fixed face shape, hairstyle, costume, proportions, materials, colors, and identifying features; visual cues: ${englishSeed}.`
+      },
+      side: {
+        zh: `人物参考图提示词（侧面三视图）：纯色或极简背景，完整侧面站姿，保持与正面完全一致的人物脸型、发型、服装比例、材质、色彩和识别特征；风格保持${input.style}。`,
+        en: `Character reference prompt, side view sheet: plain or minimal background, full side standing pose, preserving the same face shape, hairstyle, costume proportions, materials, colors, and identifying features; keep the ${input.style} style.`
+      },
+      back: {
+        zh: `人物参考图提示词（背面三视图）：纯色或极简背景，完整背面站姿，明确服装背部结构、发型后轮廓、身形比例、材质和色彩；与正面、侧面设定完全一致。`,
+        en: "Character reference prompt, back view sheet: plain or minimal background, full back standing pose, clear costume back structure, rear hairstyle silhouette, body proportions, materials, and colors; fully consistent with the front and side views."
+      }
+    }
+  };
+}
+
+function buildFallbackSceneReferences(scenePlan: CinematicScenePlan, style: string): CinematicReferenceAssets["scenes"] {
+  return scenePlan.scenes.map((scene, index) => ({
+    id: `scene-ref-${index + 1}`,
+    name: scene.name || `场景 ${index + 1}`,
+    description: scene.anchor,
+    prompt: {
+      zh: `场景参考图提示词：只生成一张场景基准图，不需要三视图；固定地点、空间布局、关键道具位置、人物活动区域、光线方向、色彩、天气、材质和环境质感。场景锚点：${scene.anchor}。整体风格：${style}。`,
+      en: `Scene reference image prompt: generate one baseline scene image only, no three-view sheet; lock the location, spatial layout, key prop positions, character activity area, light direction, colors, weather, materials, and atmosphere. Scene anchor: ${scene.anchor}. Overall style: ${style}.`
+    }
+  }));
+}
+
+function withFallbackReferenceAssets(input: {
+  referenceAssets: CinematicReferenceAssets | undefined;
+  concept: string;
+  mood: string;
+  style: string;
+  storyboard: StoryboardShot[];
+  scenePlan: CinematicScenePlan;
+  generationInput: CinematicGenerationInput;
+}): CinematicReferenceAssets | undefined {
+  const characters = [...(input.referenceAssets?.characters ?? [])];
+  const props = input.referenceAssets?.props ?? [];
+  const scenes = [...(input.referenceAssets?.scenes ?? [])];
+
+  if (characters.length === 0 && storyboardMentionsCharacter(input.storyboard, input.generationInput)) {
+    characters.push(
+      buildFallbackCharacterReference({
+        concept: input.concept,
+        mood: input.mood,
+        style: input.style,
+        storyboard: input.storyboard
+      })
+    );
+  }
+
+  if (scenes.length === 0) {
+    scenes.push(...buildFallbackSceneReferences(input.scenePlan, input.style));
+  }
+
+  return characters.length || props.length || scenes.length ? { characters, props, scenes } : undefined;
+}
+
+function withReferenceAssetRefs(storyboard: StoryboardShot[], referenceAssets: CinematicReferenceAssets | undefined) {
+  if (!referenceAssets) {
+    return storyboard;
+  }
+
+  const firstCharacterId = referenceAssets.characters[0]?.id;
+  const firstSceneId = referenceAssets.scenes[0]?.id;
+
+  return storyboard.map((shot) => ({
+    ...shot,
+    ...(firstCharacterId && !shot.characterRefs?.length ? { characterRefs: [firstCharacterId] } : {}),
+    ...(firstSceneId && !shot.sceneRef ? { sceneRef: firstSceneId } : {})
+  }));
+}
+
 function withSceneAnchors(storyboard: StoryboardShot[], scenePlan: CinematicScenePlan) {
   const sceneById = new Map(scenePlan.scenes.map((scene) => [scene.id, scene]));
   const fallbackScene = scenePlan.scenes[0];
@@ -441,7 +576,7 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
   const style = getStringField(record, "style") ?? input.style ?? "电影感镜头设计";
   const pace = getStringField(record, "pace") ?? input.pace ?? "情绪递进";
   const targetShotCount = getPositiveIntegerField(record, "targetShotCount", "target_shot_count") ?? input.targetShotCount ?? rawStoryboard.length;
-  const referenceAssets = validateReferenceAssets(getField(record, "referenceAssets", "reference_assets"));
+  const rawReferenceAssets = validateReferenceAssets(getField(record, "referenceAssets", "reference_assets"));
 
   if (!title || !concept || !mood || !script) {
     throw new Error("电影镜头设计输出缺少 title、concept、mood 或 script");
@@ -458,7 +593,17 @@ function validateProject(value: unknown, input: CinematicGenerationInput, reques
       style,
       storyboard: rawStoryboard
     });
-  const storyboard = withContinuityHandoffs(withSceneAnchors(rawStoryboard, scenePlan));
+  const anchoredStoryboard = withContinuityHandoffs(withSceneAnchors(rawStoryboard, scenePlan));
+  const referenceAssets = withFallbackReferenceAssets({
+    referenceAssets: rawReferenceAssets,
+    concept,
+    mood,
+    style,
+    storyboard: anchoredStoryboard,
+    scenePlan,
+    generationInput: input
+  });
+  const storyboard = withReferenceAssetRefs(anchoredStoryboard, referenceAssets);
   const continuity =
     validateContinuity(getField(record, "continuity")) ??
     buildFallbackContinuity({

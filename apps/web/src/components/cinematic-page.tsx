@@ -355,6 +355,114 @@ function ShotDetail({ shot }: { shot: StoryboardShot | null }) {
   );
 }
 
+function ReferenceAssetsPanel({ project }: { project: CinematicProject | null }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const assets = project?.referenceAssets;
+
+  if (!project || !assets || (!assets.characters.length && !assets.props.length && !assets.scenes.length)) {
+    return null;
+  }
+
+  async function handleCopy(key: string, value: string) {
+    await copyText(value);
+    setCopied(key);
+    window.setTimeout(() => setCopied(null), 1500);
+  }
+
+  const renderPromptBlock = (
+    key: string,
+    title: string,
+    value: string,
+    copyLabel = "复制",
+    copiedLabel = "已复制"
+  ) => (
+    <section key={key} className="cinematic-prompt-block">
+      <div>
+        <h3>{title}</h3>
+        <button type="button" onClick={() => void handleCopy(key, value)}>
+          {copied === key ? copiedLabel : copyLabel}
+        </button>
+      </div>
+      <p>{value}</p>
+    </section>
+  );
+
+  const renderReferenceModule = (
+    title: string,
+    items: Array<{
+      id: string;
+      name: string;
+      description: string;
+      prompts: Array<{ key: string; label: string; zh: string; en: string }>;
+    }>
+  ) => (
+    items.length ? (
+      <section className="cinematic-reference-module">
+        <header>
+          <span>Reference</span>
+          <h3>{title}</h3>
+        </header>
+        {items.map((asset) => (
+          <article key={asset.id} className="cinematic-reference-asset">
+            <span>{asset.id}</span>
+            <h4>{asset.name}</h4>
+            <p>{asset.description}</p>
+            {asset.prompts.map((prompt) => (
+              <div key={prompt.key} className="cinematic-reference-prompt-pair">
+                <strong>{prompt.label}</strong>
+                {renderPromptBlock(`${asset.id}-${prompt.key}-zh`, "中文提示词", prompt.zh)}
+                {renderPromptBlock(`${asset.id}-${prompt.key}-en`, "English Prompt", prompt.en, "Copy", "Copied")}
+              </div>
+            ))}
+          </article>
+        ))}
+      </section>
+    ) : null
+  );
+
+  return (
+    <>
+      {renderReferenceModule(
+        "人物参考图提示词",
+        assets.characters.map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          description: asset.description,
+          prompts: [
+            { key: "front", label: "正面", zh: asset.views.front.zh, en: asset.views.front.en },
+            { key: "side", label: "侧面", zh: asset.views.side.zh, en: asset.views.side.en },
+            { key: "back", label: "背面", zh: asset.views.back.zh, en: asset.views.back.en }
+          ]
+        }))
+      )}
+      {renderReferenceModule(
+        "物品参考图提示词",
+        assets.props.map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          description: asset.description,
+          prompts: [
+            { key: "front", label: "正面", zh: asset.views.front.zh, en: asset.views.front.en },
+            { key: "side", label: "侧面", zh: asset.views.side.zh, en: asset.views.side.en },
+            { key: "back", label: "背面", zh: asset.views.back.zh, en: asset.views.back.en }
+          ]
+        }))
+      )}
+      {renderReferenceModule(
+        "场景参考图提示词",
+        assets.scenes.map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          description: asset.description,
+          prompts: [
+            { key: "scene", label: "场景", zh: asset.prompt.zh, en: asset.prompt.en }
+          ]
+        }))
+      )}
+    </>
+  );
+}
+
 function StoryboardVideoPromptPanel({ project }: { project: CinematicProject | null }) {
   const [copied, setCopied] = useState(false);
 
@@ -728,6 +836,7 @@ export function CinematicPage() {
         </section>
 
         <aside className="cinematic-detail">
+          <ReferenceAssetsPanel project={selectedProject} />
           <StoryboardVideoPromptPanel project={selectedProject} />
           <ShotDetail shot={selectedShot} />
         </aside>
