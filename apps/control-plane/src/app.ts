@@ -1,6 +1,5 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import multipart from "@fastify/multipart";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -31,6 +30,76 @@ import { restartProjectWithScript, type ProjectRestarter } from "./services/syst
 
 const CLASSIC_SHOT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const CLASSIC_SHOT_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+
+function parseMultipartBoundary(contentType: unknown) {
+  const header = Array.isArray(contentType) ? contentType[0] : contentType;
+  const match = typeof header === "string" ? /boundary=(?:"([^"]+)"|([^;]+))/i.exec(header) : null;
+
+  return match?.[1] ?? match?.[2]?.trim() ?? null;
+}
+
+function parseFallbackMultipartUpload(contentType: unknown, body: unknown) {
+  const boundary = parseMultipartBoundary(contentType);
+
+  if (!boundary || !Buffer.isBuffer(body)) {
+    throw new Error("video upload support is not installed; run npm install to restore @fastify/multipart");
+  }
+
+  const fields: Record<string, string> = {};
+  let video:
+    | {
+        filename: string;
+        mimetype: string;
+        buffer: Buffer;
+      }
+    | null = null;
+  const raw = body.toString("binary");
+  const marker = `--${boundary}`;
+
+  for (const segment of raw.split(marker)) {
+    const trimmed = segment.replace(/^\r\n/, "");
+
+    if (!trimmed || trimmed.startsWith("--")) {
+      continue;
+    }
+
+    const headerEnd = trimmed.indexOf("\r\n\r\n");
+
+    if (headerEnd < 0) {
+      continue;
+    }
+
+    const headerText = trimmed.slice(0, headerEnd);
+    const contentText = trimmed.slice(headerEnd + 4).replace(/\r\n$/, "");
+    const disposition = /content-disposition:\s*form-data;([^\r\n]+)/i.exec(headerText)?.[1] ?? "";
+    const name = /name="([^"]+)"/i.exec(disposition)?.[1];
+    const filename = /filename="([^"]*)"/i.exec(disposition)?.[1];
+
+    if (!name) {
+      continue;
+    }
+
+    if (filename !== undefined) {
+      video = {
+        filename: filename || "uploaded-video",
+        mimetype: /content-type:\s*([^\r\n]+)/i.exec(headerText)?.[1]?.trim() ?? "",
+        buffer: Buffer.from(contentText, "binary")
+      };
+      continue;
+    }
+
+    fields[name] = contentText;
+  }
+
+  if (!video) {
+    throw new Error("请上传 video 文件");
+  }
+
+  return {
+    fields,
+    video
+  };
+}
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
@@ -84,11 +153,16 @@ export function createControlPlaneApp(options?: {
   void app.register(cors, {
     origin: true
   });
-  void app.register(multipart, {
-    limits: {
-      fileSize: CLASSIC_SHOT_VIDEO_MAX_BYTES
+  app.addContentTypeParser(
+    /^multipart\/form-data/i,
+    {
+      bodyLimit: CLASSIC_SHOT_VIDEO_MAX_BYTES,
+      parseAs: "buffer"
+    },
+    (_request, body, done) => {
+      done(null, body);
     }
-  });
+  );
 
   app.get("/api/health", async () => ({
     ok: true
@@ -158,6 +232,23 @@ export function createControlPlaneApp(options?: {
   }
 
   async function parseClassicShotVideoUpload(request: any) {
+    if (typeof request.parts !== "function") {
+      const upload = parseFallbackMultipartUpload(request.headers["content-type"], request.body);
+
+      if (!CLASSIC_SHOT_VIDEO_TYPES.has(upload.video.mimetype)) {
+        throw new Error("仅支持 mp4、mov、webm 视频文件");
+      }
+
+      return {
+        video: upload.video,
+        targetPlatform: upload.fields.targetPlatform,
+        revisionInstruction:
+          upload.fields.revisionInstruction?.trim() ||
+          "保留镜头结构，改变画面风格和场景，避免生成一模一样的视频",
+        frameCount: parseFrameCount(upload.fields.frameCount)
+      };
+    }
+
     const parts = request.parts();
     const fields: Record<string, string> = {};
     let video:
