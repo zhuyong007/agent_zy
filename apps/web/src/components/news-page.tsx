@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { NewsCategory, NewsDailyReport, NewsFeedItem } from "@agent-zy/shared-types";
 
-import { fetchNews, openDashboardStream, openExternalUrl, refreshNews } from "../api";
+import { fetchNews, openDashboardStream, openExternalUrl, refreshNews, reportClientEvent } from "../api";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
 const categories: Array<{
@@ -197,8 +197,14 @@ export function NewsPage() {
   }, [queryClient]);
 
   const refreshMutation = useMutation({
-    mutationFn: () =>
-      refreshNews(
+    mutationFn: () => {
+      void reportClientEvent({
+        action: "news.refresh.clicked",
+        message: "同步热点",
+        agentId: "news-agent",
+        details: { view }
+      }).catch(() => undefined);
+      return refreshNews(
         view === "daily"
           ? {
               view: "daily"
@@ -209,7 +215,8 @@ export function NewsPage() {
               q: query.trim() || undefined,
               take: 50
             }
-      ),
+      );
+    },
     onSuccess: async (news) => {
       queryClient.setQueryData(["news"], news);
       await queryClient.invalidateQueries({
@@ -219,11 +226,18 @@ export function NewsPage() {
   });
 
   const archiveMutation = useMutation({
-    mutationFn: (date: string) =>
-      refreshNews({
+    mutationFn: (date: string) => {
+      void reportClientEvent({
+        action: "news.archive.clicked",
+        message: "读取热点日报归档",
+        agentId: "news-agent",
+        details: { date }
+      }).catch(() => undefined);
+      return refreshNews({
         view: "daily",
         date
-      }),
+      });
+    },
     onSuccess: (news) => {
       queryClient.setQueryData(["news"], news);
     }

@@ -84,6 +84,115 @@ describe("model runtime", () => {
     );
   });
 
+  it("records redacted model request metadata and output summaries", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-log-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const profile = store.createModelProfile({
+      id: "logged-profile",
+      displayName: "Logged profile",
+      provider: "openai",
+      modelName: "gpt-logged",
+      baseUrl: "https://logged.example/v1",
+      apiKeyRef: "secret:logged-profile",
+      capabilities: ["chat", "text"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general"]
+    });
+    secrets.save(profile.id, "sk-model-secret");
+    const append = vi.fn();
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      eventLog: { append } as any
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "model output" } }] }), { status: 200 })
+      )
+    );
+
+    await runtime.generateText({
+      agentId: "history-agent",
+      taskId: "task-history",
+      requestId: "request-model",
+      purpose: "general",
+      prompt: "prompt sk-model-secret"
+    } as any);
+
+    expect(append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "model",
+        action: "request.completed",
+        agentId: "history-agent",
+        taskId: "task-history",
+        requestId: "request-model",
+        details: expect.objectContaining({
+          modelName: "gpt-logged",
+          outputSummary: "model output"
+        })
+      })
+    );
+    expect(JSON.stringify(append.mock.calls)).not.toContain("sk-model-secret");
+  });
+
+  it("records when an OpenAI-compatible response stops because the output budget was exhausted", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-finish-reason-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const profile = store.createModelProfile({
+      id: "truncated-profile",
+      displayName: "Truncated profile",
+      provider: "openai",
+      modelName: "gpt-truncated",
+      baseUrl: "https://truncated.example/v1",
+      apiKeyRef: "secret:truncated-profile",
+      capabilities: ["chat", "text"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general"]
+    });
+    secrets.save(profile.id, "sk-truncated-secret");
+    const append = vi.fn();
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      eventLog: { append } as any
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ finish_reason: "length", message: { content: "{\"topic\":\"伍子胥\"" } }]
+          }),
+          { status: 200 }
+        )
+      )
+    );
+
+    await runtime.generateText({ purpose: "general", prompt: "hello" });
+
+    expect(append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "model",
+        action: "request.completed",
+        details: expect.objectContaining({
+          finishReason: "length",
+          outputTruncated: true
+        })
+      })
+    );
+  });
+
   it("prefers an agent default profile over purpose defaults", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-test-"));
     tempDirs.push(dataDir);

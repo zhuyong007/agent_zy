@@ -1,6 +1,7 @@
 import type { ModelProfile, ModelPurpose } from "@agent-zy/shared-types";
 
 import type { createModelSecretsRepository } from "./model-secrets";
+import type { EventLogService } from "./event-log-service";
 import { getModelProvider } from "./model-providers";
 import type { ControlPlaneStore } from "./store";
 
@@ -26,6 +27,8 @@ export type ModelRuntimeRequest =
       kind: "chat";
       profileId?: string;
       agentId?: string;
+      taskId?: string;
+      requestId?: string;
       purpose?: ModelPurpose;
       messages: ModelChatMessage[];
       temperature?: number;
@@ -37,6 +40,8 @@ export type ModelRuntimeRequest =
       kind: "generateText";
       profileId?: string;
       agentId?: string;
+      taskId?: string;
+      requestId?: string;
       purpose?: ModelPurpose;
       prompt: string;
       systemPrompt?: string;
@@ -49,6 +54,8 @@ export type ModelRuntimeRequest =
       kind: "embedding";
       profileId?: string;
       agentId?: string;
+      taskId?: string;
+      requestId?: string;
       purpose?: ModelPurpose;
       input: string | string[];
       timeoutMs?: number;
@@ -87,6 +94,15 @@ function extractText(data: any): string {
   );
 }
 
+function extractFinishReason(data: any): string | null {
+  const finishReason =
+    data?.choices?.[0]?.finish_reason ??
+    data?.choices?.[0]?.finishReason ??
+    data?.done_reason;
+
+  return typeof finishReason === "string" && finishReason.trim() ? finishReason.trim() : null;
+}
+
 function hasImageContent(messages: ModelChatMessage[]): boolean {
   return messages.some(
     (message) => Array.isArray(message.content) && message.content.some((part) => part.type === "image_url")
@@ -111,9 +127,15 @@ export function createModelRuntime(options: {
   secrets: ReturnType<typeof createModelSecretsRepository>;
   timeoutMs?: number;
   retries?: number;
+  eventLog?: EventLogService;
 }): ModelRuntime {
   const timeoutMs = options.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   const retries = options.retries ?? DEFAULT_MODEL_RETRIES;
+
+  function summarize(value: unknown, secrets: string[]) {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return redactSecrets(text ?? "", secrets).slice(0, 500);
+  }
 
   function resolveProfile(input: { profileId?: string; agentId?: string; purpose?: ModelPurpose }): ModelProfile {
     const settings = options.store.getState().modelSettings;
@@ -192,6 +214,7 @@ export function createModelRuntime(options: {
   }
 
   async function chat(input: Extract<ModelRuntimeRequest, { kind: "chat" }>) {
+    const startedAt = Date.now();
     const profile = resolveProfile(input);
     const { provider, apiKey } = resolveAuth(profile);
     const needsVision = hasImageContent(input.messages);
@@ -237,20 +260,76 @@ export function createModelRuntime(options: {
               : {})
           };
 
-    const data = await requestJson(
-      endpoint,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body)
-      },
-      apiKey ? [apiKey] : [],
-      input.timeoutMs
-    );
+    const secrets = apiKey ? [apiKey] : [];
+    options.eventLog?.append({
+      level: "info",
+      category: "model",
+      action: "request.started",
+      message: `${profile.provider}:${profile.modelName}`,
+      agentId: input.agentId,
+      taskId: input.taskId,
+      requestId: input.requestId,
+      details: {
+        provider: profile.provider,
+        modelName: profile.modelName,
+        inputSummary: summarize(body, secrets)
+      }
+    });
 
-    return {
-      text: extractText(data)
-    };
+    try {
+      const data = await requestJson(
+        endpoint,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body)
+        },
+        secrets,
+        input.timeoutMs
+      );
+      const text = extractText(data);
+      const finishReason = extractFinishReason(data);
+      options.eventLog?.append({
+        level: "info",
+        category: "model",
+        action: "request.completed",
+        message: `${profile.provider}:${profile.modelName}`,
+        agentId: input.agentId,
+        taskId: input.taskId,
+        requestId: input.requestId,
+        durationMs: Date.now() - startedAt,
+        details: {
+          provider: profile.provider,
+          modelName: profile.modelName,
+          outputLength: text.length,
+          outputSummary: summarize(text, secrets),
+          ...(finishReason
+            ? {
+                finishReason,
+                outputTruncated: finishReason === "length"
+              }
+            : {})
+        }
+      });
+
+      return { text };
+    } catch (error) {
+      options.eventLog?.append({
+        level: "error",
+        category: "model",
+        action: "request.failed",
+        message: error instanceof Error ? redactSecrets(error.message, secrets) : "模型请求失败",
+        agentId: input.agentId,
+        taskId: input.taskId,
+        requestId: input.requestId,
+        durationMs: Date.now() - startedAt,
+        details: {
+          provider: profile.provider,
+          modelName: profile.modelName
+        }
+      });
+      throw error;
+    }
   }
 
   return {
@@ -260,6 +339,8 @@ export function createModelRuntime(options: {
         kind: "chat",
         profileId: input.profileId,
         agentId: input.agentId,
+        taskId: input.taskId,
+        requestId: input.requestId,
         purpose: input.purpose,
         temperature: input.temperature,
           maxTokens: input.maxTokens,

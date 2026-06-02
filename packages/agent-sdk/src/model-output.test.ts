@@ -57,4 +57,63 @@ describe("model output normalization", () => {
     expect(normalizeModelOutput(objectPayload)).toBe(objectPayload);
     expect(normalizeModelOutput(arrayPayload)).toBe(arrayPayload);
   });
+
+  it("unwraps nested transport result envelopes", () => {
+    expect(
+      normalizeModelOutput({
+        data: {
+          result: {
+            output: {
+              choices: [
+                {
+                  message: {
+                    content: '{"topic":"丝绸之路","cardCount":3}'
+                  }
+                }
+              ]
+            }
+          }
+        }
+      })
+    ).toEqual({
+      topic: "丝绸之路",
+      cardCount: 3
+    });
+  });
+
+  it("unwraps Responses API output content blocks", () => {
+    expect(
+      normalizeModelOutput({
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: '{"topic":"都江堰","cardCount":4}'
+              }
+            ]
+          }
+        ]
+      })
+    ).toEqual({
+      topic: "都江堰",
+      cardCount: 4
+    });
+  });
+
+  it("unwraps object-shaped text values from compatible proxies", () => {
+    expect(
+      normalizeModelOutput({
+        response: {
+          text: {
+            value: '```json\n{"topic":"郑和下西洋","cardCount":5}\n```'
+          }
+        }
+      })
+    ).toEqual({
+      topic: "郑和下西洋",
+      cardCount: 5
+    });
+  });
 });

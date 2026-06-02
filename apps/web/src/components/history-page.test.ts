@@ -92,6 +92,7 @@ vi.mock("../api", () => ({
   fetchHomeLayout: vi.fn(async () => []),
   saveHomeLayout: vi.fn(async (layout) => layout),
   generateHistory: vi.fn(async () => dashboard),
+  reportClientEvent: vi.fn(async () => ({ ok: true })),
   syncHistoryXhsAnalytics: vi.fn(async () => dashboard),
   cancelNotification: vi.fn(async () => dashboardAfterDelete),
   openDashboardStream: vi.fn(() => () => undefined),

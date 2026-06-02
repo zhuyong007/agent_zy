@@ -5,6 +5,9 @@ import type {
   ClassicShotState,
   ClassicShotTargetPlatform,
   DashboardData,
+  EventLogInput,
+  EventLogQuery,
+  EventLogQueryResult,
   HistoryXhsState,
   HomeModulePreference,
   LedgerFactRecord,
@@ -18,6 +21,10 @@ import type {
   ModelPurpose,
   ModelSettingsState,
   NewsState,
+  PhotoRenameExecuteResult,
+  PhotoRenameMediaScope,
+  PhotoRenamePreviewResult,
+  PhotoRenameUndoResult,
   SummaryEntry,
   SummaryType,
   TopicState
@@ -53,6 +60,107 @@ export function resolveApiBase(
 }
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
+
+export async function previewPhotoRenames(
+  directoryPath: string,
+  mediaScope: PhotoRenameMediaScope = "all"
+): Promise<PhotoRenamePreviewResult> {
+  const response = await fetch(`${API_BASE}/api/tools/photo-renamer/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ directoryPath, mediaScope })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to preview photo renames"));
+  }
+
+  return response.json();
+}
+
+export async function executePhotoRenames(previewToken: string): Promise<PhotoRenameExecuteResult> {
+  const response = await fetch(`${API_BASE}/api/tools/photo-renamer/execute`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ previewToken })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to execute photo renames"));
+  }
+
+  return response.json();
+}
+
+export async function undoPhotoRenames(undoToken: string): Promise<PhotoRenameUndoResult> {
+  const response = await fetch(`${API_BASE}/api/tools/photo-renamer/undo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ undoToken })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to undo photo renames"));
+  }
+
+  return response.json();
+}
+
+export async function fetchEventLogs(query: EventLogQuery = {}): Promise<EventLogQueryResult> {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+
+  const response = await fetch(`${API_BASE}/api/logs${params.size ? `?${params.toString()}` : ""}`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch event logs");
+  }
+
+  return response.json();
+}
+
+export async function reportClientEvent(input: Pick<EventLogInput, "action" | "message"> & Partial<EventLogInput>) {
+  const response = await fetch(`${API_BASE}/api/logs/client-events`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      level: "info",
+      category: "frontend",
+      ...input
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to report client event");
+  }
+
+  return response.json() as Promise<{ ok: true }>;
+}
+
+export async function clearEventLogs() {
+  const response = await fetch(`${API_BASE}/api/logs`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to clear event logs");
+  }
+
+  return response.json() as Promise<{ ok: true }>;
+}
 
 export async function fetchDashboard(): Promise<DashboardData> {
   const response = await fetch(`${API_BASE}/api/dashboard`);

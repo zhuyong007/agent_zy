@@ -183,7 +183,13 @@ function asModelOutputRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function asModelOutputString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  const record = asModelOutputRecord(value);
+
+  return typeof record?.value === "string" && record.value.trim() ? record.value.trim() : null;
 }
 
 function parseJsonCandidate(value: string): unknown | null {
@@ -283,8 +289,8 @@ function isTextWrapperRecord(record: Record<string, unknown>): boolean {
 
   return (
     keys.length > 0 &&
-    keys.every((key) => key === "type" || key === "text" || key === "content") &&
-    Boolean(asModelOutputString(record.text) ?? asModelOutputString(record.content))
+    keys.every((key) => key === "type" || key === "text" || key === "content" || key === "value") &&
+    Boolean(asModelOutputString(record.text) ?? asModelOutputString(record.content) ?? asModelOutputString(record.value))
   );
 }
 
@@ -294,8 +300,28 @@ function isModelWrapperRecord(record: Record<string, unknown>): boolean {
       record.message ||
       record.response ||
       record.output_text ||
+      record.output ||
+      record.result ||
+      record.data ||
       isTextWrapperRecord(record)
   );
+}
+
+function extractTextFromContentBlocks(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return asModelOutputString(value);
+  }
+
+  const text = value
+    .map((item) => {
+      const record = asModelOutputRecord(item);
+
+      return record ? asModelOutputString(record.text) ?? asModelOutputString(record.content) : null;
+    })
+    .filter((item): item is string => Boolean(item))
+    .join("\n");
+
+  return text || null;
 }
 
 function extractTextFromWrapperRecord(record: Record<string, unknown>): unknown | null {
@@ -305,7 +331,7 @@ function extractTextFromWrapperRecord(record: Record<string, unknown>): unknown 
   const messageContent = message?.content;
 
   if (messageContent !== undefined && messageContent !== null) {
-    return messageContent;
+    return extractTextFromContentBlocks(messageContent) ?? messageContent;
   }
 
   if (firstChoice?.text !== undefined && firstChoice.text !== null) {
@@ -315,11 +341,17 @@ function extractTextFromWrapperRecord(record: Record<string, unknown>): unknown 
   const directMessage = asModelOutputRecord(record.message);
 
   if (directMessage?.content !== undefined && directMessage.content !== null) {
-    return directMessage.content;
+    return extractTextFromContentBlocks(directMessage.content) ?? directMessage.content;
   }
 
-  for (const key of ["output_text", "response", "text", "content"] as const) {
+  for (const key of ["output_text", "response", "text", "content", "value"] as const) {
     if (record[key] !== undefined && record[key] !== null && (key !== "content" || isTextWrapperRecord(record))) {
+      return record[key];
+    }
+  }
+
+  for (const key of ["output", "result", "data"] as const) {
+    if (record[key] !== undefined && record[key] !== null) {
       return record[key];
     }
   }
@@ -360,6 +392,19 @@ function normalizeModelOutputInternal(value: unknown, depth: number): unknown {
       if (record && isModelWrapperRecord(record)) {
         return normalizeModelOutputInternal(record, depth + 1);
       }
+    }
+
+    const messageText = value
+      .map((item) => {
+        const record = asModelOutputRecord(item);
+
+        return record ? extractTextFromContentBlocks(record.content) : null;
+      })
+      .filter((item): item is string => Boolean(item))
+      .join("\n");
+
+    if (messageText) {
+      return normalizeModelOutputInternal(messageText, depth + 1);
     }
 
     return value;

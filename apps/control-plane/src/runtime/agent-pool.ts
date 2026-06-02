@@ -7,6 +7,7 @@ import type { AgentExecutionRequest, AgentExecutionResult, AgentManifest } from 
 import type { AgentRuntimeView } from "@agent-zy/shared-types";
 
 import type { EventBus } from "../services/events";
+import type { EventLogService } from "../services/event-log-service";
 import type { ModelRuntime, ModelRuntimeRequest } from "../services/model-runtime";
 
 interface WorkerRecord {
@@ -30,6 +31,7 @@ export function createAgentWorkerPool(options: {
   eventBus: EventBus;
   modelRuntime?: ModelRuntime;
   idleMs?: number;
+  eventLog?: EventLogService;
 }): AgentWorkerPool {
   const workerEntry = resolve("apps/control-plane/src/runtime/agent-worker.ts");
   const idleMs = options.idleMs ?? 30_000;
@@ -104,7 +106,9 @@ export function createAgentWorkerPool(options: {
       options.modelRuntime
         .execute({
           ...message.payload,
-          agentId: message.payload.agentId ?? manifest.id
+          agentId: message.payload.agentId ?? manifest.id,
+          taskId: record.activeTaskId ?? undefined,
+          requestId: message.requestId
         } as ModelRuntimeRequest)
         .then((result) => {
           child.send({
@@ -142,6 +146,15 @@ export function createAgentWorkerPool(options: {
       worker.activeTaskId = payload.taskId;
       worker.lastStartedAt = new Date().toISOString();
       emitRuntimeUpdate();
+      options.eventLog?.append({
+        level: "info",
+        category: "agent",
+        action: "worker.started",
+        message: manifest.id,
+        agentId: manifest.id,
+        taskId: payload.taskId,
+        requestId
+      });
 
       return new Promise<AgentExecutionResult>((resolvePromise, rejectPromise) => {
         const handleMessage = (message: {
@@ -160,10 +173,28 @@ export function createAgentWorkerPool(options: {
           emitRuntimeUpdate();
 
           if (message.type === "error") {
+            options.eventLog?.append({
+              level: "error",
+              category: "agent",
+              action: "worker.failed",
+              message: message.error ?? "Unknown worker error",
+              agentId: manifest.id,
+              taskId: payload.taskId,
+              requestId
+            });
             rejectPromise(new Error(message.error ?? "Unknown worker error"));
             return;
           }
 
+          options.eventLog?.append({
+            level: message.result?.status === "failed" ? "error" : "info",
+            category: "agent",
+            action: message.result?.status === "failed" ? "worker.failed" : "worker.completed",
+            message: message.result?.summary ?? manifest.id,
+            agentId: manifest.id,
+            taskId: payload.taskId,
+            requestId
+          });
           resolvePromise(message.result as AgentExecutionResult);
         };
 

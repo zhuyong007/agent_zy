@@ -12,10 +12,13 @@ import { ClassicShotPage } from "./components/classic-shot-page";
 import { CinematicPage } from "./components/cinematic-page";
 import { HistoryPage } from "./components/history-page";
 import { LedgerPage } from "./components/ledger-page";
+import { LogsPage } from "./components/logs-page";
 import { NewsPage } from "./components/news-page";
 import { SummaryPage } from "./components/summary-page";
 import { TodoPage } from "./components/todo-module";
 import { TopicPage } from "./components/topic-page";
+import { PhotoRenamerPage } from "./components/photo-renamer-page";
+import { ToolsPage } from "./components/tools-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
 
 const queryClient = new QueryClient();
@@ -90,6 +93,24 @@ const summaryRoute = createRoute({
   component: SummaryPage
 });
 
+const logsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logs",
+  component: LogsPage
+});
+
+const toolsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools",
+  component: ToolsPage
+});
+
+const photoRenamerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools/photo-renamer",
+  component: PhotoRenamerPage
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   manageRoute,
@@ -100,7 +121,10 @@ const routeTree = rootRoute.addChildren([
   classicShotRoute,
   ledgerRoute,
   todoRoute,
-  summaryRoute
+  summaryRoute,
+  toolsRoute,
+  photoRenamerRoute,
+  logsRoute
 ]);
 
 const router = createRouter({

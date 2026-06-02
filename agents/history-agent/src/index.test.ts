@@ -401,6 +401,65 @@ describe("history agent", () => {
     expect(result.status).toBe("completed");
   });
 
+  it("requests enough budget for the long JSON response from the shared model runtime", async () => {
+    const generateText = vi.fn(async () => ({
+      text: JSON.stringify({
+        topic: "格式测试",
+        summary: "检查历史知识生成是否声明 JSON 响应格式。",
+        cardCount: 3,
+        cards: createHistoryCards("格式测试"),
+        xiaohongshuCaption: "格式测试正文"
+      })
+    }));
+    (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
+      generateText
+    };
+
+    const result = await agent.execute(createRequest());
+    delete (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__;
+
+    expect(result.status).toBe("completed");
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxTokens: 9000,
+        responseFormat: "json",
+        timeoutMs: 600_000
+      })
+    );
+  });
+
+  it("retries once with a compact JSON request when the first model response is incomplete", async () => {
+    const generateText = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          topic: "伍子胥",
+          summary: "第一次响应在卡片中途结束，没有返回正文。",
+          cardCount: 3,
+          cards: createHistoryCards("伍子胥")
+        })
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          topic: "伍子胥",
+          summary: "第二次响应返回完整结构。",
+          xiaohongshuCaption: "今天讲清伍子胥跌宕的一生。",
+          cardCount: 3,
+          cards: createHistoryCards("伍子胥")
+        })
+      });
+    (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__ = {
+      generateText
+    };
+
+    const result = await agent.execute(createRequest());
+    delete (globalThis as typeof globalThis & { __AGENT_ZY_MODEL_CLIENT__?: any }).__AGENT_ZY_MODEL_CLIENT__;
+
+    expect(result.status).toBe("completed");
+    expect(generateText).toHaveBeenCalledTimes(2);
+    expect(generateText.mock.calls[1]?.[0]?.prompt).toContain("上一次输出不完整");
+  });
+
   it("passes xiaohongshu analytics to the model as adaptive guidance", async () => {
     const state = createState();
     state.historyXhs = {

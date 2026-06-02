@@ -26,6 +26,7 @@ import type { HybridRouter } from "@agent-zy/router-core";
 
 import type { AgentWorkerPool } from "../runtime/agent-pool";
 import type { EventBus } from "./events";
+import type { EventLogService } from "./event-log-service";
 import type { HistoryXhsService } from "./history-xhs-service";
 import type { LedgerReportService } from "./ledger-report-service";
 import type { LedgerSemanticService } from "./ledger-semantic-service";
@@ -129,6 +130,7 @@ export function createControlPlaneOrchestrator(options: {
   ledgerReportService: LedgerReportService;
   summaryService: SummaryService;
   historyXhsService: HistoryXhsService;
+  eventLog?: EventLogService;
 }): ControlPlaneOrchestrator {
   function persistLedgerMetadata(input: {
     taskId: string;
@@ -210,6 +212,14 @@ export function createControlPlaneOrchestrator(options: {
       "Worker started"
     );
     options.store.upsertTask(runningTask);
+    options.eventLog?.append({
+      level: "info",
+      category: "task",
+      action: "task.started",
+      message: runningTask.summary,
+      taskId: runningTask.id,
+      agentId: runningTask.agentId
+    });
     options.eventBus.emit("dashboard.updated", options.store.getState());
 
     try {
@@ -230,6 +240,14 @@ export function createControlPlaneOrchestrator(options: {
       doneTask.resultSummary = result.summary;
 
       options.store.upsertTask(doneTask);
+      options.eventLog?.append({
+        level: result.status === "failed" ? "error" : "info",
+        category: result.status === "failed" && input.manifest.id === "history-agent" ? "history-agent" : "task",
+        action: result.status === "failed" ? "task.failed" : "task.completed",
+        message: result.summary,
+        taskId: doneTask.id,
+        agentId: input.manifest.id
+      });
       options.store.applyAgentResult(result);
       persistLedgerMetadata({
         taskId: doneTask.id,
@@ -261,6 +279,14 @@ export function createControlPlaneOrchestrator(options: {
         error instanceof Error ? error.message : "Worker failed"
       );
       options.store.upsertTask(failedTask);
+      options.eventLog?.append({
+        level: "error",
+        category: "task",
+        action: "task.failed",
+        message: failedTask.resultSummary ?? failedTask.history.at(-1)?.note ?? "Worker failed",
+        taskId: failedTask.id,
+        agentId: input.manifest.id
+      });
 
       const assistantMessage = createMessage(
         "assistant",

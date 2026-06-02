@@ -405,31 +405,54 @@ async function generateWithModelRuntime(
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision"
   });
-  const result = await getModelClient().generateText({
-    purpose: "vision",
-    systemPrompt: analyticsPrompt
-      ? `中文历史知识编辑，只输出严格 JSON，不要输出 Markdown。${analyticsPrompt}`
-      :
-      "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
-    prompt: `请围绕「${topic}」生成一条小红书历史知识推文策划。字段必须是 topic、summary、cover、cardCount、cards、xiaohongshuCaption。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。`
-  });
-  const rawContent = result.text;
-  const normalizedPayloadInput = normalizePayloadInput(rawContent);
+  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。`;
 
-  console.info("[history-agent] model-runtime:response-shape", {
-    rawContentType: Array.isArray(rawContent) ? "array" : typeof rawContent,
-    normalizedType: Array.isArray(normalizedPayloadInput) ? "array" : typeof normalizedPayloadInput,
-    preview:
-      typeof rawContent === "string"
-        ? rawContent.slice(0, 200)
-        : JSON.stringify(normalizedPayloadInput)?.slice(0, 200) ?? null
-  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await getModelClient().generateText({
+      purpose: "vision",
+      maxTokens: 9000,
+      timeoutMs: 600_000,
+      responseFormat: "json",
+      systemPrompt: analyticsPrompt
+        ? `中文历史知识编辑，只输出严格 JSON，不要输出 Markdown。${analyticsPrompt}`
+        :
+        "你是中文历史知识编辑，擅长把历史知识点拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
+      prompt:
+        attempt === 0
+          ? prompt
+          : `${prompt}\n上一次输出不完整。请重新生成完整 JSON，保持内容紧凑，必须返回全部字段和完整 cards 数组，不要输出解释。`
+    });
+    const rawContent = result.text;
+    const normalizedPayloadInput = normalizePayloadInput(rawContent);
 
-  if (!rawContent) {
-    throw new Error("ModelScope 返回内容为空");
+    console.info("[history-agent] model-runtime:response-shape", {
+      attempt: attempt + 1,
+      rawContentType: Array.isArray(rawContent) ? "array" : typeof rawContent,
+      normalizedType: Array.isArray(normalizedPayloadInput) ? "array" : typeof normalizedPayloadInput,
+      preview:
+        typeof rawContent === "string"
+          ? rawContent.slice(0, 200)
+          : JSON.stringify(normalizedPayloadInput)?.slice(0, 200) ?? null
+    });
+
+    if (!rawContent) {
+      throw new Error("ModelScope 返回内容为空");
+    }
+
+    try {
+      return validatePayload(normalizedPayloadInput, requestedAt);
+    } catch (error) {
+      if (attempt === 1) {
+        throw error;
+      }
+
+      console.warn("[history-agent] model-runtime:retry-incomplete-json", {
+        error: error instanceof Error ? error.message : "模型输出校验失败"
+      });
+    }
   }
 
-  return validatePayload(normalizedPayloadInput, requestedAt);
+  throw new Error("模型输出校验失败");
 }
 
 export const agent = defineAgent({

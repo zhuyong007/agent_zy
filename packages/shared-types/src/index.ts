@@ -25,6 +25,107 @@ export interface TaskRecord {
   resultSummary?: string;
 }
 
+export type EventLogLevel = "debug" | "info" | "warn" | "error";
+
+export interface EventLogRecord {
+  id: string;
+  timestamp: string;
+  level: EventLogLevel;
+  category: string;
+  action: string;
+  message: string;
+  taskId?: string;
+  agentId?: string;
+  requestId?: string;
+  durationMs?: number;
+  details?: Record<string, unknown>;
+}
+
+export interface EventLogInput extends Omit<EventLogRecord, "id" | "timestamp"> {
+  id?: string;
+  timestamp?: string;
+}
+
+export interface EventLogQuery {
+  level?: EventLogLevel;
+  category?: string;
+  agentId?: string;
+  taskId?: string;
+  requestId?: string;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface EventLogSummary {
+  total: number;
+  errorCount: number;
+  latestTimestamp: string | null;
+}
+
+export interface EventLogQueryResult {
+  items: EventLogRecord[];
+  nextCursor: string | null;
+  summary: EventLogSummary;
+  warnings: string[];
+}
+
+export type PhotoRenameItemStatus = "rename" | "unchanged" | "skipped";
+export type PhotoRenameTimeSource = "exif" | "video-metadata" | "file-mtime";
+export type PhotoRenameMediaScope = "images" | "videos" | "all";
+
+export interface PhotoRenamePreviewItem {
+  sourcePath: string;
+  sourceName: string;
+  targetPath: string;
+  targetName: string;
+  status: PhotoRenameItemStatus;
+  timeSource: PhotoRenameTimeSource;
+  capturedAt: string;
+  size: number;
+  modifiedAt: string;
+  skipReason?: string;
+}
+
+export interface PhotoRenamePreviewResult {
+  previewToken: string;
+  directoryPath: string;
+  createdAt: string;
+  expiresAt: string;
+  summary: {
+    total: number;
+    rename: number;
+    unchanged: number;
+    skipped: number;
+  };
+  items: PhotoRenamePreviewItem[];
+}
+
+export interface PhotoRenameExecuteResult {
+  undoToken: string;
+  summary: {
+    renamed: number;
+    failed: number;
+  };
+  items: Array<{
+    sourcePath: string;
+    targetPath: string;
+    status: "renamed";
+  }>;
+}
+
+export interface PhotoRenameUndoResult {
+  summary: {
+    restored: number;
+    failed: number;
+  };
+  items: Array<{
+    sourcePath: string;
+    targetPath: string;
+    status: "restored";
+  }>;
+}
+
 export interface KanbanGroups {
   todo: TaskRecord[];
   inProgress: TaskRecord[];

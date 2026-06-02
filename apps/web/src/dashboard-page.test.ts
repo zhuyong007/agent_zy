@@ -319,6 +319,30 @@ describe("CommandRail", () => {
 
     expect(onRestartProject).toHaveBeenCalledTimes(1);
   });
+
+  it("always renders the tools and structured logs navigation entries", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CommandRail, {
+          activeSection: "home",
+          expanded: true,
+          onToggle: () => undefined,
+          themeKey: "night",
+          onThemeChange: () => undefined,
+          rightMeta: [],
+          clockLine: "2026-05-21 21:20:00 · 星期四 · 农历四月初五",
+          navigationLayout: []
+        })
+      );
+    });
+
+    expect(container.textContent).toContain("日志");
+    expect(container.textContent).toContain("工具");
+  });
 });
 
 describe("CinematicPanel", () => {

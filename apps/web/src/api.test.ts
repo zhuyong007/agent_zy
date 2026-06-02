@@ -2,14 +2,91 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchSystemStatus,
+  clearEventLogs,
+  fetchEventLogs,
   generateCinematic,
   generateHistory,
   openExternalUrl,
+  previewPhotoRenames,
   resolveApiBase,
   restartProject,
+  reportClientEvent,
+  executePhotoRenames,
   syncHistoryXhsAnalytics,
-  testModelProfile
+  testModelProfile,
+  undoPhotoRenames
 } from "./api";
+
+describe("photo renamer API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("previews, executes, and undoes photo rename batches", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ previewToken: "preview-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ undoToken: "undo-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ summary: { restored: 1, failed: 0 } }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await previewPhotoRenames("C:\\photos", "videos");
+    await executePhotoRenames("preview-1");
+    await undoPhotoRenames("undo-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/api/tools/photo-renamer/preview"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ directoryPath: "C:\\photos", mediaScope: "videos" })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/api/tools/photo-renamer/execute"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ previewToken: "preview-1" })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("/api/tools/photo-renamer/undo"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ undoToken: "undo-1" })
+      })
+    );
+  });
+});
+
+describe("event log API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("queries, reports, and clears structured event logs", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [], nextCursor: null, summary: { total: 0, errorCount: 0, latestTimestamp: null }, warnings: [] })
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchEventLogs({ level: "error", q: "JSON" });
+    await reportClientEvent({ action: "history.generate.clicked", message: "立即生成" });
+    await clearEventLogs();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/logs?level=error&q=JSON");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/logs/client-events");
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/api/logs");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: "DELETE" });
+  });
+});
 
 describe("resolveApiBase", () => {
   it("uses the current page host when no API URL is configured", () => {

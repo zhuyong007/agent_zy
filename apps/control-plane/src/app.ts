@@ -10,6 +10,7 @@ import { createHeuristicRouterModel, createHybridRouter } from "@agent-zy/router
 
 import { createAgentWorkerPool } from "./runtime/agent-pool";
 import { createEventBus } from "./services/events";
+import { createEventLogService } from "./services/event-log-service";
 import { createHistoryXhsService, type HistoryXhsService } from "./services/history-xhs-service";
 import { createLedgerReportService } from "./services/ledger-report-service";
 import { createLedgerSemanticService } from "./services/ledger-semantic-service";
@@ -17,6 +18,7 @@ import { createModelSecretsRepository } from "./services/model-secrets";
 import { getModelProvider, listModelProviders } from "./services/model-providers";
 import { createModelRuntime } from "./services/model-runtime";
 import { createControlPlaneOrchestrator } from "./services/orchestrator";
+import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -117,10 +119,13 @@ export function createControlPlaneApp(options?: {
 
   const dataDir = options?.dataDir ?? ".agent-zy-data";
   const store = createControlPlaneStore(dataDir);
+  const eventLog = createEventLogService(dataDir);
+  const photoRenamer = createPhotoRenamerService();
   const modelSecrets = createModelSecretsRepository(dataDir);
   const modelRuntime = createModelRuntime({
     store,
-    secrets: modelSecrets
+    secrets: modelSecrets,
+    eventLog
   });
   const ledgerSemanticService = createLedgerSemanticService();
   const ledgerReportService = createLedgerReportService();
@@ -132,7 +137,8 @@ export function createControlPlaneApp(options?: {
   });
   const workerPool = createAgentWorkerPool({
     eventBus,
-    modelRuntime
+    modelRuntime,
+    eventLog
   });
   const orchestrator = createControlPlaneOrchestrator({
     store,
@@ -143,7 +149,8 @@ export function createControlPlaneApp(options?: {
     ledgerSemanticService,
     ledgerReportService,
     summaryService,
-    historyXhsService
+    historyXhsService,
+    eventLog
   });
   const scheduler = createControlPlaneScheduler({
     orchestrator,
@@ -152,6 +159,42 @@ export function createControlPlaneApp(options?: {
 
   void app.register(cors, {
     origin: true
+  });
+  const shouldLogApiRequest = (url: string) =>
+    !url.startsWith("/api/logs") &&
+    url !== "/api/stream" &&
+    url !== "/api/health" &&
+    url !== "/api/system/status";
+
+  app.addHook("onRequest", async (request) => {
+    if (!shouldLogApiRequest(request.url)) {
+      return;
+    }
+
+    (request as typeof request & { eventLogStartedAt?: number }).eventLogStartedAt = Date.now();
+    eventLog.append({
+      level: "info",
+      category: "api",
+      action: "request.started",
+      message: `${request.method} ${request.url}`
+    });
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    if (!shouldLogApiRequest(request.url)) {
+      return;
+    }
+
+    const startedAt = (request as typeof request & { eventLogStartedAt?: number }).eventLogStartedAt;
+    eventLog.append({
+      level: reply.statusCode >= 500 ? "error" : reply.statusCode >= 400 ? "warn" : "info",
+      category: "api",
+      action: "request.completed",
+      message: `${request.method} ${request.url}`,
+      durationMs: startedAt ? Date.now() - startedAt : undefined,
+      details: {
+        statusCode: reply.statusCode
+      }
+    });
   });
   app.addContentTypeParser(
     /^multipart\/form-data/i,
@@ -182,6 +225,172 @@ export function createControlPlaneApp(options?: {
   }));
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
+
+  function isLocalBrowserRequest(origin: unknown) {
+    if (typeof origin !== "string" || !origin.trim()) {
+      return true;
+    }
+
+    try {
+      return ["127.0.0.1", "localhost", "::1"].includes(new URL(origin).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  function rejectRemotePhotoRenamerRequest(request: { headers: Record<string, unknown> }, reply: any) {
+    if (isLocalBrowserRequest(request.headers.origin)) {
+      return false;
+    }
+
+    reply.code(403).send({
+      message: "photo renamer is only available from a local browser"
+    });
+    return true;
+  }
+
+  app.post("/api/tools/photo-renamer/preview", async (request, reply) => {
+    if (rejectRemotePhotoRenamerRequest(request, reply)) {
+      return reply;
+    }
+
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
+
+    try {
+      const mediaScope = body.mediaScope === "images" || body.mediaScope === "videos" ? body.mediaScope : "all";
+      const result = await photoRenamer.preview(typeof body.directoryPath === "string" ? body.directoryPath : "", mediaScope);
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "photo-renamer.preview.completed",
+        message: "媒体重命名预览完成",
+        durationMs: Date.now() - startedAt,
+        details: result.summary
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "photo-renamer.preview.failed",
+        message: "媒体重命名预览失败",
+        durationMs: Date.now() - startedAt
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to preview media renames"
+      });
+    }
+  });
+
+  app.post("/api/tools/photo-renamer/execute", async (request, reply) => {
+    if (rejectRemotePhotoRenamerRequest(request, reply)) {
+      return reply;
+    }
+
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
+
+    try {
+      const result = await photoRenamer.execute(typeof body.previewToken === "string" ? body.previewToken : "");
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "photo-renamer.execute.completed",
+        message: "媒体重命名执行完成",
+        durationMs: Date.now() - startedAt,
+        details: result.summary
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "photo-renamer.execute.failed",
+        message: "媒体重命名执行失败",
+        durationMs: Date.now() - startedAt
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to execute media renames"
+      });
+    }
+  });
+
+  app.post("/api/tools/photo-renamer/undo", async (request, reply) => {
+    if (rejectRemotePhotoRenamerRequest(request, reply)) {
+      return reply;
+    }
+
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
+
+    try {
+      const result = await photoRenamer.undo(typeof body.undoToken === "string" ? body.undoToken : "");
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "photo-renamer.undo.completed",
+        message: "媒体重命名撤销完成",
+        durationMs: Date.now() - startedAt,
+        details: result.summary
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "photo-renamer.undo.failed",
+        message: "媒体重命名撤销失败",
+        durationMs: Date.now() - startedAt
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to undo media renames"
+      });
+    }
+  });
+
+  app.get("/api/logs", async (request) => {
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    return eventLog.query({
+      level: typeof query.level === "string" ? query.level as any : undefined,
+      category: typeof query.category === "string" ? query.category : undefined,
+      agentId: typeof query.agentId === "string" ? query.agentId : undefined,
+      taskId: typeof query.taskId === "string" ? query.taskId : undefined,
+      requestId: typeof query.requestId === "string" ? query.requestId : undefined,
+      q: typeof query.q === "string" ? query.q : undefined,
+      cursor: typeof query.cursor === "string" ? query.cursor : undefined,
+      limit: typeof query.limit === "string" ? Number.parseInt(query.limit, 10) : undefined
+    });
+  });
+
+  app.post("/api/logs/client-events", async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const category = typeof body.category === "string" && body.category.trim() ? body.category.trim() : "frontend";
+    const action = typeof body.action === "string" && body.action.trim() ? body.action.trim() : "interaction";
+    const message = typeof body.message === "string" && body.message.trim() ? body.message.trim() : action;
+    const details = body.details && typeof body.details === "object" && !Array.isArray(body.details)
+      ? body.details as Record<string, unknown>
+      : undefined;
+
+    eventLog.append({
+      level: body.level === "error" || body.level === "warn" || body.level === "debug" ? body.level : "info",
+      category,
+      action,
+      message,
+      taskId: typeof body.taskId === "string" ? body.taskId : undefined,
+      agentId: typeof body.agentId === "string" ? body.agentId : undefined,
+      requestId: typeof body.requestId === "string" ? body.requestId : undefined,
+      details
+    });
+
+    return reply.code(202).send({ ok: true });
+  });
+
+  app.delete("/api/logs", async () => {
+    eventLog.clear();
+    return { ok: true };
+  });
 
   function serializeModelProfile(profile: ReturnType<typeof store.getState>["modelSettings"]["profiles"][number]) {
     return {

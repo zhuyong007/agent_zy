@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1361,6 +1361,217 @@ describe("control-plane app", () => {
     expect(response.json()).toMatchObject({
       notifications: expect.any(Array)
     });
+  });
+
+  it("stores client events, records business API requests, and clears structured logs", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-log-api-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const clientResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/logs/client-events",
+        payload: {
+          level: "info",
+          category: "frontend",
+          action: "history.generate.clicked",
+          message: "立即生成",
+          details: {
+            authorization: "Bearer browser-secret"
+          }
+        }
+      });
+      expect(clientResponse.statusCode).toBe(202);
+
+      await isolatedApp.inject({
+        method: "GET",
+        url: "/api/dashboard"
+      });
+
+      const listResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/logs?category=frontend"
+      });
+      expect(listResponse.statusCode).toBe(200);
+      expect(listResponse.json()).toMatchObject({
+        items: [
+          expect.objectContaining({
+            category: "frontend",
+            action: "history.generate.clicked",
+            details: {
+              authorization: "[redacted]"
+            }
+          })
+        ]
+      });
+
+      const apiResponse = await isolatedApp.inject({
+        method: "GET",
+        url: "/api/logs?category=api"
+      });
+      expect(apiResponse.json().items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            category: "api",
+            action: "request.completed",
+            message: "GET /api/dashboard"
+          })
+        ])
+      );
+      expect(apiResponse.json().items).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining("/api/logs")
+          })
+        ])
+      );
+
+      const clearResponse = await isolatedApp.inject({
+        method: "DELETE",
+        url: "/api/logs"
+      });
+      expect(clearResponse.statusCode).toBe(200);
+      expect(clearResponse.json()).toEqual({ ok: true });
+      expect((await isolatedApp.inject({ method: "GET", url: "/api/logs" })).json().items).toEqual([]);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("previews, executes, and undoes a local photo rename batch without logging paths or tokens", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-photo-renamer-api-test-"));
+    const photoDir = join(isolatedDataDir, "photos");
+    const sourcePath = join(photoDir, "holiday.jpg");
+    const targetPath = join(photoDir, "20260101_12_23_24.jpg");
+    mkdirSync(photoDir);
+    writeFileSync(sourcePath, "photo", { flag: "wx" });
+    utimesSync(sourcePath, new Date(2026, 0, 1, 12, 23, 24), new Date(2026, 0, 1, 12, 23, 24));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const previewResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/photo-renamer/preview",
+        payload: {
+          directoryPath: photoDir
+        }
+      });
+      expect(previewResponse.statusCode).toBe(200);
+      expect(previewResponse.json()).toMatchObject({
+        previewToken: expect.any(String),
+        summary: {
+          total: 1,
+          rename: 1,
+          unchanged: 0,
+          skipped: 0
+        }
+      });
+
+      const executeResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/photo-renamer/execute",
+        payload: {
+          previewToken: previewResponse.json().previewToken
+        }
+      });
+      expect(executeResponse.statusCode).toBe(200);
+      expect(existsSync(sourcePath)).toBe(false);
+      expect(existsSync(targetPath)).toBe(true);
+
+      const undoResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/photo-renamer/undo",
+        payload: {
+          undoToken: executeResponse.json().undoToken
+        }
+      });
+      expect(undoResponse.statusCode).toBe(200);
+      expect(existsSync(sourcePath)).toBe(true);
+
+      const logs = (await isolatedApp.inject({
+        method: "GET",
+        url: "/api/logs?category=tool"
+      })).json().items;
+      expect(logs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ action: "photo-renamer.preview.completed" }),
+          expect.objectContaining({ action: "photo-renamer.execute.completed" }),
+          expect.objectContaining({ action: "photo-renamer.undo.completed" })
+        ])
+      );
+      expect(JSON.stringify(logs)).not.toContain(photoDir);
+      expect(JSON.stringify(logs)).not.toContain(previewResponse.json().previewToken);
+      expect(JSON.stringify(logs)).not.toContain(executeResponse.json().undoToken);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("rejects photo renamer requests from non-local browser origins", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/tools/photo-renamer/preview",
+      headers: {
+        origin: "https://example.com"
+      },
+      payload: {
+        directoryPath: tmpdir()
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      message: "photo renamer is only available from a local browser"
+    });
+  });
+
+  it("previews only the requested photo renamer media scope", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-photo-renamer-scope-api-test-"));
+    const mediaDir = join(isolatedDataDir, "media");
+    mkdirSync(mediaDir);
+    writeFileSync(join(mediaDir, "photo.jpg"), "photo");
+    writeFileSync(join(mediaDir, "clip.mp4"), "video");
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/photo-renamer/preview",
+        payload: {
+          directoryPath: mediaDir,
+          mediaScope: "videos"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().items.map((item: { sourceName: string }) => item.sourceName)).toEqual(["clip.mp4"]);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
   });
 
   it("uses a 30-minute default news refresh interval", () => {

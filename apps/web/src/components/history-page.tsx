@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, syncHistoryXhsAnalytics } from "../api";
+import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, reportClientEvent, syncHistoryXhsAnalytics } from "../api";
 import { getHistoryNotifications } from "../history-view";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
@@ -83,7 +83,14 @@ export function HistoryPage() {
     }
   });
   const historyXhsSyncMutation = useMutation({
-    mutationFn: syncHistoryXhsAnalytics,
+    mutationFn: () => {
+      void reportClientEvent({
+        action: "history.xhs.sync.clicked",
+        message: "获取小红书数据",
+        agentId: "history-agent"
+      }).catch(() => undefined);
+      return syncHistoryXhsAnalytics();
+    },
     onSuccess: (nextDashboard) => {
       queryClient.setQueryData(["home-layout"], nextDashboard.homeLayout);
       queryClient.setQueryData(["dashboard"], nextDashboard);
@@ -170,6 +177,14 @@ export function HistoryPage() {
                   console.info("[history-page] generate:submit", {
                     hasTopic: Boolean(topicInput.trim())
                   });
+                  void reportClientEvent({
+                    action: "history.generate.clicked",
+                    message: "历史知识页面立即生成",
+                    agentId: "history-agent",
+                    details: {
+                      hasTopic: Boolean(topicInput.trim())
+                    }
+                  }).catch(() => undefined);
                   historyGenerateMutation.mutate(topicInput.trim() || undefined);
                 }}
               >

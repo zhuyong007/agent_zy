@@ -1,0 +1,49 @@
+import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+
+import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
+
+export function ToolsCatalog() {
+  return (
+    <section className="tools-shell">
+      <header className="tools-page-header">
+        <div>
+          <p className="eyebrow">Local Utilities</p>
+          <h1>工具</h1>
+          <p>把常用的本机小工具集中放在这里。每个工具都有独立页面，后续可以持续扩展。</p>
+        </div>
+      </header>
+      <div className="tools-catalog">
+        <Link className="tools-card" to="/tools/photo-renamer">
+          <span className="tools-card__index">01</span>
+          <h2>照片和视频名称修改</h2>
+          <p>递归扫描媒体目录，根据拍摄或创建时间预览并批量修改文件名。</p>
+          <strong>打开工具</strong>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+export function ToolsPage() {
+  const clockLine = useLiveClock();
+  const [themeKey, setThemeKey] = useThemePreference();
+  const [railExpanded, setRailExpanded] = useState(true);
+  const { layout } = useHomeLayoutPreferences();
+
+  return (
+    <main className="workspace tools-workspace">
+      <CommandRail
+        activeSection="tools"
+        expanded={railExpanded}
+        onToggle={() => setRailExpanded((value) => !value)}
+        themeKey={themeKey}
+        onThemeChange={setThemeKey}
+        clockLine={clockLine}
+        navigationLayout={layout}
+        rightMeta={[]}
+      />
+      <ToolsCatalog />
+    </main>
+  );
+}

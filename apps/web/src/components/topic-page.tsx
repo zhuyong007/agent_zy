@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { TopicDimensionBucket, TopicIdea } from "@agent-zy/shared-types";
 
-import { fetchTopics, generateTopics, openDashboardStream } from "../api";
+import { fetchTopics, generateTopics, openDashboardStream, reportClientEvent } from "../api";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
 function formatDateTime(timestamp?: string | null) {
@@ -101,7 +101,14 @@ export function TopicPage() {
   }, [queryClient]);
 
   const generateMutation = useMutation({
-    mutationFn: () => generateTopics("manual"),
+    mutationFn: () => {
+      void reportClientEvent({
+        action: "topics.generate.clicked",
+        message: "主动生成选题",
+        agentId: "topic-agent"
+      }).catch(() => undefined);
+      return generateTopics("manual");
+    },
     onSuccess: async (topics) => {
       const nextTopics = await queryClient.fetchQuery({
         queryKey: ["topics"],

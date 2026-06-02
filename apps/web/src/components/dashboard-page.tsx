@@ -53,6 +53,7 @@ import {
   recordLedger,
   restartProject,
   refreshNews,
+  reportClientEvent,
   saveHomeLayout,
   sendChat,
   setAgentDefaultModel,
@@ -122,7 +123,9 @@ export type RailSection =
   | "classicShots"
   | "ledger"
   | "todo"
-  | "summary";
+  | "summary"
+  | "tools"
+  | "logs";
 type NewsFilter = "all" | NewsCategory;
 
 const railItems: Array<{
@@ -141,7 +144,9 @@ const railItems: Array<{
   { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
   { key: "ledger", label: "记账", stamp: "07", to: "/ledger", moduleId: "ledger" },
   { key: "todo", label: "待办", stamp: "08", to: "/todo", moduleId: "todo" },
-  { key: "summary", label: "总结", stamp: "09", to: "/summaries", moduleId: "summary" }
+  { key: "summary", label: "总结", stamp: "09", to: "/summaries", moduleId: "summary" },
+  { key: "tools", label: "工具", stamp: "10", to: "/tools" },
+  { key: "logs", label: "日志", stamp: "11", to: "/logs" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -1027,6 +1032,14 @@ function HistoryPanel({
                 console.info("[history-panel] generate:submit", {
                   hasTopic: Boolean(topicInput.trim())
                 });
+                void reportClientEvent({
+                  action: "history.generate.clicked",
+                  message: "首页历史知识模块生成",
+                  agentId: "history-agent",
+                  details: {
+                    hasTopic: Boolean(topicInput.trim())
+                  }
+                }).catch(() => undefined);
                 historyGenerateMutation.mutate(topicInput.trim() || undefined);
               }}
             >
@@ -2414,10 +2427,17 @@ export function HomeManagePage() {
     }
   });
   const testModelMutation = useMutation({
-    mutationFn: async (profileId: string) => ({
-      profileId,
-      ...(await testModelProfile(profileId))
-    }),
+    mutationFn: async (profileId: string) => {
+      void reportClientEvent({
+        action: "model.test.clicked",
+        message: "测试模型连接",
+        details: { profileId }
+      }).catch(() => undefined);
+      return {
+        profileId,
+        ...(await testModelProfile(profileId))
+      };
+    },
     onSuccess: (result) => {
       setModelTestResult(result);
     }
@@ -2837,7 +2857,14 @@ export function DashboardPage() {
     queryFn: fetchDashboard
   });
   const newsRefreshMutation = useMutation({
-    mutationFn: () => refreshNews({ reason: "manual" }),
+    mutationFn: () => {
+      void reportClientEvent({
+        action: "news.refresh.clicked",
+        message: "首页刷新热点",
+        agentId: "news-agent"
+      }).catch(() => undefined);
+      return refreshNews({ reason: "manual" });
+    },
     onSuccess: (news) => {
       queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
         current
@@ -2919,6 +2946,10 @@ export function DashboardPage() {
 
   const restartMutation = useMutation({
     mutationFn: async () => {
+      void reportClientEvent({
+        action: "system.restart.clicked",
+        message: "重启项目"
+      }).catch(() => undefined);
       const previousStatus = await fetchSystemStatus().catch(() => null);
       await restartProject();
       return {
