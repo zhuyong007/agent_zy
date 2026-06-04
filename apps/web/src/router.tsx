@@ -18,6 +18,8 @@ import { SummaryPage } from "./components/summary-page";
 import { TodoPage } from "./components/todo-module";
 import { TopicPage } from "./components/topic-page";
 import { PhotoRenamerPage } from "./components/photo-renamer-page";
+import { BrowserAutomationPage } from "./components/browser-automation-page";
+import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ToolsPage } from "./components/tools-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
 
@@ -111,6 +113,18 @@ const photoRenamerRoute = createRoute({
   component: PhotoRenamerPage
 });
 
+const browserAutomationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools/browser-automation",
+  component: BrowserAutomationPage
+});
+
+const promptTemplateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools/prompt-templates",
+  component: PromptTemplatePage
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   manageRoute,
@@ -124,6 +138,8 @@ const routeTree = rootRoute.addChildren([
   summaryRoute,
   toolsRoute,
   photoRenamerRoute,
+  browserAutomationRoute,
+  promptTemplateRoute,
   logsRoute
 ]);
 

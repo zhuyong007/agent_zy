@@ -194,4 +194,17 @@ describe("PhotoRenamerWorkspace", () => {
 
     expect(container.textContent).toContain("目录不存在");
   });
+
+  it("links back to the tools catalog", async () => {
+    await renderWorkspace({
+      previewAction: vi.fn(),
+      executeAction: vi.fn(),
+      undoAction: vi.fn()
+    });
+
+    const backLink = container.querySelector('a[data-action="back-to-tools"]');
+
+    expect(backLink?.textContent).toContain("返回上级");
+    expect(backLink?.getAttribute("href")).toBe("/tools");
+  });
 });

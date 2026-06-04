@@ -3,6 +3,14 @@ import { Link } from "@tanstack/react-router";
 
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
+export function ToolsBackLink() {
+  return (
+    <a className="tools-back-link" data-action="back-to-tools" href="/tools">
+      返回上级
+    </a>
+  );
+}
+
 export function ToolsCatalog() {
   return (
     <section className="tools-shell">
@@ -18,6 +26,18 @@ export function ToolsCatalog() {
           <span className="tools-card__index">01</span>
           <h2>照片和视频名称修改</h2>
           <p>递归扫描媒体目录，根据拍摄或创建时间预览并批量修改文件名。</p>
+          <strong>打开工具</strong>
+        </Link>
+        <Link className="tools-card" to="/tools/browser-automation">
+          <span className="tools-card__index">02</span>
+          <h2>浏览器自动化</h2>
+          <p>创建 Chrome 操作流程，按页面状态等待、判断并执行后续步骤。</p>
+          <strong>打开工具</strong>
+        </Link>
+        <Link className="tools-card" to="/tools/prompt-templates">
+          <span className="tools-card__index">03</span>
+          <h2>提示词模版</h2>
+          <p>保存优秀提示词，提炼可替换内容，并按新需求生成最终提示词。</p>
           <strong>打开工具</strong>
         </Link>
       </div>

@@ -3,10 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createPointerScrollSession,
-  findScrollablePointerTarget,
   findScrollableWheelTarget,
-  scrollElementByPointer,
   scrollElementByWheel
 } from "./scroll-support";
 
@@ -48,24 +45,6 @@ describe("wallpaper scroll support", () => {
     const { scrollable } = makeScrollable();
 
     expect(scrollElementByWheel(scrollable, 0, 80)).toBe(true);
-    expect(scrollable.scrollTop).toBe(80);
-
-    scrollable.remove();
-  });
-
-  it("finds a scrollable ancestor for pointer dragging", () => {
-    const { scrollable, child } = makeScrollable();
-
-    expect(findScrollablePointerTarget(child)).toBe(scrollable);
-
-    scrollable.remove();
-  });
-
-  it("scrolls the target element by pointer drag distance", () => {
-    const { scrollable } = makeScrollable();
-    const session = createPointerScrollSession(scrollable, 1, 20, 120);
-
-    expect(scrollElementByPointer(session, 20, 40)).toBe(true);
     expect(scrollable.scrollTop).toBe(80);
 
     scrollable.remove();

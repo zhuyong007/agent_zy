@@ -54,7 +54,8 @@ describe("home-layout", () => {
       "history",
       "cinematic",
       "classicShots",
-      "summary"
+      "summary",
+      "browserAutomation"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
       "large",
@@ -65,6 +66,7 @@ describe("home-layout", () => {
       "smaller",
       "large",
       "large",
+      "smaller",
       "smaller"
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.visible)).toEqual([
@@ -76,7 +78,8 @@ describe("home-layout", () => {
       false,
       true,
       true,
-      true
+      true,
+      false
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
       true,
@@ -87,7 +90,8 @@ describe("home-layout", () => {
       false,
       true,
       true,
-      true
+      true,
+      false
     ]);
     expect(DEFAULT_HOME_LAYOUT.every((item) => !item.collapsed)).toBe(true);
   });
@@ -310,9 +314,10 @@ describe("home-layout", () => {
       "history",
       "cinematic",
       "classicShots",
-      "summary"
+      "summary",
+      "browserAutomation"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {
