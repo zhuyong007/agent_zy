@@ -190,6 +190,31 @@ describe("generateHistory", () => {
       topic: "商鞅变法"
     });
   });
+
+  it("sends a dynasty request to the dedicated history endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        notifications: [],
+        recentTasks: []
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateHistory({
+      reason: "manual",
+      mode: "dynasty",
+      dynasty: " 东汉 "
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      reason: "manual",
+      mode: "dynasty",
+      dynasty: "东汉"
+    });
+  });
 });
 
 describe("generateCinematic", () => {

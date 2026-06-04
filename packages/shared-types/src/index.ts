@@ -466,6 +466,23 @@ export interface HistoryPostPayload {
   generatedAt: string;
 }
 
+export type HistoryDynastyModuleType =
+  | "王朝兴衰录"
+  | "皇帝图鉴"
+  | "风云人物"
+  | "历史冷知识";
+
+export interface HistoryDynastyModule extends HistoryPostPayload {
+  type: HistoryDynastyModuleType;
+}
+
+export interface HistoryDynastyPayload {
+  dynasty: string;
+  modules: HistoryDynastyModule[];
+}
+
+export type HistoryNotificationPayload = HistoryPostPayload | HistoryDynastyPayload;
+
 export interface HistoryPushState {
   lastTriggeredDate: string | null;
 }
@@ -796,7 +813,7 @@ export interface NotificationRecord {
   read: boolean;
   taskId?: string;
   persistent?: boolean;
-  payload?: HistoryPostPayload;
+  payload?: HistoryNotificationPayload;
 }
 
 export interface NightlyReviewState {

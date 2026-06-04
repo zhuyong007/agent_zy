@@ -1113,6 +1113,99 @@ describe("control-plane app", () => {
     });
   });
 
+  it("generates a dynasty four-module payload from the manual generation endpoint", async () => {
+    const createDynastyModule = (type: string, topic: string) => ({
+      type,
+      topic,
+      summary: `${topic} 摘要`,
+      cover: {
+        title: topic,
+        subtitle: "一套完整封面方案",
+        imageText: `${topic}\n关键人物 / 时间线 / 影响`,
+        prompt: longHistoryImagePrompt(`${topic} 小红书首图封面`)
+      },
+      cardCount: 3,
+      cards: [
+        {
+          title: `${topic} 图1`,
+          imageText: "先讲背景",
+          prompt: longHistoryImagePrompt(`${topic} 图1`)
+        },
+        {
+          title: `${topic} 图2`,
+          imageText: "再讲转折",
+          prompt: longHistoryImagePrompt(`${topic} 图2`)
+        },
+        {
+          title: `${topic} 图3`,
+          imageText: "最后讲影响",
+          prompt: longHistoryImagePrompt(`${topic} 图3`)
+        }
+      ],
+      xiaohongshuCaption: `${topic} 小红书正文`
+    });
+    process.env.HISTORY_POST_FIXTURE_JSON = JSON.stringify({
+      dynasty: "东汉",
+      modules: [
+        createDynastyModule("王朝兴衰录", "东汉是怎么一步步走向灭亡的"),
+        createDynastyModule("皇帝图鉴", "看懂东汉只需要认识这几位皇帝"),
+        createDynastyModule("风云人物", "改变东汉命运的5个人"),
+        createDynastyModule("历史冷知识", "东汉公务员一个月赚多少钱？")
+      ]
+    });
+
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-dynasty-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/history/generate",
+        payload: {
+          reason: "test",
+          mode: "dynasty",
+          dynasty: "东汉"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        notifications: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "history-post",
+            title: "朝代四件套：东汉",
+            payload: expect.objectContaining({
+              dynasty: "东汉",
+              modules: expect.arrayContaining([
+                expect.objectContaining({
+                  type: "王朝兴衰录",
+                  cardCount: 3,
+                  cards: expect.arrayContaining([
+                    expect.objectContaining({
+                      prompt: expect.stringContaining("竖版小红书历史知识卡片")
+                    })
+                  ]),
+                  xiaohongshuCaption: expect.stringContaining("小红书正文")
+                })
+              ])
+            })
+          })
+        ])
+      });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("syncs history xiaohongshu analytics", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-xhs-test-"));
     const isolatedApp = createControlPlaneApp({

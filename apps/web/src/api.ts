@@ -656,7 +656,9 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
 
 export type HistoryGenerateInput = {
   reason?: string;
+  mode?: "topic" | "dynasty";
   topic?: string;
+  dynasty?: string;
 };
 
 export async function generateHistory(input: HistoryGenerateInput | string = "manual"): Promise<DashboardData> {
@@ -667,13 +669,16 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
         }
       : {
           reason: input.reason ?? "manual",
-          topic: input.topic?.trim() || undefined
+          mode: input.mode === "dynasty" ? "dynasty" : undefined,
+          topic: input.topic?.trim() || undefined,
+          dynasty: input.dynasty?.trim() || undefined
         };
 
   console.info("[history-generate] request:start", {
     endpoint: `${API_BASE}/api/history/generate`,
     reason: request.reason,
-    hasTopic: Boolean(request.topic)
+    hasTopic: Boolean(request.topic),
+    hasDynasty: Boolean(request.dynasty)
   });
 
   const response = await fetch(`${API_BASE}/api/history/generate`, {

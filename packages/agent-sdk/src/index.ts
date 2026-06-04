@@ -1,7 +1,7 @@
 import type {
   AppState,
   ClassicShotState,
-  HistoryPostPayload,
+  HistoryNotificationPayload,
   LedgerFactRecord,
   LedgerSemanticRecord,
   CinematicState,
@@ -100,7 +100,7 @@ export interface AgentExecutionResult {
     title: string;
     body: string;
     persistent?: boolean;
-    payload?: HistoryPostPayload;
+    payload?: HistoryNotificationPayload;
   }>;
   domainUpdates?: {
     ledger?: LedgerState;

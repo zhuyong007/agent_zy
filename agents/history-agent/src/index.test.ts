@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import type { AgentExecutionRequest } from "@agent-zy/agent-sdk";
-import type { AppState } from "@agent-zy/shared-types";
+import type { AppState, HistoryPostPayload } from "@agent-zy/shared-types";
 
 import { agent } from "./index";
 
@@ -105,6 +105,10 @@ function createRequest(state = createState()): AgentExecutionRequest {
   };
 }
 
+function getPostPayload(result: Awaited<ReturnType<typeof agent.execute>>): HistoryPostPayload {
+  return result.notifications?.[0]?.payload as HistoryPostPayload;
+}
+
 function longImagePrompt(topic: string) {
   return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
 }
@@ -124,6 +128,51 @@ function createHistoryCover(topic: string) {
     imageText: `${topic}\n关键人物 / 时间线 / 长期影响`,
     prompt: `${topic}，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域，中部留出副标题和知识标签，下方保留简短解释文字空间，质感像博物馆展陈海报，适合信息流首屏点击。`
   };
+}
+
+function createDynastyModules(dynasty: string) {
+  return [
+    {
+      type: "王朝兴衰录",
+      topic: `${dynasty}是怎么一步步走向灭亡的`,
+      summary: `${dynasty}从建立背景讲起，串联巅峰、转折、衰落和灭亡，用因果关系讲清王朝命运。`,
+      cover: createHistoryCover(`${dynasty}王朝兴衰录`),
+      cardCount: 3,
+      cards: createHistoryCards(`${dynasty}王朝兴衰录`),
+      xiaohongshuCaption: `${dynasty}王朝兴衰录正文`,
+      generatedAt: "2026-05-06T23:00:00.000Z"
+    },
+    {
+      type: "皇帝图鉴",
+      topic: `看懂${dynasty}只需要认识这几位皇帝`,
+      summary: `选择开国、盛世、转折和亡国相关皇帝，说明姓名、在位时间、评价、功绩和问题。`,
+      cover: createHistoryCover(`${dynasty}皇帝图鉴`),
+      cardCount: 3,
+      cards: createHistoryCards(`${dynasty}皇帝图鉴`),
+      xiaohongshuCaption: `${dynasty}皇帝图鉴正文`,
+      generatedAt: "2026-05-06T23:00:00.000Z"
+    },
+    {
+      type: "风云人物",
+      topic: `改变${dynasty}命运的5个人`,
+      summary: `挑选真正改变历史走向的人物，解释他们是谁、做了什么、为什么重要以及造成的影响。`,
+      cover: createHistoryCover(`${dynasty}风云人物`),
+      cardCount: 3,
+      cards: createHistoryCards(`${dynasty}风云人物`),
+      xiaohongshuCaption: `${dynasty}风云人物正文`,
+      generatedAt: "2026-05-06T23:00:00.000Z"
+    },
+    {
+      type: "历史冷知识",
+      topic: `${dynasty}普通人买得起房吗？`,
+      summary: `围绕人口、经济、工资、饮食、军事、交通和货币等方向，输出适合收藏传播的真实趣味知识。`,
+      cover: createHistoryCover(`${dynasty}历史冷知识`),
+      cardCount: 3,
+      cards: createHistoryCards(`${dynasty}历史冷知识`),
+      xiaohongshuCaption: `${dynasty}历史冷知识正文`,
+      generatedAt: "2026-05-06T23:00:00.000Z"
+    }
+  ];
 }
 
 function mockModelRuntimeText(textFactory: string | ((prompt: string) => string)) {
@@ -247,7 +296,7 @@ describe("history agent", () => {
     restore();
 
     expect(result.status).toBe("completed");
-    expect(result.notifications?.[0]?.payload?.cover).toMatchObject({
+    expect(getPostPayload(result).cover).toMatchObject({
       title: "商鞅变法为什么能改变秦国",
       subtitle: expect.stringContaining("制度变化"),
       imageText: expect.stringContaining("商鞅变法为什么能改变秦国"),
@@ -276,7 +325,7 @@ describe("history agent", () => {
     restore();
 
     expect(result.status).toBe("completed");
-    expect(result.notifications?.[0]?.payload?.cardCount).toBe(10);
+    expect(getPostPayload(result).cardCount).toBe(10);
   });
 
   it("rejects model output with fewer than three images", async () => {
@@ -334,7 +383,7 @@ describe("history agent", () => {
     const result = await agent.execute(createRequest());
     restore();
 
-    const prompt = result.notifications?.[0]?.payload?.cards[0]?.prompt ?? "";
+    const prompt = getPostPayload(result).cards[0]?.prompt ?? "";
     const chineseCharacterCount = Array.from(prompt.matchAll(/[\u3400-\u9fff]/gu)).length;
 
     expect(result.status).toBe("completed");
@@ -366,7 +415,7 @@ describe("history agent", () => {
     const result = await agent.execute(createRequest());
     restore();
 
-    const prompt = result.notifications?.[0]?.payload?.cards[0]?.prompt ?? "";
+    const prompt = getPostPayload(result).cards[0]?.prompt ?? "";
 
     expect(result.status).toBe("completed");
     expect(prompt).not.toMatch(/\d+\s*(?:个)?(?:中文)?(?:字|字符)/u);
@@ -630,7 +679,7 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
-    expect(result.notifications?.[0]?.payload?.topic).not.toBe("玄奘取经为什么重要");
+    expect(getPostPayload(result).topic).not.toBe("玄奘取经为什么重要");
   });
 
   it("avoids topics already present in history notifications even when archive is empty", async () => {
@@ -682,7 +731,7 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
-    expect(result.notifications?.[0]?.payload?.topic).not.toBe("玄奘取经为什么重要");
+    expect(getPostPayload(result).topic).not.toBe("玄奘取经为什么重要");
   });
 
   it("uses a custom topic from task metadata", async () => {
@@ -709,7 +758,118 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
-    expect(result.notifications?.[0]?.payload?.topic).toBe("商鞅变法为什么能改变秦国");
+    expect(getPostPayload(result).topic).toBe("商鞅变法为什么能改变秦国");
+  });
+
+  it("generates a dynasty four-module payload from dynasty metadata", async () => {
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("朝代名称");
+      expect(prompt).toContain("王朝兴衰录");
+      expect(prompt).toContain("皇帝图鉴");
+      expect(prompt).toContain("风云人物");
+      expect(prompt).toContain("历史冷知识");
+      expect(prompt).toContain("竖版小红书知识卡片");
+      expect(prompt).toContain("严格 JSON");
+
+      return JSON.stringify({
+        dynasty: "东汉",
+        modules: createDynastyModules("东汉")
+      });
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        localDate: "2026-05-07",
+        mode: "dynasty",
+        dynasty: "东汉"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.summary).toBe("生成朝代四件套：东汉");
+    expect(result.notifications).toEqual([
+      expect.objectContaining({
+        kind: "history-post",
+        persistent: true,
+        title: "朝代四件套：东汉",
+        payload: expect.objectContaining({
+          dynasty: "东汉",
+          modules: [
+            expect.objectContaining({
+              type: "王朝兴衰录",
+              topic: "东汉是怎么一步步走向灭亡的",
+              cover: expect.objectContaining({
+                prompt: expect.stringContaining("小红书历史知识首图封面")
+              }),
+              cardCount: 3,
+              cards: expect.arrayContaining([
+                expect.objectContaining({
+                  prompt: expect.stringContaining("竖版小红书历史知识卡片")
+                })
+              ]),
+              xiaohongshuCaption: "东汉王朝兴衰录正文",
+              generatedAt: "2026-05-06T23:00:00.000Z"
+            }),
+            expect.objectContaining({
+              type: "皇帝图鉴",
+              cardCount: 3
+            }),
+            expect.objectContaining({
+              type: "风云人物",
+              cardCount: 3
+            }),
+            expect.objectContaining({
+              type: "历史冷知识",
+              cardCount: 3
+            })
+          ]
+        })
+      })
+    ]);
+  });
+
+  it("rejects dynasty output when required modules are missing", async () => {
+    const restore = mockModelResponse({
+      dynasty: "东汉",
+      modules: createDynastyModules("东汉").slice(0, 3)
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        localDate: "2026-05-07",
+        mode: "dynasty",
+        dynasty: "东汉"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("failed");
+    expect(result.notifications).toBeUndefined();
+    expect(result.summary).toContain("4 个固定模块");
+  });
+
+  it("rejects dynasty output when module order is wrong", async () => {
+    const modules = createDynastyModules("东汉");
+    const restore = mockModelResponse({
+      dynasty: "东汉",
+      modules: [modules[1], modules[0], modules[2], modules[3]]
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        localDate: "2026-05-07",
+        dynasty: "东汉"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("failed");
+    expect(result.notifications).toBeUndefined();
+    expect(result.summary).toContain("模块顺序");
   });
 
   it("falls back to the least recently generated topic when all topics are archived", async () => {
@@ -816,7 +976,7 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
-    expect(result.notifications?.[0]?.payload?.topic).toBe("玄奘取经为什么重要");
+    expect(getPostPayload(result).topic).toBe("玄奘取经为什么重要");
   });
 
   it("fails the task when persisting the topic archive fails", async () => {

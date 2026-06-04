@@ -2872,6 +2872,65 @@ body[data-theme="day"] .summary-list button {
   width: min(100%, 360px);
 }
 
+.history-mode-switch {
+  grid-column: 1 / -1;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(78px, 1fr));
+  gap: 3px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid rgba(var(--accent-rgb), 0.16);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
+    rgba(4, 12, 22, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 24px rgba(0, 0, 0, 0.1);
+}
+
+.history-mode-switch button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: rgba(226, 235, 247, 0.62);
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.history-mode-switch button:hover {
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.history-mode-switch button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
+}
+
+.history-mode-switch button.is-active {
+  color: var(--accent-contrast);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.94), rgba(var(--accent-rgb), 0.76));
+  box-shadow:
+    0 8px 18px rgba(var(--accent-rgb), 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.history-mode-switch button.is-active:hover {
+  transform: translateY(-1px);
+}
+
 .history-panel__topic-form {
   width: min(100%, 280px);
 }
@@ -3080,6 +3139,44 @@ body[data-theme="day"] .summary-list button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.history-stage-card--dynasty-post {
+  gap: 12px;
+}
+
+.history-dynasty-cover,
+.history-dynasty-card-plan {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.history-dynasty-cover {
+  border-color: rgba(211, 178, 118, 0.16);
+  background:
+    linear-gradient(180deg, rgba(242, 214, 161, 0.045), rgba(255, 255, 255, 0.015)),
+    rgba(255, 255, 255, 0.018);
+}
+
+.history-dynasty-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.history-dynasty-card-plan > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-caption-card--compact {
+  padding: 12px;
+  border-radius: 14px;
 }
 
 .history-xhs-panel {
@@ -5658,6 +5755,29 @@ body[data-theme="day"] .history-generate-button {
   background: rgba(255, 255, 255, 0.9);
 }
 
+body[data-theme="day"] .history-mode-switch {
+  border-color: rgba(18, 33, 53, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 252, 0.86)),
+    rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 24px rgba(18, 25, 38, 0.06);
+}
+
+body[data-theme="day"] .history-mode-switch button {
+  color: rgba(45, 57, 75, 0.62);
+}
+
+body[data-theme="day"] .history-mode-switch button:hover {
+  color: #17202d;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+body[data-theme="day"] .history-mode-switch button.is-active {
+  color: #ffffff;
+}
+
 body[data-theme="day"] .history-panel__topic-form input,
 body[data-theme="day"] .history-topic-form input {
   color: #1d2633;
@@ -5667,6 +5787,12 @@ body[data-theme="day"] .history-topic-form input {
 body[data-theme="day"] .history-panel__topic-form input::placeholder,
 body[data-theme="day"] .history-topic-form input::placeholder {
   color: rgba(70, 81, 96, 0.52);
+}
+
+body[data-theme="day"] .history-dynasty-cover,
+body[data-theme="day"] .history-dynasty-card-plan {
+  border-color: rgba(20, 35, 54, 0.08);
+  background: rgba(255, 255, 255, 0.66);
 }
 
 body[data-theme="day"] .message-entry p,
@@ -6028,6 +6154,10 @@ body[data-theme="day"] .topic-score {
 
   .history-panel__topic-form,
   .history-topic-form {
+    width: 100%;
+  }
+
+  .history-mode-switch {
     width: 100%;
   }
 
