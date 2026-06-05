@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { SUB_AGENT_HOME_MODULE_DEFINITIONS } from "@agent-zy/agent-registry/sub-agents";
 import type {
   AppState,
+  BrowserAutomationState,
   ChatMessage,
   ClassicShotDashboardSummary,
   ClassicShotProject,
@@ -29,6 +30,9 @@ import type {
   ModelSettingsState,
   NotificationRecord,
   NewsState,
+  PromptTemplateRecord,
+  PromptTemplateState,
+  PromptTemplateVariable,
   SummaryDashboard,
   SummaryEntry,
   SummaryState,
@@ -219,6 +223,8 @@ function createInitialState(): AppState {
     },
     cinematic: createEmptyCinematicState(),
     classicShots: createEmptyClassicShotState(),
+    browserAutomation: createEmptyBrowserAutomationState(),
+    promptTemplates: createEmptyPromptTemplateState(),
     summary: createEmptySummaryState(),
     historyXhs: createEmptyHistoryXhsState(),
     historyPush: {
@@ -363,6 +369,93 @@ function createEmptyClassicShotState(): ClassicShotState {
     lastGeneratedAt: null,
     status: "idle",
     lastError: null
+  };
+}
+
+function createEmptyBrowserAutomationState(): BrowserAutomationState {
+  return {
+    workflows: [],
+    runs: [],
+    triggerRules: [],
+    lastUpdatedAt: null
+  };
+}
+
+function createEmptyPromptTemplateState(): PromptTemplateState {
+  return {
+    items: [],
+    lastUpdatedAt: null
+  };
+}
+
+function normalizeBrowserAutomationState(
+  browserAutomation: Partial<BrowserAutomationState> | undefined
+): BrowserAutomationState {
+  return {
+    workflows: Array.isArray(browserAutomation?.workflows) ? browserAutomation.workflows : [],
+    runs: Array.isArray(browserAutomation?.runs) ? browserAutomation.runs.slice(0, 50) : [],
+    triggerRules: Array.isArray(browserAutomation?.triggerRules) ? browserAutomation.triggerRules : [],
+    lastUpdatedAt: typeof browserAutomation?.lastUpdatedAt === "string" ? browserAutomation.lastUpdatedAt : null
+  };
+}
+
+function normalizePromptTemplateVariable(variable: Partial<PromptTemplateVariable>, index: number): PromptTemplateVariable {
+  const key = typeof variable.key === "string" && variable.key.trim()
+    ? variable.key.trim()
+    : `variable_${index + 1}`;
+  const label = typeof variable.label === "string" && variable.label.trim()
+    ? variable.label.trim()
+    : key;
+
+  return {
+    id: typeof variable.id === "string" && variable.id.trim() ? variable.id.trim() : `prompt-variable-${index + 1}`,
+    key,
+    label,
+    description: typeof variable.description === "string" ? variable.description : "",
+    defaultValue: typeof variable.defaultValue === "string" ? variable.defaultValue : "",
+    required: typeof variable.required === "boolean" ? variable.required : true
+  };
+}
+
+function normalizePromptTemplateRecord(template: Partial<PromptTemplateRecord>, index: number): PromptTemplateRecord {
+  const now = nowIso();
+  const createdAt = typeof template.createdAt === "string" ? template.createdAt : now;
+  const updatedAt = typeof template.updatedAt === "string" ? template.updatedAt : createdAt;
+  const originalPrompt = typeof template.originalPrompt === "string" ? template.originalPrompt : "";
+  const templatePrompt = typeof template.templatePrompt === "string" && template.templatePrompt.trim()
+    ? template.templatePrompt
+    : originalPrompt;
+  const analysisStatus =
+    template.analysisStatus === "completed" || template.analysisStatus === "failed" || template.analysisStatus === "pending"
+      ? template.analysisStatus
+      : "completed";
+
+  return {
+    id: typeof template.id === "string" && template.id.trim() ? template.id : `prompt-template-${index + 1}`,
+    title: typeof template.title === "string" && template.title.trim() ? template.title : "未命名提示词模版",
+    originalPrompt,
+    templatePrompt,
+    variables: Array.isArray(template.variables)
+      ? template.variables.map(normalizePromptTemplateVariable)
+      : [],
+    analysisStatus,
+    analysisError: typeof template.analysisError === "string" ? template.analysisError : null,
+    createdAt,
+    updatedAt,
+    lastUsedAt: typeof template.lastUsedAt === "string" ? template.lastUsedAt : null
+  };
+}
+
+function normalizePromptTemplateState(
+  promptTemplates: Partial<PromptTemplateState> | undefined
+): PromptTemplateState {
+  return {
+    items: Array.isArray(promptTemplates?.items)
+      ? promptTemplates.items
+          .map(normalizePromptTemplateRecord)
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      : [],
+    lastUpdatedAt: typeof promptTemplates?.lastUpdatedAt === "string" ? promptTemplates.lastUpdatedAt : null
   };
 }
 
@@ -1493,6 +1586,8 @@ function normalizeAppState(state: AppState): AppState {
     topics: normalizeTopicState(state.topics),
     cinematic: normalizeCinematicState(state.cinematic),
     classicShots: normalizeClassicShotState(state.classicShots),
+    browserAutomation: normalizeBrowserAutomationState(state.browserAutomation),
+    promptTemplates: normalizePromptTemplateState(state.promptTemplates),
     summary: normalizeSummaryState(state.summary),
     historyXhs: normalizeHistoryXhsState(state.historyXhs),
     historyPush: normalizeHistoryPushState(state.historyPush),
@@ -1520,6 +1615,8 @@ export interface ControlPlaneStore {
   getLedgerStages(): LifeStageRecord[];
   upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
   setCinematicState(cinematic: CinematicState): CinematicState;
+  setBrowserAutomationState(browserAutomation: BrowserAutomationState): BrowserAutomationState;
+  setPromptTemplateState(promptTemplates: PromptTemplateState): PromptTemplateState;
   setSummaryState(summary: SummaryState): SummaryState;
   setHistoryXhsState(historyXhs: HistoryXhsState): HistoryXhsState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
@@ -1683,6 +1780,18 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.cinematic);
+    },
+    setBrowserAutomationState(browserAutomation) {
+      state.browserAutomation = normalizeBrowserAutomationState(browserAutomation);
+      persist();
+
+      return structuredClone(state.browserAutomation);
+    },
+    setPromptTemplateState(promptTemplates) {
+      state.promptTemplates = normalizePromptTemplateState(promptTemplates);
+      persist();
+
+      return structuredClone(state.promptTemplates);
     },
     setSummaryState(summary) {
       state.summary = normalizeSummaryState(summary);
@@ -1893,6 +2002,8 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           ...state.classicShots,
           dashboard: buildClassicShotDashboard(state.classicShots)
         },
+        browserAutomation: state.browserAutomation,
+        promptTemplates: state.promptTemplates,
         summary: {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)

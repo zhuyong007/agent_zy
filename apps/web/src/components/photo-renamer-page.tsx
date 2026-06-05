@@ -14,6 +14,7 @@ import {
   undoPhotoRenames
 } from "../api";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
+import { ToolsBackLink } from "./tools-page";
 
 type PhotoRenamerWorkspaceProps = {
   previewAction?: (directoryPath: string, mediaScope: PhotoRenameMediaScope) => Promise<PhotoRenamePreviewResult>;
@@ -134,6 +135,7 @@ export function PhotoRenamerWorkspace({
           <h1>照片和视频名称修改</h1>
           <p>递归扫描文件夹中的照片和视频，按拍摄或创建时间生成名称。预览确认后才会修改文件。</p>
         </div>
+        <ToolsBackLink />
       </header>
 
       <form className="photo-renamer-form" onSubmit={handlePreview}>

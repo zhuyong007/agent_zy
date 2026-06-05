@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { HistoryDynastyPayload, HistoryPostPayload } from "@agent-zy/shared-types";
 
 import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, reportClientEvent, syncHistoryXhsAnalytics } from "../api";
-import { getHistoryNotifications } from "../history-view";
+import {
+  getHistoryNotifications,
+  getHistoryPayloadSummary,
+  getHistoryPayloadTitle,
+  getHistoryPayloadUpdatedAt,
+  isHistoryDynastyPayload,
+  isHistoryPostPayload
+} from "../history-view";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 
 function formatDateTime(timestamp?: string | null) {
@@ -40,6 +48,7 @@ export function HistoryPage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicInput, setTopicInput] = useState("");
+  const [generationMode, setGenerationMode] = useState<"topic" | "dynasty">("topic");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const { layout } = useHomeLayoutPreferences();
 
@@ -48,11 +57,22 @@ export function HistoryPage() {
     queryFn: fetchDashboard
   });
   const historyGenerateMutation = useMutation({
-    mutationFn: (topic?: string) =>
-      generateHistory({
-        reason: "manual",
-        topic
-      }),
+    mutationFn: (input: { mode: "topic" | "dynasty"; value?: string }) => {
+      const value = input.value?.trim() || undefined;
+
+      return generateHistory(
+        input.mode === "dynasty"
+          ? {
+              reason: "manual",
+              mode: "dynasty",
+              dynasty: value
+            }
+          : {
+              reason: "manual",
+              topic: value
+            }
+      );
+    },
     onSuccess: (nextDashboard) => {
       console.info("[history-page] generate:onSuccess", {
         notifications: nextDashboard.notifications.length
@@ -126,12 +146,23 @@ export function HistoryPage() {
   const selectedNotification =
     historyNotifications.find((notification) => notification.id === selectedId) ?? historyNotifications[0] ?? null;
   const selectedPayload = selectedNotification?.payload ?? null;
-  const selectedCover = selectedPayload?.cover ?? null;
+  const selectedPostPayload: HistoryPostPayload | null =
+    selectedPayload && isHistoryPostPayload(selectedPayload) ? selectedPayload : null;
+  const selectedDynastyPayload: HistoryDynastyPayload | null =
+    selectedPayload && isHistoryDynastyPayload(selectedPayload) ? selectedPayload : null;
+  const selectedCover = selectedPostPayload?.cover ?? null;
   const selectedCoverText = selectedCover
     ? [selectedCover.title, selectedCover.subtitle, selectedCover.imageText].filter(Boolean).join("\n")
     : "";
+  const selectedTitle = selectedPayload ? getHistoryPayloadTitle(selectedPayload) : null;
+  const selectedSummary = selectedPayload ? getHistoryPayloadSummary(selectedPayload) : null;
+  const selectedUpdatedAt = selectedNotification ? getHistoryPayloadUpdatedAt(selectedNotification) : null;
   const totalCards = historyNotifications.reduce(
-    (count, notification) => count + notification.payload.cardCount,
+    (count, notification) =>
+      count +
+      (isHistoryPostPayload(notification.payload)
+        ? notification.payload.cardCount
+        : notification.payload.modules.reduce((moduleCount, module) => moduleCount + module.cardCount, 0)),
     0
   );
 
@@ -152,7 +183,7 @@ export function HistoryPage() {
         rightMeta={[
           { label: "themes", value: String(historyNotifications.length) },
           { label: "cards", value: String(totalCards) },
-          { label: "更新", value: formatDateTime(selectedPayload?.generatedAt) }
+          { label: "更新", value: formatDateTime(selectedUpdatedAt) }
         ]}
       />
 
@@ -161,15 +192,21 @@ export function HistoryPage() {
           <header className="history-stage__hero">
             <div>
               <p className="eyebrow">History Storyboard</p>
-              <h1>{selectedPayload?.topic ?? "历史知识主动生成"}</h1>
+              <h1>{selectedTitle ?? "历史知识主动生成"}</h1>
               <p>
-                {selectedPayload?.summary ??
+                {selectedSummary ??
                   "手动触发一次历史知识生成，立即拿到今日主题、图文拆解和小红书正文。"}
               </p>
             </div>
             <div className="history-stage__meta">
-              <span>{formatDateTime(selectedPayload?.generatedAt)}</span>
-              <strong>{selectedPayload ? `${selectedPayload.cardCount} 张图文结构` : "等待生成"}</strong>
+              <span>{formatDateTime(selectedUpdatedAt)}</span>
+              <strong>
+                {selectedPostPayload
+                  ? `${selectedPostPayload.cardCount} 张图文结构`
+                  : selectedDynastyPayload
+                    ? `${selectedDynastyPayload.modules.length} 套内容`
+                    : "等待生成"}
+              </strong>
               <form
                 className="history-topic-form"
                 onSubmit={(event) => {
@@ -182,17 +219,39 @@ export function HistoryPage() {
                     message: "历史知识页面立即生成",
                     agentId: "history-agent",
                     details: {
-                      hasTopic: Boolean(topicInput.trim())
+                      hasTopic: generationMode === "topic" && Boolean(topicInput.trim()),
+                      hasDynasty: generationMode === "dynasty" && Boolean(topicInput.trim())
                     }
                   }).catch(() => undefined);
-                  historyGenerateMutation.mutate(topicInput.trim() || undefined);
+                  historyGenerateMutation.mutate({
+                    mode: generationMode,
+                    value: topicInput.trim() || undefined
+                  });
                 }}
               >
+                <div className="history-mode-switch" role="tablist" aria-label="历史内容生成模式">
+                  <button
+                    type="button"
+                    className={generationMode === "topic" ? "is-active" : ""}
+                    aria-selected={generationMode === "topic"}
+                    onClick={() => setGenerationMode("topic")}
+                  >
+                    主题
+                  </button>
+                  <button
+                    type="button"
+                    className={generationMode === "dynasty" ? "is-active" : ""}
+                    aria-selected={generationMode === "dynasty"}
+                    onClick={() => setGenerationMode("dynasty")}
+                  >
+                    朝代
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={topicInput}
                   onChange={(event) => setTopicInput(event.target.value)}
-                  placeholder="输入主题，例如：商鞅变法"
+                  placeholder={generationMode === "dynasty" ? "输入朝代，例如：东汉" : "输入主题，例如：商鞅变法"}
                   disabled={historyGenerateMutation.isPending}
                 />
                 <button type="submit" className="history-generate-button" disabled={historyGenerateMutation.isPending}>
@@ -287,6 +346,83 @@ export function HistoryPage() {
                 </div>
               </div>
 
+              {selectedDynastyPayload ? (
+                <section className="history-stage__section history-stage__section--dynasty">
+                  <div className="history-stage__heading">
+                    <div>
+                      <p className="eyebrow">Dynasty Set</p>
+                      <h2>朝代四件套</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="history-copy-button"
+                      aria-label="复制朝代四件套 JSON"
+                      onClick={() =>
+                        void handleCopy("dynasty-json", JSON.stringify(selectedDynastyPayload, null, 2))
+                      }
+                    >
+                      {copiedKey === "dynasty-json" ? "已复制" : "复制 JSON"}
+                    </button>
+                  </div>
+                  <div className="history-stage__cards history-stage__cards--dynasty">
+                    {selectedDynastyPayload.modules.map((module, index) => (
+                      <article key={`${selectedNotification.id}-${module.type}`} className="history-stage-card history-stage-card--dynasty-post">
+                        <div className="history-stage-card__head">
+                          <span>{String(index + 1).padStart(2, "0")} · {module.type}</span>
+                          <button
+                            type="button"
+                            className="history-copy-button"
+                            aria-label={`复制${module.type}小红书正文`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleCopy(`dynasty-caption-${index}`, module.xiaohongshuCaption);
+                            }}
+                          >
+                            {copiedKey === `dynasty-caption-${index}` ? "已复制" : "正文"}
+                          </button>
+                        </div>
+                        <strong>{module.topic}</strong>
+                        <p>{module.summary}</p>
+                        {module.cover ? (
+                          <div className="history-dynasty-cover">
+                            <span>封面方案</span>
+                            <strong>{module.cover.title}</strong>
+                            <p>{module.cover.subtitle}</p>
+                            <small>{module.cover.prompt}</small>
+                          </div>
+                        ) : null}
+                        <div className="history-dynasty-cards">
+                          {module.cards.map((card, cardIndex) => (
+                            <div key={`${module.type}-${card.title}`} className="history-dynasty-card-plan">
+                              <div>
+                                <span>图 {cardIndex + 1}</span>
+                                <strong>{card.title}</strong>
+                              </div>
+                              <p>{card.imageText}</p>
+                              <small>{card.prompt}</small>
+                              <button
+                                type="button"
+                                className="history-copy-button"
+                                aria-label={`复制${module.type}第${cardIndex + 1}张生图提示词`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleCopy(`dynasty-card-prompt-${index}-${cardIndex}`, card.prompt);
+                                }}
+                              >
+                                {copiedKey === `dynasty-card-prompt-${index}-${cardIndex}` ? "已复制" : "复制提示词"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="history-caption-card history-caption-card--compact">
+                          <p>{module.xiaohongshuCaption}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               {selectedCover ? (
                 <section className="history-stage__section history-stage__section--cover">
                   <div className="history-stage__heading">
@@ -333,50 +469,54 @@ export function HistoryPage() {
                 </section>
               ) : null}
 
-              <section className="history-stage__section">
-                <div className="history-stage__heading">
-                  <p className="eyebrow">Card Plan</p>
-                  <h2>图文拆解</h2>
-                </div>
-                <div className="history-stage__cards">
-                  {selectedPayload.cards.map((card, index) => (
-                    <article key={`${selectedNotification.id}-${card.title}`} className="history-stage-card">
-                      <div className="history-stage-card__head">
-                        <span>图 {index + 1}</span>
-                        <button
-                          type="button"
-                          className="history-copy-button"
-                          aria-label={`复制第${index + 1}张生图提示词`}
-                          onClick={() => void handleCopy(`prompt-${index}`, card.prompt)}
-                        >
-                          {copiedKey === `prompt-${index}` ? "已复制" : "复制"}
-                        </button>
-                      </div>
-                      <strong>{card.title}</strong>
-                      <p>{card.imageText}</p>
-                      <small>{card.prompt}</small>
-                    </article>
-                  ))}
-                </div>
-              </section>
+              {selectedPostPayload ? (
+                <section className="history-stage__section">
+                  <div className="history-stage__heading">
+                    <p className="eyebrow">Card Plan</p>
+                    <h2>图文拆解</h2>
+                  </div>
+                  <div className="history-stage__cards">
+                    {selectedPostPayload.cards.map((card, index) => (
+                      <article key={`${selectedNotification.id}-${card.title}`} className="history-stage-card">
+                        <div className="history-stage-card__head">
+                          <span>图 {index + 1}</span>
+                          <button
+                            type="button"
+                            className="history-copy-button"
+                            aria-label={`复制第${index + 1}张生图提示词`}
+                            onClick={() => void handleCopy(`prompt-${index}`, card.prompt)}
+                          >
+                            {copiedKey === `prompt-${index}` ? "已复制" : "复制"}
+                          </button>
+                        </div>
+                        <strong>{card.title}</strong>
+                        <p>{card.imageText}</p>
+                        <small>{card.prompt}</small>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-              <section className="history-stage__section history-stage__section--caption">
-                <div className="history-stage__heading">
-                  <p className="eyebrow">Caption</p>
-                  <h2>小红书正文</h2>
-                  <button
-                    type="button"
-                    className="history-copy-button"
-                    aria-label="复制正文"
-                    onClick={() => void handleCopy("caption", selectedPayload.xiaohongshuCaption)}
-                  >
-                    {copiedKey === "caption" ? "已复制" : "复制"}
-                  </button>
-                </div>
-                <article className="history-caption-card">
-                  <p>{selectedPayload.xiaohongshuCaption}</p>
-                </article>
-              </section>
+              {selectedPostPayload ? (
+                <section className="history-stage__section history-stage__section--caption">
+                  <div className="history-stage__heading">
+                    <p className="eyebrow">Caption</p>
+                    <h2>小红书正文</h2>
+                    <button
+                      type="button"
+                      className="history-copy-button"
+                      aria-label="复制正文"
+                      onClick={() => void handleCopy("caption", selectedPostPayload.xiaohongshuCaption)}
+                    >
+                      {copiedKey === "caption" ? "已复制" : "复制"}
+                    </button>
+                  </div>
+                  <article className="history-caption-card">
+                    <p>{selectedPostPayload.xiaohongshuCaption}</p>
+                  </article>
+                </section>
+              ) : null}
             </>
           ) : (
             <div className="edge-empty">还没有历史知识推送，等下一次定时生成后这里会出现内容。</div>
@@ -400,6 +540,9 @@ export function HistoryPage() {
             {historyNotifications.length > 0 ? (
               historyNotifications.map((notification) => {
                 const active = notification.id === selectedNotification?.id;
+                const title = getHistoryPayloadTitle(notification.payload);
+                const summary = getHistoryPayloadSummary(notification.payload);
+                const updatedAt = getHistoryPayloadUpdatedAt(notification);
 
                 return (
                   <article
@@ -411,14 +554,14 @@ export function HistoryPage() {
                       className="history-archive__select"
                       onClick={() => setSelectedId(notification.id)}
                     >
-                      <span>{formatDateTime(notification.payload.generatedAt)}</span>
-                      <strong>{notification.payload.topic}</strong>
-                      <p>{notification.payload.summary}</p>
+                      <span>{formatDateTime(updatedAt)}</span>
+                      <strong>{title}</strong>
+                      <p>{summary}</p>
                     </button>
                     <button
                       type="button"
                       className="history-archive__delete"
-                      aria-label={`删除 ${notification.payload.topic}`}
+                      aria-label={`删除 ${title}`}
                       disabled={historyDeleteMutation.isPending}
                       onClick={() => historyDeleteMutation.mutate(notification.id)}
                     >

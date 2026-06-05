@@ -1,6 +1,13 @@
 import { defineAgent, getModelClient, normalizeModelOutput, parseModelJson } from "@agent-zy/agent-sdk";
 import type { AgentExecutionRequest, AgentExecutionResult } from "@agent-zy/agent-sdk";
-import type { HistoryPostCard, HistoryPostCover, HistoryPostPayload } from "@agent-zy/shared-types";
+import type {
+  HistoryDynastyModule,
+  HistoryDynastyModuleType,
+  HistoryDynastyPayload,
+  HistoryPostCard,
+  HistoryPostCover,
+  HistoryPostPayload
+} from "@agent-zy/shared-types";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
@@ -21,6 +28,12 @@ const HISTORY_TOPICS = [
 
 const MIN_HISTORY_CARD_COUNT = 3;
 const MAX_HISTORY_CARD_COUNT = 10;
+const DYNASTY_MODULE_TYPES: HistoryDynastyModuleType[] = [
+  "王朝兴衰录",
+  "皇帝图鉴",
+  "风云人物",
+  "历史冷知识"
+];
 
 function hashText(value: string): number {
   let hash = 0;
@@ -104,7 +117,7 @@ function getHistoryNotificationTopics(state: AgentExecutionRequest["state"]): st
   return state.notifications
     .filter((notification) => notification.kind === "history-post")
     .flatMap((notification) => {
-      const payloadTopic = asString(notification.payload?.topic);
+      const payloadTopic = getHistoryPayloadTopic(notification.payload);
       const titleTopic = asString(notification.title)?.replace(/^每日历史知识点[:：]/, "").trim();
 
       return [payloadTopic, titleTopic].filter((topic): topic is string => Boolean(topic));
@@ -180,10 +193,22 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function getHistoryPayloadTopic(value: unknown): string | null {
+  const record = asRecord(value);
+
+  return asString(record?.topic);
+}
+
 function hasPayloadShape(value: unknown): boolean {
   const record = asRecord(value);
 
   return Boolean(record?.topic || record?.summary || record?.cards || record?.xiaohongshuCaption);
+}
+
+function hasDynastyPayloadShape(value: unknown): boolean {
+  const record = asRecord(value);
+
+  return Boolean(record?.dynasty || record?.modules);
 }
 
 function countChineseCharacters(value: string): number {
@@ -348,6 +373,54 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
   };
 }
 
+function validateDynastyModule(value: unknown, index: number, generatedAt: string): HistoryDynastyModule {
+  const record = asRecord(value);
+
+  if (!record) {
+    throw new Error("朝代四件套模块必须是 JSON 对象");
+  }
+
+  const expectedType = DYNASTY_MODULE_TYPES[index];
+  const type = asString(record.type);
+
+  if (type !== expectedType) {
+    throw new Error(`朝代四件套模块顺序必须是：${DYNASTY_MODULE_TYPES.join("、")}`);
+  }
+
+  const payload = validatePayload(record, generatedAt);
+
+  return {
+    type: expectedType,
+    ...payload
+  };
+}
+
+function validateDynastyPayload(value: unknown, generatedAt: string): HistoryDynastyPayload {
+  const normalizedValue =
+    Array.isArray(value) && value.length === 1 && hasDynastyPayloadShape(value[0]) ? value[0] : value;
+  const record = asRecord(normalizedValue);
+
+  if (!record) {
+    throw new Error("模型输出不是 JSON 对象");
+  }
+
+  const dynasty = asString(record.dynasty);
+  const modules = Array.isArray(record.modules) ? record.modules : [];
+
+  if (!dynasty) {
+    throw new Error("朝代四件套输出缺少 dynasty");
+  }
+
+  if (modules.length !== DYNASTY_MODULE_TYPES.length) {
+    throw new Error("朝代四件套必须包含 4 个固定模块");
+  }
+
+  return {
+    dynasty,
+    modules: modules.map((module, index) => validateDynastyModule(module, index, generatedAt))
+  };
+}
+
 function normalizePayloadInput(value: unknown): unknown {
   const normalized = normalizeModelOutput(value);
 
@@ -357,6 +430,24 @@ function normalizePayloadInput(value: unknown): unknown {
 
   if (Array.isArray(normalized)) {
     const payloadCandidate = normalized.find(hasPayloadShape);
+
+    if (payloadCandidate) {
+      return payloadCandidate;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeDynastyPayloadInput(value: unknown): unknown {
+  const normalized = normalizeModelOutput(value);
+
+  if (hasDynastyPayloadShape(normalized)) {
+    return normalized;
+  }
+
+  if (Array.isArray(normalized)) {
+    const payloadCandidate = normalized.find(hasDynastyPayloadShape);
 
     if (payloadCandidate) {
       return payloadCandidate;
@@ -455,9 +546,150 @@ async function generateWithModelRuntime(
   throw new Error("模型输出校验失败");
 }
 
+async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: string): Promise<HistoryDynastyPayload> {
+  const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
+
+  if (fixture) {
+    return validateDynastyPayload(parseModelJson(fixture), requestedAt);
+  }
+
+  console.info("[history-agent] model-runtime:request", {
+    purpose: "vision",
+    mode: "dynasty"
+  });
+  const prompt = `请围绕朝代名称「${dynasty}」生成 4 套可直接发布的小红书历史图文策划。只输出严格 JSON 对象，不要输出 Markdown。JSON 必须是 {"dynasty":"${dynasty}","modules":[...]}，modules 必须按固定顺序包含 4 个模块：王朝兴衰录、皇帝图鉴、风云人物、历史冷知识。每个模块都必须像单独执行一次“主题模式”那样完整输出，字段必须是 type、topic、summary、cover、cardCount、cards、xiaohongshuCaption。
+
+模块1：王朝兴衰录。讲述整个朝代从建立到灭亡的发展脉络，覆盖建立背景、巅峰时期、关键转折点、衰落原因、灭亡过程。适合小红书阅读，不写流水账，强调故事感、戏剧冲突和因果关系。
+
+模块2：皇帝图鉴。展示该朝代的重要皇帝，优先选择开国皇帝、盛世皇帝、转折点皇帝、亡国相关皇帝。避免罗列全部皇帝。每位皇帝说明姓名、在位时间、一句话评价、主要功绩、主要问题。
+
+模块3：风云人物。展示影响朝代命运的人物，可包含皇帝、名将、权臣、谋士、外戚、宦官、改革家、起义领袖。优先选择真正改变历史走向的人物，不为凑数选择影响有限的人物。每个人物说明是谁、做了什么、为什么重要、对朝代造成什么影响。
+
+模块4：历史冷知识。输出最适合小红书传播的趣味知识，优先人口、经济、房价、科举、工资、饮食、军事、科技、娱乐、服饰、婚姻、交通、货币等方向。趣味性和收藏价值优先，冷门但真实，避免过于学术化。
+
+每个模块的 cover 必须包含 title、subtitle、imageText、prompt。cover.prompt 是该模块的小红书首图封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。
+
+每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要强调竖版小红书知识卡片，并说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。
+
+四个模块的 topic 要像可直接发布的小红书选题标题，例如“东汉是怎么一步步走向灭亡的”“看懂东汉只需要认识这几位皇帝”“改变东汉命运的5个人”“东汉公务员一个月赚多少钱？”。`;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await getModelClient().generateText({
+      purpose: "vision",
+      maxTokens: 9000,
+      timeoutMs: 600_000,
+      responseFormat: "json",
+      systemPrompt: "你是中文历史知识编辑，擅长把朝代史拆成小红书可发布图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
+      prompt:
+        attempt === 0
+          ? prompt
+          : `${prompt}\n上一次输出不完整或字段不符合要求。请重新生成完整 JSON，保持内容紧凑，必须返回 dynasty 和 4 个完整 modules，每个 module 都必须包含完整 cover、cardCount、cards 和 xiaohongshuCaption，不要输出解释。`
+    });
+    const rawContent = result.text;
+    const normalizedPayloadInput = normalizeDynastyPayloadInput(rawContent);
+
+    console.info("[history-agent] model-runtime:response-shape", {
+      attempt: attempt + 1,
+      mode: "dynasty",
+      rawContentType: Array.isArray(rawContent) ? "array" : typeof rawContent,
+      normalizedType: Array.isArray(normalizedPayloadInput) ? "array" : typeof normalizedPayloadInput,
+      preview:
+        typeof rawContent === "string"
+          ? rawContent.slice(0, 200)
+          : JSON.stringify(normalizedPayloadInput)?.slice(0, 200) ?? null
+    });
+
+    if (!rawContent) {
+      throw new Error("ModelScope 返回内容为空");
+    }
+
+    try {
+      return validateDynastyPayload(normalizedPayloadInput, requestedAt);
+    } catch (error) {
+      if (attempt === 1) {
+        throw error;
+      }
+
+      console.warn("[history-agent] model-runtime:retry-incomplete-dynasty-json", {
+        error: error instanceof Error ? error.message : "模型输出校验失败"
+      });
+    }
+  }
+
+  throw new Error("模型输出校验失败");
+}
+
 export const agent = defineAgent({
   async execute(input: AgentExecutionRequest): Promise<AgentExecutionResult> {
     const localDate = asString(input.meta?.localDate) ?? input.requestedAt.slice(0, 10);
+    const requestedMode = asString(input.meta?.mode);
+    const requestedDynasty = asString(input.meta?.dynasty);
+    const shouldGenerateDynasty = requestedMode === "dynasty" || Boolean(requestedDynasty);
+
+    if (shouldGenerateDynasty) {
+      const dynasty = requestedDynasty ?? asString(input.meta?.topic);
+
+      console.info("[history-agent] execute:start", {
+        taskId: input.taskId,
+        trigger: input.trigger,
+        localDate,
+        mode: "dynasty",
+        dynasty,
+        hasFixture: Boolean(process.env.HISTORY_POST_FIXTURE_JSON)
+      });
+
+      if (!dynasty) {
+        return {
+          status: "failed",
+          summary: "朝代四件套生成缺少 dynasty",
+          assistantMessage: "朝代四件套生成失败，请输入朝代名称。"
+        };
+      }
+
+      try {
+        const payload = await generateDynastyWithModelRuntime(dynasty, input.requestedAt);
+
+        console.info("[history-agent] execute:success", {
+          taskId: input.taskId,
+          mode: "dynasty",
+          dynasty: payload.dynasty,
+          moduleCount: payload.modules.length
+        });
+
+        return {
+          status: "completed",
+          summary: `生成朝代四件套：${payload.dynasty}`,
+          assistantMessage: `已生成朝代四件套：${payload.dynasty}`,
+          notifications: [
+            {
+              kind: "history-post",
+              title: `朝代四件套：${payload.dynasty}`,
+              body: `已生成${payload.dynasty}朝代四件套。`,
+              persistent: true,
+              payload
+            }
+          ],
+          domainUpdates: {
+            historyPush: {
+              lastTriggeredDate: localDate
+            }
+          }
+        };
+      } catch (error) {
+        console.error("[history-agent] execute:failed", {
+          taskId: input.taskId,
+          mode: "dynasty",
+          error: error instanceof Error ? error.message : String(error)
+        });
+
+        return {
+          status: "failed",
+          summary: error instanceof Error ? error.message : "朝代四件套生成失败",
+          assistantMessage: "朝代四件套生成失败，请检查 ModelScope 配置或稍后重试。"
+        };
+      }
+    }
+
     const archivePath = getTopicArchivePath();
     const archive = loadTopicArchive(archivePath);
     const topic =

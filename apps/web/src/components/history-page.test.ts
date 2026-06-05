@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import type { DashboardData, NotificationRecord } from "@agent-zy/shared-types";
+import type {
+  DashboardData,
+  HistoryDynastyModuleType,
+  HistoryPostPayload,
+  NotificationRecord
+} from "@agent-zy/shared-types";
 
 vi.mock("@tanstack/react-router", async () => {
   const react = await import("react");
@@ -48,6 +53,40 @@ const historyNotification: NotificationRecord = {
   }
 };
 
+function createDynastyModule(type: HistoryDynastyModuleType, topic: string) {
+  return {
+    type,
+    topic,
+    summary: `${topic} 摘要`,
+    cover: {
+      title: topic,
+      subtitle: "一套完整封面方案",
+      imageText: `${topic}\n关键人物 / 时间线 / 影响`,
+      prompt: `${topic}，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代场景准确，适当留白`
+    },
+    cardCount: 3,
+    cards: [
+      {
+        title: `${topic} 图1`,
+        imageText: "先讲背景",
+        prompt: `${topic} 图1，竖版小红书历史知识卡片，主体清晰居中，历史时代准确，适当留白`
+      },
+      {
+        title: `${topic} 图2`,
+        imageText: "再讲转折",
+        prompt: `${topic} 图2，竖版小红书历史知识卡片，主体清晰居中，历史时代准确，适当留白`
+      },
+      {
+        title: `${topic} 图3`,
+        imageText: "最后讲影响",
+        prompt: `${topic} 图3，竖版小红书历史知识卡片，主体清晰居中，历史时代准确，适当留白`
+      }
+    ],
+    xiaohongshuCaption: `${topic} 小红书正文`,
+    generatedAt: "2026-05-23T08:00:00.000Z"
+  };
+}
+
 const dashboard: DashboardData = {
   notifications: [historyNotification],
   homeLayout: [],
@@ -82,6 +121,30 @@ const dashboard: DashboardData = {
   }
 } as unknown as DashboardData;
 
+const dynastyNotification: NotificationRecord = {
+  id: "history-dynasty-1",
+  kind: "history-post",
+  title: "朝代四件套：东汉",
+  body: "已生成东汉朝代四件套。",
+  createdAt: "2026-05-23T08:00:00.000Z",
+  persistent: true,
+  read: false,
+  payload: {
+    dynasty: "东汉",
+    modules: [
+      createDynastyModule("王朝兴衰录", "东汉是怎么一步步走向灭亡的"),
+      createDynastyModule("皇帝图鉴", "看懂东汉只需要认识这几位皇帝"),
+      createDynastyModule("风云人物", "改变东汉命运的5个人"),
+      createDynastyModule("历史冷知识", "东汉公务员一个月赚多少钱？")
+    ]
+  }
+};
+
+const dynastyDashboard: DashboardData = {
+  ...dashboard,
+  notifications: [dynastyNotification]
+} as unknown as DashboardData;
+
 const dashboardAfterDelete: DashboardData = {
   ...dashboard,
   notifications: []
@@ -99,7 +162,7 @@ vi.mock("../api", () => ({
   restartProject: vi.fn(async () => ({ ok: true }))
 }));
 
-import { cancelNotification, syncHistoryXhsAnalytics } from "../api";
+import { cancelNotification, fetchDashboard, syncHistoryXhsAnalytics } from "../api";
 import { HistoryPage } from "./history-page";
 
 describe("HistoryPage", () => {
@@ -116,7 +179,9 @@ describe("HistoryPage", () => {
     vi.clearAllMocks();
   });
 
-  async function renderHistoryPage() {
+  async function renderHistoryPage(currentDashboard = dashboard) {
+    vi.mocked(fetchDashboard).mockResolvedValueOnce(currentDashboard);
+
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -128,7 +193,7 @@ describe("HistoryPage", () => {
       }
     });
 
-    queryClient.setQueryData(["dashboard"], dashboard);
+    queryClient.setQueryData(["dashboard"], currentDashboard);
     queryClient.setQueryData(["home-layout"], []);
 
     container = document.createElement("div");
@@ -175,7 +240,7 @@ describe("HistoryPage", () => {
       copyPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(writeText).toHaveBeenLastCalledWith(historyNotification.payload?.cards[0]?.prompt);
+    expect(writeText).toHaveBeenLastCalledWith((historyNotification.payload as HistoryPostPayload).cards[0]?.prompt);
   });
 
   it("shows and copies xiaohongshu cover plan text from the selected history item", async () => {
@@ -213,7 +278,7 @@ describe("HistoryPage", () => {
       copyCoverPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(writeText).toHaveBeenLastCalledWith(historyNotification.payload?.cover?.prompt);
+    expect(writeText).toHaveBeenLastCalledWith((historyNotification.payload as HistoryPostPayload).cover?.prompt);
   });
 
   it("deletes an archived history notification from the history list", async () => {
@@ -250,5 +315,70 @@ describe("HistoryPage", () => {
     });
 
     expect(syncHistoryXhsAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders and copies dynasty four-module payloads", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true
+    });
+
+    await renderHistoryPage(dynastyDashboard);
+
+    expect(container.textContent).toContain("东汉");
+    expect(container.textContent).toContain("朝代四件套");
+    expect(container.textContent).toContain("王朝兴衰录");
+    expect(container.textContent).toContain("皇帝图鉴");
+    expect(container.textContent).toContain("风云人物");
+    expect(container.textContent).toContain("历史冷知识");
+    expect(container.textContent).toContain("东汉是怎么一步步走向灭亡的");
+    expect(container.textContent).toContain("东汉是怎么一步步走向灭亡的 图1");
+    expect(container.textContent).toContain("小红书正文");
+
+    const copyJsonButton = container.querySelector(
+      'button[aria-label="复制朝代四件套 JSON"]'
+    ) as HTMLButtonElement | null;
+    let copyContentButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录小红书正文"]'
+    ) as HTMLButtonElement | null;
+    let copyPromptButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录第1张生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    expect(copyJsonButton).toBeTruthy();
+    expect(copyContentButton).toBeTruthy();
+    expect(copyPromptButton).toBeTruthy();
+
+    await act(async () => {
+      copyJsonButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const copyCalls = writeText.mock.calls as unknown as string[][];
+    expect(JSON.parse(String(copyCalls[0]?.[0]))).toEqual(dynastyNotification.payload);
+
+    copyContentButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录小红书正文"]'
+    ) as HTMLButtonElement | null;
+
+    expect(copyContentButton).toBeTruthy();
+
+    await act(async () => {
+      copyContentButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith("东汉是怎么一步步走向灭亡的 小红书正文");
+
+    copyPromptButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录第1张生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      copyPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith(
+      "东汉是怎么一步步走向灭亡的 图1，竖版小红书历史知识卡片，主体清晰居中，历史时代准确，适当留白"
+    );
   });
 });

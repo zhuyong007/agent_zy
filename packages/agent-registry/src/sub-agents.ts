@@ -1,4 +1,5 @@
 import type { AgentManifest } from "@agent-zy/agent-sdk";
+import { manifest as browserAutomationManifest } from "@agent-zy/browser-automation-agent/manifest";
 import { manifest as classicShotManifest } from "@agent-zy/classic-shot-agent/manifest";
 import { manifest as cinematicManifest } from "@agent-zy/cinematic-agent/manifest";
 import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
@@ -111,6 +112,18 @@ export const SUB_AGENT_ROUTES = [
       defaultSize: "large",
       defaultVisible: true,
       order: 7
+    }
+  },
+  {
+    agentId: "browser-automation-agent",
+    manifest: browserAutomationManifest,
+    homeModule: {
+      id: "browserAutomation",
+      label: "浏览器自动化",
+      description: "结构化网页操作、等待判断和跨模块触发",
+      defaultSize: "smaller",
+      defaultVisible: false,
+      order: 9
     }
   },
   {

@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createBrowserAutomationTriggerRule,
+  createBrowserAutomationWorkflow,
+  createPromptTemplate,
   fetchSystemStatus,
+  fetchBrowserAutomation,
+  fetchPromptTemplates,
   clearEventLogs,
   fetchEventLogs,
   generateCinematic,
@@ -12,10 +17,56 @@ import {
   restartProject,
   reportClientEvent,
   executePhotoRenames,
+  applyPromptTemplate,
+  deletePromptTemplate,
   syncHistoryXhsAnalytics,
   testModelProfile,
+  runBrowserAutomationWorkflow,
+  stopBrowserAutomationRun,
+  updatePromptTemplate,
+  updateBrowserAutomationWorkflow,
   undoPhotoRenames
 } from "./api";
+
+describe("browser automation API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches state, saves workflows, runs workflows, stops runs, and creates trigger rules", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workflows: [], runs: [], triggerRules: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "workflow-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "workflow-1", name: "updated" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "run-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "rule-1" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchBrowserAutomation();
+    await createBrowserAutomationWorkflow({ name: "workflow" });
+    await updateBrowserAutomationWorkflow("workflow-1", { name: "updated" });
+    await runBrowserAutomationWorkflow("workflow-1");
+    await stopBrowserAutomationRun("run-1");
+    await createBrowserAutomationTriggerRule({ workflowId: "workflow-1" });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/browser-automation");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/browser-automation/workflows");
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ name: "workflow" })
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/api/browser-automation/workflows/workflow-1");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ name: "updated" })
+    });
+    expect(fetchMock.mock.calls[3]?.[0]).toContain("/api/browser-automation/workflows/workflow-1/run");
+    expect(fetchMock.mock.calls[4]?.[0]).toContain("/api/browser-automation/runs/run-1/stop");
+    expect(fetchMock.mock.calls[5]?.[0]).toContain("/api/browser-automation/trigger-rules");
+  });
+});
 
 describe("photo renamer API", () => {
   afterEach(() => {
@@ -58,6 +109,50 @@ describe("photo renamer API", () => {
         body: JSON.stringify({ undoToken: "undo-1" })
       })
     );
+  });
+});
+
+describe("prompt template API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("lists, creates, updates, applies, and deletes prompt templates", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "template-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "template-1", title: "updated" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ finalPrompt: "生成 1:1 的橘猫图片" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchPromptTemplates();
+    await createPromptTemplate({ title: "狮子图", originalPrompt: "生成9:16的狮子的图片" });
+    await updatePromptTemplate("template-1", { title: "updated" });
+    await applyPromptTemplate("template-1", { values: { subject: "橘猫" } });
+    await deletePromptTemplate("template-1");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/tools/prompt-templates");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/tools/prompt-templates");
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ title: "狮子图", originalPrompt: "生成9:16的狮子的图片" })
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/api/tools/prompt-templates/template-1");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ title: "updated" })
+    });
+    expect(fetchMock.mock.calls[3]?.[0]).toContain("/api/tools/prompt-templates/template-1/apply");
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ values: { subject: "橘猫" } })
+    });
+    expect(fetchMock.mock.calls[4]?.[0]).toContain("/api/tools/prompt-templates/template-1");
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
+      method: "DELETE"
+    });
   });
 });
 
@@ -188,6 +283,31 @@ describe("generateHistory", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       reason: "manual",
       topic: "商鞅变法"
+    });
+  });
+
+  it("sends a dynasty request to the dedicated history endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        notifications: [],
+        recentTasks: []
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateHistory({
+      reason: "manual",
+      mode: "dynasty",
+      dynasty: " 东汉 "
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      reason: "manual",
+      mode: "dynasty",
+      dynasty: "东汉"
     });
   });
 });

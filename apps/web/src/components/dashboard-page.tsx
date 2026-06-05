@@ -109,7 +109,12 @@ import {
 import {
   buildCaptionExcerpt,
   getHistoryHomePreviewRule,
-  getHistoryNotifications
+  getHistoryNotifications,
+  getHistoryPayloadSummary,
+  getHistoryPayloadTitle,
+  getHistoryPayloadUpdatedAt,
+  isHistoryDynastyPayload,
+  isHistoryPostPayload
 } from "../history-view";
 import { getTodoModuleSummary, TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
 
@@ -992,8 +997,15 @@ function HistoryPanel({
   const latestNotification = historyNotifications[0];
   const latestPayload = latestNotification?.payload;
   const rule = getHistoryHomePreviewRule(size);
-  const cards = latestPayload?.cards.slice(0, rule.visibleCards) ?? [];
-  const countLabel = latestPayload ? `${latestPayload.cardCount} 张图文` : "等待推送";
+  const latestPostPayload = isHistoryPostPayload(latestPayload) ? latestPayload : null;
+  const latestDynastyPayload = isHistoryDynastyPayload(latestPayload) ? latestPayload : null;
+  const cards = latestPostPayload?.cards.slice(0, rule.visibleCards) ?? [];
+  const dynastyModules = latestDynastyPayload?.modules.slice(0, rule.visibleCards) ?? [];
+  const countLabel = latestPostPayload
+    ? `${latestPostPayload.cardCount} 张图文`
+    : latestDynastyPayload
+      ? `${latestDynastyPayload.modules.length} 套内容`
+      : "等待推送";
   const archiveCount = historyNotifications.length;
   const canGenerateInline = size === "max" || size === "large" || size === "medium";
   const historyGenerateMutation = useMutation({
@@ -1023,7 +1035,7 @@ function HistoryPanel({
           <h2>历史知识</h2>
         </div>
         <div className="history-panel__actions">
-          <span>{latestPayload ? `更新 ${formatTime(latestPayload.generatedAt)}` : "等待推送"}</span>
+          <span>{latestNotification ? `更新 ${formatTime(getHistoryPayloadUpdatedAt(latestNotification))}` : "等待推送"}</span>
           {canGenerateInline ? (
             <form
               className="history-panel__topic-form"
@@ -1061,15 +1073,19 @@ function HistoryPanel({
         {latestNotification && latestPayload ? (
           <>
             <div className="history-panel__lead">
-              <span className="history-panel__kicker">今日策展主题</span>
-              <strong>{latestPayload.topic}</strong>
+              <span className="history-panel__kicker">
+                {latestDynastyPayload ? "朝代四件套" : "今日策展主题"}
+              </span>
+              <strong>{getHistoryPayloadTitle(latestPayload)}</strong>
               {rule.showMetaLine ? (
                 <p className="history-panel__meta">
                   <span>{countLabel}</span>
                   <span>{archiveCount} 条存档</span>
                 </p>
               ) : null}
-              {rule.showSummary ? <p className="history-panel__summary">{latestPayload.summary}</p> : null}
+              {rule.showSummary ? (
+                <p className="history-panel__summary">{getHistoryPayloadSummary(latestPayload)}</p>
+              ) : null}
             </div>
             {rule.showStats ? (
               <div className="history-panel__stats">
@@ -1078,8 +1094,8 @@ function HistoryPanel({
                   <strong>{archiveCount}</strong>
                 </div>
                 <div>
-                  <span>拆卡进度</span>
-                  <strong>{latestPayload.cardCount}</strong>
+                  <span>{latestDynastyPayload ? "内容套数" : "拆卡进度"}</span>
+                  <strong>{latestPostPayload?.cardCount ?? latestDynastyPayload?.modules.length ?? 0}</strong>
                 </div>
                 <div>
                   <span>正文状态</span>
@@ -1088,26 +1104,37 @@ function HistoryPanel({
               </div>
             ) : null}
             <div className="history-panel__list">
-              {cards.map((card, index) => (
-                <div key={`${latestNotification.id}-${card.title}`} className="history-panel__item">
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div>
-                    <strong>{card.title}</strong>
-                    {size !== "small" ? <p>{card.imageText}</p> : null}
-                    {rule.showPrompts ? <small>{card.prompt}</small> : null}
-                  </div>
-                </div>
-              ))}
+              {latestDynastyPayload
+                ? dynastyModules.map((module, index) => (
+                    <div key={`${latestNotification.id}-${module.type}`} className="history-panel__item">
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <div>
+                        <strong>{module.type}：{module.topic}</strong>
+                        {size !== "small" ? <p>{buildCaptionExcerpt(module.summary, 64)}</p> : null}
+                        {rule.showPrompts ? <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small> : null}
+                      </div>
+                    </div>
+                  ))
+                : cards.map((card, index) => (
+                    <div key={`${latestNotification.id}-${card.title}`} className="history-panel__item">
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <div>
+                        <strong>{card.title}</strong>
+                        {size !== "small" ? <p>{card.imageText}</p> : null}
+                        {rule.showPrompts ? <small>{card.prompt}</small> : null}
+                      </div>
+                    </div>
+                  ))}
             </div>
-            {rule.showCaption ? (
+            {rule.showCaption && latestPostPayload ? (
               <div className="history-panel__caption">
                 <span>正文摘录</span>
-                <p>{buildCaptionExcerpt(latestPayload.xiaohongshuCaption, size === "max" ? 140 : 96)}</p>
+                <p>{buildCaptionExcerpt(latestPostPayload.xiaohongshuCaption, size === "max" ? 140 : 96)}</p>
               </div>
             ) : null}
             {!rule.showMetaLine ? (
               <div className="history-panel__status">
-                <span>{latestPayload ? `更新 ${formatTime(latestPayload.generatedAt)}` : "等待推送"}</span>
+                <span>{latestNotification ? `更新 ${formatTime(getHistoryPayloadUpdatedAt(latestNotification))}` : "等待推送"}</span>
                 <strong>{size === "small" ? "已生成" : `${archiveCount} 条存档`}</strong>
               </div>
             ) : null}
@@ -1432,9 +1459,7 @@ function HistoryNotificationTray({
 }) {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(notifications[0]?.id ?? null);
-  const historyNotifications = notifications.filter(
-    (notification) => notification.kind === "history-post" && notification.payload
-  );
+  const historyNotifications = getHistoryNotifications(notifications);
   const cancelMutation = useMutation({
     mutationFn: cancelNotification,
     onSuccess: (dashboard) => {
@@ -1485,19 +1510,35 @@ function HistoryNotificationTray({
             <p>{notification.body}</p>
             {expanded ? (
               <div className="history-notice__detail">
-                <div className="history-notice__caption">
-                  <span>小红书正文</span>
-                  <p>{payload.xiaohongshuCaption}</p>
-                </div>
+                {isHistoryPostPayload(payload) ? (
+                  <div className="history-notice__caption">
+                    <span>小红书正文</span>
+                    <p>{payload.xiaohongshuCaption}</p>
+                  </div>
+                ) : (
+                  <div className="history-notice__caption">
+                    <span>朝代四件套</span>
+                    <p>{getHistoryPayloadSummary(payload)}</p>
+                  </div>
+                )}
                 <div className="history-notice__cards">
-                  {payload.cards.map((card, index) => (
-                    <div className="history-card-plan" key={`${notification.id}-${card.title}`}>
-                      <span>图 {index + 1}</span>
-                      <strong>{card.title}</strong>
-                      <p>{card.imageText}</p>
-                      <small>{card.prompt}</small>
-                    </div>
-                  ))}
+                  {isHistoryDynastyPayload(payload)
+                    ? payload.modules.map((module, index) => (
+                        <div className="history-card-plan" key={`${notification.id}-${module.type}`}>
+                          <span>{String(index + 1).padStart(2, "0")} · {module.type}</span>
+                          <strong>{module.topic}</strong>
+                          <p>{module.summary}</p>
+                          <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small>
+                        </div>
+                      ))
+                    : payload.cards.map((card, index) => (
+                        <div className="history-card-plan" key={`${notification.id}-${card.title}`}>
+                          <span>图 {index + 1}</span>
+                          <strong>{card.title}</strong>
+                          <p>{card.imageText}</p>
+                          <small>{card.prompt}</small>
+                        </div>
+                      ))}
                 </div>
               </div>
             ) : null}

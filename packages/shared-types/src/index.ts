@@ -466,6 +466,23 @@ export interface HistoryPostPayload {
   generatedAt: string;
 }
 
+export type HistoryDynastyModuleType =
+  | "王朝兴衰录"
+  | "皇帝图鉴"
+  | "风云人物"
+  | "历史冷知识";
+
+export interface HistoryDynastyModule extends HistoryPostPayload {
+  type: HistoryDynastyModuleType;
+}
+
+export interface HistoryDynastyPayload {
+  dynasty: string;
+  modules: HistoryDynastyModule[];
+}
+
+export type HistoryNotificationPayload = HistoryPostPayload | HistoryDynastyPayload;
+
 export interface HistoryPushState {
   lastTriggeredDate: string | null;
 }
@@ -701,6 +718,184 @@ export interface ClassicShotDashboardSummary {
   todayReference: string;
 }
 
+export interface BrowserAutomationObservation {
+  url: string;
+  title: string;
+  text: string;
+  screenshotDataUrl?: string;
+  capturedAt: string;
+}
+
+export interface BrowserAutomationStepBase {
+  id: string;
+  label?: string;
+  timeoutMs?: number;
+}
+
+export interface BrowserAutomationImageTarget {
+  imageDataUrl: string;
+  prompt?: string;
+}
+
+export interface BrowserAutomationOpenUrlStep extends BrowserAutomationStepBase {
+  type: "openUrl";
+  url: string;
+}
+
+export interface BrowserAutomationClickStep extends BrowserAutomationStepBase {
+  type: "click";
+  selector?: string;
+  imageTarget?: BrowserAutomationImageTarget;
+  targetPrompt?: string;
+  x?: number;
+  y?: number;
+}
+
+export interface BrowserAutomationTypeStep extends BrowserAutomationStepBase {
+  type: "type";
+  selector?: string;
+  imageTarget?: BrowserAutomationImageTarget;
+  targetPrompt?: string;
+  text: string;
+  clearBeforeType?: boolean;
+}
+
+export interface BrowserAutomationPressStep extends BrowserAutomationStepBase {
+  type: "press";
+  key: string;
+}
+
+export interface BrowserAutomationDelayStep extends BrowserAutomationStepBase {
+  type: "delay";
+  durationMs: number;
+}
+
+export interface BrowserAutomationExtractStep extends BrowserAutomationStepBase {
+  type: "extract";
+  name: string;
+  selector?: string;
+}
+
+export interface BrowserAutomationWaitForConditionStep extends BrowserAutomationStepBase {
+  type: "waitForCondition";
+  conditionPrompt: string;
+  intervalMs: number;
+  timeoutMs: number;
+  onMatched?: string[];
+  onTimeout: "fail" | string[];
+}
+
+export interface BrowserAutomationIfElseStep extends BrowserAutomationStepBase {
+  type: "ifElse";
+  conditionPrompt: string;
+  thenStepIds: string[];
+  elseStepIds: string[];
+}
+
+export type BrowserAutomationStep =
+  | BrowserAutomationOpenUrlStep
+  | BrowserAutomationClickStep
+  | BrowserAutomationTypeStep
+  | BrowserAutomationPressStep
+  | BrowserAutomationDelayStep
+  | BrowserAutomationExtractStep
+  | BrowserAutomationWaitForConditionStep
+  | BrowserAutomationIfElseStep;
+
+export interface BrowserAutomationWorkflow {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  steps: BrowserAutomationStep[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type BrowserAutomationRunStatus = "queued" | "running" | "completed" | "failed" | "stopped";
+
+export interface BrowserAutomationRunLog {
+  id: string;
+  stepId?: string;
+  level: EventLogLevel;
+  message: string;
+  createdAt: string;
+  details?: Record<string, unknown>;
+}
+
+export interface BrowserAutomationRun {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  status: BrowserAutomationRunStatus;
+  trigger: TaskTrigger;
+  taskId?: string;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
+  logs: BrowserAutomationRunLog[];
+  lastObservation: BrowserAutomationObservation | null;
+  extracted: Record<string, string>;
+}
+
+export interface BrowserAutomationTriggerRule {
+  id: string;
+  name: string;
+  workflowId: string;
+  enabled: boolean;
+  match: {
+    agentId?: string;
+    status?: TaskStatus;
+    trigger?: TaskTrigger;
+    summaryIncludes?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BrowserAutomationState {
+  workflows: BrowserAutomationWorkflow[];
+  runs: BrowserAutomationRun[];
+  triggerRules: BrowserAutomationTriggerRule[];
+  lastUpdatedAt: string | null;
+}
+
+export type PromptTemplateAnalysisStatus = "pending" | "completed" | "failed";
+
+export interface PromptTemplateVariable {
+  id: string;
+  key: string;
+  label: string;
+  description: string;
+  defaultValue: string;
+  required: boolean;
+}
+
+export interface PromptTemplateRecord {
+  id: string;
+  title: string;
+  originalPrompt: string;
+  templatePrompt: string;
+  variables: PromptTemplateVariable[];
+  analysisStatus: PromptTemplateAnalysisStatus;
+  analysisError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface PromptTemplateState {
+  items: PromptTemplateRecord[];
+  lastUpdatedAt: string | null;
+}
+
+export interface PromptTemplateApplyResult {
+  templateId: string;
+  finalPrompt: string;
+  values: Record<string, string>;
+  generatedAt: string;
+}
+
 export type ModelProviderId =
   | "modelscope"
   | "deepseek"
@@ -796,7 +991,7 @@ export interface NotificationRecord {
   read: boolean;
   taskId?: string;
   persistent?: boolean;
-  payload?: HistoryPostPayload;
+  payload?: HistoryNotificationPayload;
 }
 
 export interface NightlyReviewState {
@@ -814,6 +1009,8 @@ export interface AppState {
   topics: TopicState;
   cinematic: CinematicState;
   classicShots: ClassicShotState;
+  browserAutomation?: BrowserAutomationState;
+  promptTemplates?: PromptTemplateState;
   summary: SummaryState;
   historyPush: HistoryPushState;
   historyXhs?: HistoryXhsState;
@@ -851,6 +1048,8 @@ export interface DashboardData {
   classicShots: ClassicShotState & {
     dashboard: ClassicShotDashboardSummary;
   };
+  browserAutomation?: BrowserAutomationState;
+  promptTemplates?: PromptTemplateState;
   summary: SummaryState & {
     dashboard: SummaryDashboard;
   };

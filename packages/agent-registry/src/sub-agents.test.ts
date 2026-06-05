@@ -16,6 +16,7 @@ describe("sub-agent route config", () => {
       "history-agent",
       "cinematic-agent",
       "classic-shot-agent",
+      "browser-automation-agent",
       "summary-agent"
     ]);
   });
@@ -42,7 +43,8 @@ describe("sub-agent route config", () => {
       "history",
       "cinematic",
       "classicShots",
-      "summary"
+      "summary",
+      "browserAutomation"
     ]);
   });
 });

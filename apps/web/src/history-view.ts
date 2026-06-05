@@ -1,4 +1,4 @@
-import type { HistoryPostPayload, NotificationRecord } from "@agent-zy/shared-types";
+import type { HistoryDynastyPayload, HistoryNotificationPayload, HistoryPostPayload, NotificationRecord } from "@agent-zy/shared-types";
 
 import type { HomeModuleSize } from "./home-layout";
 
@@ -60,9 +60,73 @@ export function getHistoryHomePreviewRule(size: HomeModuleSize) {
 
 export function getHistoryNotifications(notifications: NotificationRecord[]) {
   return notifications.filter(
-    (notification): notification is NotificationRecord & { payload: HistoryPostPayload } =>
-      notification.kind === "history-post" && Boolean(notification.payload)
+    (notification): notification is NotificationRecord & { payload: HistoryNotificationPayload } =>
+      notification.kind === "history-post" &&
+      (isHistoryPostPayload(notification.payload) || isHistoryDynastyPayload(notification.payload))
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}
+
+function hasRenderableCards(value: unknown) {
+  return Array.isArray(value);
+}
+
+function isRenderableDynastyModule(value: unknown) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.type === "string" &&
+    typeof value.topic === "string" &&
+    typeof value.summary === "string" &&
+    typeof value.cardCount === "number" &&
+    hasRenderableCards(value.cards) &&
+    typeof value.xiaohongshuCaption === "string"
+  );
+}
+
+export function isHistoryPostPayload(payload: HistoryNotificationPayload | undefined): payload is HistoryPostPayload {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  return (
+    typeof payload.topic === "string" &&
+    typeof payload.summary === "string" &&
+    typeof payload.cardCount === "number" &&
+    hasRenderableCards(payload.cards) &&
+    typeof payload.xiaohongshuCaption === "string"
+  );
+}
+
+export function isHistoryDynastyPayload(payload: HistoryNotificationPayload | undefined): payload is HistoryDynastyPayload {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  return (
+    typeof payload.dynasty === "string" &&
+    Array.isArray(payload.modules) &&
+    payload.modules.every(isRenderableDynastyModule)
+  );
+}
+
+export function getHistoryPayloadTitle(payload: HistoryNotificationPayload) {
+  return isHistoryDynastyPayload(payload) ? payload.dynasty : payload.topic;
+}
+
+export function getHistoryPayloadSummary(payload: HistoryNotificationPayload) {
+  return isHistoryDynastyPayload(payload)
+    ? `${payload.dynasty}朝代四件套：${payload.modules.map((module) => module.type).join("、")}`
+    : payload.summary;
+}
+
+export function getHistoryPayloadUpdatedAt(notification: NotificationRecord & { payload: HistoryNotificationPayload }) {
+  return isHistoryPostPayload(notification.payload) ? notification.payload.generatedAt : notification.createdAt;
 }
 
 export function buildCaptionExcerpt(caption: string, maxLength = 96) {

@@ -267,6 +267,7 @@ export function createControlPlaneOrchestrator(options: {
       );
       options.store.addMessage(assistantMessage);
       options.eventBus.emit("dashboard.updated", options.store.getState());
+      options.eventBus.emit("task.completed", doneTask);
 
       return {
         task: doneTask,
@@ -613,6 +614,7 @@ export function createControlPlaneOrchestrator(options: {
           : `已生成正式账本月报（${report.periodStart} ~ ${report.periodEnd}）`;
       options.store.upsertTask(doneTask);
       options.eventBus.emit("dashboard.updated", options.store.getState());
+      options.eventBus.emit("task.completed", doneTask);
 
       return doneTask;
     } catch (error) {

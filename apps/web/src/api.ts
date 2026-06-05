@@ -1,5 +1,9 @@
 import type {
   ChatResponse,
+  BrowserAutomationRun,
+  BrowserAutomationState,
+  BrowserAutomationTriggerRule,
+  BrowserAutomationWorkflow,
   CinematicProject,
   CinematicState,
   ClassicShotState,
@@ -21,6 +25,9 @@ import type {
   ModelPurpose,
   ModelSettingsState,
   NewsState,
+  PromptTemplateApplyResult,
+  PromptTemplateRecord,
+  PromptTemplateState,
   PhotoRenameExecuteResult,
   PhotoRenameMediaScope,
   PhotoRenamePreviewResult,
@@ -107,6 +114,187 @@ export async function undoPhotoRenames(undoToken: string): Promise<PhotoRenameUn
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to undo photo renames"));
+  }
+
+  return response.json();
+}
+
+export async function fetchPromptTemplates(): Promise<PromptTemplateState> {
+  const response = await fetch(`${API_BASE}/api/tools/prompt-templates`);
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to fetch prompt templates"));
+  }
+
+  return response.json();
+}
+
+export async function createPromptTemplate(input: {
+  title: string;
+  originalPrompt: string;
+}): Promise<PromptTemplateRecord> {
+  const response = await fetch(`${API_BASE}/api/tools/prompt-templates`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to create prompt template"));
+  }
+
+  return response.json();
+}
+
+export async function updatePromptTemplate(
+  id: string,
+  input: Partial<PromptTemplateRecord>
+): Promise<PromptTemplateRecord> {
+  const response = await fetch(`${API_BASE}/api/tools/prompt-templates/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to update prompt template"));
+  }
+
+  return response.json();
+}
+
+export async function deletePromptTemplate(id: string): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/tools/prompt-templates/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to delete prompt template"));
+  }
+
+  return response.json();
+}
+
+export async function applyPromptTemplate(
+  id: string,
+  input: { values: Record<string, string> }
+): Promise<PromptTemplateApplyResult> {
+  const response = await fetch(`${API_BASE}/api/tools/prompt-templates/${id}/apply`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to apply prompt template"));
+  }
+
+  return response.json();
+}
+
+export async function fetchBrowserAutomation(): Promise<BrowserAutomationState> {
+  const response = await fetch(`${API_BASE}/api/browser-automation`);
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to fetch browser automation state"));
+  }
+
+  return response.json();
+}
+
+export async function createBrowserAutomationWorkflow(input: unknown): Promise<BrowserAutomationWorkflow> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/workflows`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to create browser automation workflow"));
+  }
+
+  return response.json();
+}
+
+export async function updateBrowserAutomationWorkflow(id: string, input: unknown): Promise<BrowserAutomationWorkflow> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/workflows/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to update browser automation workflow"));
+  }
+
+  return response.json();
+}
+
+export async function deleteBrowserAutomationWorkflow(id: string): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/workflows/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to delete browser automation workflow"));
+  }
+
+  return response.json();
+}
+
+export async function runBrowserAutomationWorkflow(id: string): Promise<BrowserAutomationRun> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/workflows/${id}/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to run browser automation workflow"));
+  }
+
+  return response.json();
+}
+
+export async function stopBrowserAutomationRun(id: string): Promise<{ ok: true }> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/runs/${id}/stop`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to stop browser automation run"));
+  }
+
+  return response.json();
+}
+
+export async function createBrowserAutomationTriggerRule(input: unknown): Promise<BrowserAutomationTriggerRule> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/trigger-rules`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to create browser automation trigger rule"));
   }
 
   return response.json();
@@ -656,7 +844,9 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
 
 export type HistoryGenerateInput = {
   reason?: string;
+  mode?: "topic" | "dynasty";
   topic?: string;
+  dynasty?: string;
 };
 
 export async function generateHistory(input: HistoryGenerateInput | string = "manual"): Promise<DashboardData> {
@@ -667,13 +857,16 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
         }
       : {
           reason: input.reason ?? "manual",
-          topic: input.topic?.trim() || undefined
+          mode: input.mode === "dynasty" ? "dynasty" : undefined,
+          topic: input.topic?.trim() || undefined,
+          dynasty: input.dynasty?.trim() || undefined
         };
 
   console.info("[history-generate] request:start", {
     endpoint: `${API_BASE}/api/history/generate`,
     reason: request.reason,
-    hasTopic: Boolean(request.topic)
+    hasTopic: Boolean(request.topic),
+    hasDynasty: Boolean(request.dynasty)
   });
 
   const response = await fetch(`${API_BASE}/api/history/generate`, {

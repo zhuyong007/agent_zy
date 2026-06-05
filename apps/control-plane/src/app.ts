@@ -17,12 +17,22 @@ import { createLedgerSemanticService } from "./services/ledger-semantic-service"
 import { createModelSecretsRepository } from "./services/model-secrets";
 import { getModelProvider, listModelProviders } from "./services/model-providers";
 import { createModelRuntime } from "./services/model-runtime";
+import type { ModelRuntime } from "./services/model-runtime";
 import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
+import { createPromptTemplateService } from "./services/prompt-template-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
 import { normalizeExternalUrl, openExternalUrlInBrowser, type ExternalUrlOpener } from "./services/browser-opener";
+import { createDesktopBrowserAutomationExecutor } from "./services/browser-automation-desktop-executor";
+import {
+  createBrowserAutomationExampleWorkflow
+} from "./services/browser-automation-workflow";
+import {
+  createBrowserAutomationService,
+  type BrowserAutomationExecutor
+} from "./services/browser-automation-service";
 import {
   cleanupClassicShotVideoWorkDir,
   createClassicShotVideoProcessor,
@@ -110,6 +120,8 @@ export function createControlPlaneApp(options?: {
   restartProject?: ProjectRestarter;
   historyXhsService?: HistoryXhsService;
   classicShotVideoProcessor?: ClassicShotVideoProcessor;
+  browserAutomationExecutor?: BrowserAutomationExecutor;
+  modelRuntime?: ModelRuntime;
 }) {
   const app = Fastify();
   const startedAt = new Date().toISOString();
@@ -122,14 +134,28 @@ export function createControlPlaneApp(options?: {
   const eventLog = createEventLogService(dataDir);
   const photoRenamer = createPhotoRenamerService();
   const modelSecrets = createModelSecretsRepository(dataDir);
-  const modelRuntime = createModelRuntime({
+  const modelRuntime = options?.modelRuntime ?? createModelRuntime({
     store,
     secrets: modelSecrets,
     eventLog
   });
+  const browserAutomationExecutor = options?.browserAutomationExecutor ?? createDesktopBrowserAutomationExecutor({
+    modelRuntime
+  });
+  const browserAutomation = createBrowserAutomationService({
+    store,
+    executor: browserAutomationExecutor
+  });
+  if ((store.getState().browserAutomation?.workflows ?? []).length === 0) {
+    browserAutomation.createWorkflow(createBrowserAutomationExampleWorkflow(new Date().toISOString()));
+  }
   const ledgerSemanticService = createLedgerSemanticService();
   const ledgerReportService = createLedgerReportService();
   const summaryService = createSummaryService(store);
+  const promptTemplateService = createPromptTemplateService({
+    store,
+    modelRuntime
+  });
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
   const classicShotVideoProcessor = options?.classicShotVideoProcessor ?? createClassicShotVideoProcessor();
   const router = createHybridRouter({
@@ -155,6 +181,13 @@ export function createControlPlaneApp(options?: {
   const scheduler = createControlPlaneScheduler({
     orchestrator,
     store
+  });
+  eventBus.subscribe((event) => {
+    if (event.type !== "task.completed") {
+      return;
+    }
+
+    void browserAutomation.handleTaskCompleted(event.payload as any);
   });
 
   void app.register(cors, {
@@ -345,6 +378,92 @@ export function createControlPlaneApp(options?: {
       });
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "failed to undo media renames"
+      });
+    }
+  });
+
+  app.get("/api/tools/prompt-templates", async () => promptTemplateService.list());
+
+  app.post("/api/tools/prompt-templates", async (request, reply) => {
+    const startedAt = Date.now();
+
+    try {
+      const template = await promptTemplateService.create(request.body);
+      eventLog.append({
+        level: template.analysisStatus === "failed" ? "warn" : "info",
+        category: "tool",
+        action: "prompt-template.create.completed",
+        message: "提示词模版保存完成",
+        durationMs: Date.now() - startedAt,
+        details: {
+          templateId: template.id,
+          variableCount: template.variables.length,
+          analysisStatus: template.analysisStatus
+        }
+      });
+      return template;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "prompt-template.create.failed",
+        message: "提示词模版保存失败",
+        durationMs: Date.now() - startedAt
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to create prompt template"
+      });
+    }
+  });
+
+  app.patch("/api/tools/prompt-templates/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return promptTemplateService.update(params.id, request.body);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "prompt template not found"
+      });
+    }
+  });
+
+  app.delete("/api/tools/prompt-templates/:id", async (request) => {
+    const params = request.params as { id: string };
+
+    return promptTemplateService.delete(params.id);
+  });
+
+  app.post("/api/tools/prompt-templates/:id/apply", async (request, reply) => {
+    const params = request.params as { id: string };
+    const startedAt = Date.now();
+
+    try {
+      const result = await promptTemplateService.apply(params.id, request.body);
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "prompt-template.apply.completed",
+        message: "提示词模版复用完成",
+        durationMs: Date.now() - startedAt,
+        details: {
+          templateId: result.templateId
+        }
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "prompt-template.apply.failed",
+        message: "提示词模版复用失败",
+        durationMs: Date.now() - startedAt,
+        details: {
+          templateId: params.id
+        }
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to apply prompt template"
       });
     }
   });
@@ -675,6 +794,73 @@ export function createControlPlaneApp(options?: {
   });
 
   app.get("/api/news", async () => orchestrator.getNews());
+
+  app.get("/api/browser-automation", async () => browserAutomation.getState());
+
+  app.post("/api/browser-automation/workflows", async (request, reply) => {
+    try {
+      return browserAutomation.createWorkflow(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid browser automation workflow"
+      });
+    }
+  });
+
+  app.patch("/api/browser-automation/workflows/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return browserAutomation.updateWorkflow(params.id, request.body);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "browser automation workflow not found"
+      });
+    }
+  });
+
+  app.delete("/api/browser-automation/workflows/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return browserAutomation.deleteWorkflow(params.id);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "browser automation workflow not found"
+      });
+    }
+  });
+
+  app.post("/api/browser-automation/workflows/:id/run", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    try {
+      return await browserAutomation.runWorkflow(params.id, {
+        trigger: body.trigger === "schedule" || body.trigger === "system" ? body.trigger : "user"
+      });
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to run browser automation workflow"
+      });
+    }
+  });
+
+  app.post("/api/browser-automation/runs/:id/stop", async (request) => {
+    const params = request.params as { id: string };
+
+    return browserAutomation.stopRun(params.id);
+  });
+
+  app.post("/api/browser-automation/trigger-rules", async (request, reply) => {
+    try {
+      return browserAutomation.createTriggerRule(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "invalid browser automation trigger rule"
+      });
+    }
+  });
 
   app.post("/api/open-url", async (request, reply) => {
     const body = (request.body ?? {}) as {
