@@ -14,6 +14,8 @@ apps/web/dist/
 
 # Dependencies (install via npm — do not commit)
 node_modules/
+.conda-desktop/
+.venv/
 
 # npm / tooling caches (optional local artifacts)
 .npm/
