@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDesktopBrowserAutomationExecutor, type DesktopAutomationController } from "./browser-automation-desktop-executor";
+import {
+  createDesktopBrowserAutomationExecutor,
+  resolveDesktopAutomationBrowserApp,
+  resolveDesktopAutomationPythonPath,
+  type DesktopAutomationController
+} from "./browser-automation-desktop-executor";
 import type { ModelRuntime } from "./model-runtime";
 
 function createController(overrides: Partial<DesktopAutomationController> = {}): DesktopAutomationController {
@@ -27,6 +32,50 @@ function createModelRuntime(text = "{\"x\":340,\"y\":220,\"confidence\":0.82,\"r
 }
 
 describe("desktop browser automation executor", () => {
+  it("resolves the desktop Python interpreter from env or project-local environments", () => {
+    expect(resolveDesktopAutomationPythonPath({
+      env: {
+        AGENT_ZY_DESKTOP_PYTHON: "/tmp/custom-python"
+      },
+      exists: () => true,
+      cwd: "/repo",
+      platform: "darwin"
+    })).toBe("/tmp/custom-python");
+
+    expect(resolveDesktopAutomationPythonPath({
+      env: {},
+      exists: (path) => path === "/repo/.conda-desktop/bin/python",
+      cwd: "/repo",
+      platform: "darwin"
+    })).toBe("/repo/.conda-desktop/bin/python");
+
+    expect(resolveDesktopAutomationPythonPath({
+      env: {},
+      exists: () => false,
+      cwd: "/repo",
+      platform: "darwin"
+    })).toBe("python3");
+  });
+
+  it("resolves the desktop browser app from env or platform defaults", () => {
+    expect(resolveDesktopAutomationBrowserApp({
+      env: {
+        AGENT_ZY_DESKTOP_BROWSER: "Microsoft Edge"
+      },
+      platform: "darwin"
+    })).toBe("Microsoft Edge");
+
+    expect(resolveDesktopAutomationBrowserApp({
+      env: {},
+      platform: "darwin"
+    })).toBe("Google Chrome");
+
+    expect(resolveDesktopAutomationBrowserApp({
+      env: {},
+      platform: "linux"
+    })).toBe("");
+  });
+
   it("opens URLs in a new tab of the current foreground browser", async () => {
     const controller = createController();
     const executor = createDesktopBrowserAutomationExecutor({
@@ -111,5 +160,48 @@ describe("desktop browser automation executor", () => {
     expect(controller.click).toHaveBeenNthCalledWith(2, 340, 220);
     expect(result.logs.map((log) => log.message)).toContain("本地图片匹配点击：(120, 80) confidence=0.96");
     expect(result.logs.some((log) => log.message.includes("视觉模型定位点击：(340, 220)"))).toBe(true);
+  });
+
+  it("scales vision model coordinates from resized screenshots back to screen coordinates", async () => {
+    const controller = createController({
+      screenshot: vi.fn().mockResolvedValue({
+        dataUrl: "data:image/png;base64,c2NyZWVu",
+        width: 1470,
+        height: 956,
+        originalWidth: 2940,
+        originalHeight: 1912
+      }),
+      locateImageOnScreen: vi.fn().mockResolvedValue(null)
+    });
+    const modelRuntime = createModelRuntime("{\"x\":735,\"y\":478,\"confidence\":0.9,\"reason\":\"缩放后定位\"}");
+    const executor = createDesktopBrowserAutomationExecutor({
+      controller,
+      modelRuntime
+    });
+
+    const result = await executor.runWorkflow({
+      runId: "run-1",
+      signal: new AbortController().signal,
+      workflow: {
+        id: "workflow-1",
+        name: "缩放坐标",
+        description: "",
+        enabled: true,
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+        steps: [
+          {
+            id: "click-model",
+            type: "click",
+            targetPrompt: "点击搜索框",
+            timeoutMs: 30000
+          }
+        ]
+      }
+    });
+
+    expect(result.status).toBe("completed");
+    expect(controller.click).toHaveBeenCalledWith(1470, 956);
+    expect(result.logs.some((log) => log.message.includes("视觉模型定位点击：(1470, 956)"))).toBe(true);
   });
 });

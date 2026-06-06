@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,14 +22,77 @@ type ScreenPoint = {
   confidence?: number;
 };
 
+type DesktopScreenshotCapture = {
+  dataUrl: string;
+  width: number;
+  height: number;
+  originalWidth: number;
+  originalHeight: number;
+};
+
+type DesktopObservation = BrowserAutomationObservation & {
+  screenScaleX: number;
+  screenScaleY: number;
+};
+
 export interface DesktopAutomationController {
   openUrlInNewTab(url: string): Promise<void>;
-  screenshot(): Promise<string>;
+  screenshot(): Promise<string | DesktopScreenshotCapture>;
   locateImageOnScreen(imageDataUrl: string, options?: { confidence?: number }): Promise<ScreenPoint | null>;
   click(x: number, y: number): Promise<void>;
   typeText(text: string): Promise<void>;
   press(key: string): Promise<void>;
   delay(ms: number): Promise<void>;
+}
+
+export function resolveDesktopAutomationPythonPath(options: {
+  env?: NodeJS.ProcessEnv;
+  exists?: (path: string) => boolean;
+  cwd?: string;
+  platform?: NodeJS.Platform;
+} = {}) {
+  const env = options.env ?? process.env;
+  const exists = options.exists ?? existsSync;
+  const cwd = options.cwd ?? process.cwd();
+  const platform = options.platform ?? process.platform;
+  const configured = env.AGENT_ZY_DESKTOP_PYTHON?.trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  const localCondaPython = join(cwd, ".conda-desktop", platform === "win32" ? "python.exe" : "bin/python");
+
+  if (exists(localCondaPython)) {
+    return localCondaPython;
+  }
+
+  const localVenvPython = join(cwd, ".venv", platform === "win32" ? "Scripts/python.exe" : "bin/python");
+
+  if (exists(localVenvPython)) {
+    return localVenvPython;
+  }
+
+  return platform === "win32" ? "python" : "python3";
+}
+
+export function resolveDesktopAutomationBrowserApp(options: {
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+} = {}) {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const configured = env.AGENT_ZY_DESKTOP_BROWSER?.trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  if (platform === "darwin") {
+    return "Google Chrome";
+  }
+
+  return "";
 }
 
 function createLog(input: Omit<BrowserAutomationRunLog, "id" | "createdAt">): BrowserAutomationRunLog {
@@ -191,25 +255,44 @@ function delay(ms: number, signal: AbortSignal) {
   });
 }
 
-async function observeScreen(controller: DesktopAutomationController): Promise<BrowserAutomationObservation> {
-  const screenshotDataUrl = await controller.screenshot();
+async function observeScreen(controller: DesktopAutomationController): Promise<DesktopObservation> {
+  const screenshot = await controller.screenshot();
+  const capture: DesktopScreenshotCapture = typeof screenshot === "string"
+    ? {
+        dataUrl: screenshot,
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1
+      }
+    : screenshot;
 
   return {
     url: "desktop://foreground",
     title: "当前桌面屏幕",
     text: "",
-    screenshotDataUrl,
-    capturedAt: new Date().toISOString()
+    screenshotDataUrl: capture.dataUrl,
+    capturedAt: new Date().toISOString(),
+    screenScaleX: capture.width > 0 ? capture.originalWidth / capture.width : 1,
+    screenScaleY: capture.height > 0 ? capture.originalHeight / capture.height : 1
   };
 }
 
-async function runPyAutoGuiCommand(command: Record<string, unknown>) {
+function scaleVisionPointToScreen(point: ScreenPoint, observation: DesktopObservation): ScreenPoint {
+  return {
+    ...point,
+    x: point.x * observation.screenScaleX,
+    y: point.y * observation.screenScaleY
+  };
+}
+
+async function runPyAutoGuiCommand(command: Record<string, unknown>, pythonPath = resolveDesktopAutomationPythonPath()) {
   const workDir = await mkdtemp(join(tmpdir(), "agent-zy-pyautogui-"));
   const payloadPath = join(workDir, "payload.json");
   await writeFile(payloadPath, JSON.stringify(command), "utf-8");
 
   const script = String.raw`
-import base64, io, json, platform, sys, time
+import base64, io, json, os, platform, subprocess, sys, time
 from pathlib import Path
 
 payload = json.loads(Path(sys.argv[1]).read_text())
@@ -219,7 +302,7 @@ try:
 except Exception as error:
     print(json.dumps({
         "ok": False,
-        "error": "pyautogui 不可用，请先安装 Python 依赖：python3 -m pip install pyautogui pillow opencv-python pyperclip。原因：" + str(error)
+        "error": "pyautogui 不可用，请先安装 Python 依赖：python -m pip install pyautogui pillow opencv-python pyperclip。原因：" + str(error)
     }))
     sys.exit(0)
 
@@ -234,20 +317,75 @@ def data_url_to_file(data_url, filename):
     target.write_bytes(base64.b64decode(raw))
     return str(target)
 
+def set_clipboard_text(text):
+    try:
+        import pyperclip
+        pyperclip.copy(text)
+        return
+    except Exception:
+        pass
+    system = platform.system()
+    if system == "Darwin":
+        subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
+        return
+    if system == "Windows":
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value $input"],
+            input=text.encode("utf-8"),
+            check=True
+        )
+        return
+    raise RuntimeError("无法写入剪贴板，请确认 pyperclip 可用，或安装系统剪贴板工具。")
+
+def open_url_with_os(url, browser_app):
+    system = platform.system()
+    if system == "Darwin" and browser_app:
+        subprocess.run(["open", "-a", browser_app, url], check=True)
+        return True
+    if system == "Windows":
+        os.startfile(url)
+        return True
+    return False
+
 action = payload.get("action")
 
 try:
     if action == "openUrlInNewTab":
-        modifier = "command" if platform.system() == "Darwin" else "ctrl"
-        pyautogui.hotkey(modifier, "t")
-        pyautogui.write(str(payload.get("url", "")), interval=0.01)
-        pyautogui.press("enter")
-        ok()
+        url = str(payload.get("url", ""))
+        browser_app = str(payload.get("browserApp", "")).strip()
+        opened_by_os = False
+        try:
+            opened_by_os = open_url_with_os(url, browser_app)
+        except Exception:
+            opened_by_os = False
+        if not opened_by_os:
+            modifier = "command" if platform.system() == "Darwin" else "ctrl"
+            pyautogui.hotkey(modifier, "t")
+            time.sleep(0.25)
+            try:
+                set_clipboard_text(url)
+                pyautogui.hotkey(modifier, "v")
+            except Exception:
+                pyautogui.write(url, interval=0.01)
+            pyautogui.press("enter")
+        time.sleep(float(payload.get("afterOpenDelayMs", 1500)) / 1000)
+        ok({"method": "os-open" if opened_by_os else "keyboard"})
     elif action == "screenshot":
         image = pyautogui.screenshot()
+        original_width, original_height = image.size
+        max_size = int(payload.get("maxSize", 2048))
+        if max(original_width, original_height) > max_size:
+            image.thumbnail((max_size, max_size))
+        width, height = image.size
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
-        ok("data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii"))
+        ok({
+            "dataUrl": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii"),
+            "width": width,
+            "height": height,
+            "originalWidth": original_width,
+            "originalHeight": original_height
+        })
     elif action == "locateImageOnScreen":
         image_path = data_url_to_file(str(payload.get("imageDataUrl", "")), "target.png")
         confidence = float(payload.get("confidence", 0.86))
@@ -267,11 +405,7 @@ try:
         if all(ord(ch) < 128 for ch in text):
             pyautogui.write(text, interval=0.01)
         else:
-            try:
-                import pyperclip
-            except Exception as error:
-                raise RuntimeError("输入包含中文或特殊字符，请安装 pyperclip：python3 -m pip install pyperclip。原因：" + str(error))
-            pyperclip.copy(text)
+            set_clipboard_text(text)
             modifier = "command" if platform.system() == "Darwin" else "ctrl"
             pyautogui.hotkey(modifier, "v")
         ok()
@@ -296,7 +430,7 @@ except Exception as error:
 
   try {
     const output = await new Promise<string>((resolve, reject) => {
-      const child = spawn("python3", ["-c", script, payloadPath], {
+      const child = spawn(pythonPath, ["-c", script, payloadPath], {
         stdio: ["ignore", "pipe", "pipe"]
       });
       let stdout = "";
@@ -336,34 +470,50 @@ except Exception as error:
   }
 }
 
-export function createPyAutoGuiDesktopController(): DesktopAutomationController {
+export function createPyAutoGuiDesktopController(options: {
+  pythonPath?: string;
+  browserApp?: string;
+} = {}): DesktopAutomationController {
+  const pythonPath = options.pythonPath ?? resolveDesktopAutomationPythonPath();
+  const browserApp = options.browserApp ?? resolveDesktopAutomationBrowserApp();
+
   return {
     async openUrlInNewTab(url) {
-      await runPyAutoGuiCommand({ action: "openUrlInNewTab", url });
+      await runPyAutoGuiCommand({
+        action: "openUrlInNewTab",
+        url,
+        browserApp,
+        afterOpenDelayMs: 1500
+      }, pythonPath);
     },
     async screenshot() {
-      return String(await runPyAutoGuiCommand({ action: "screenshot" }));
+      const value = await runPyAutoGuiCommand({
+        action: "screenshot",
+        maxSize: 2048
+      }, pythonPath);
+
+      return typeof value === "string" ? value : value as DesktopScreenshotCapture;
     },
     async locateImageOnScreen(imageDataUrl, options = {}) {
       const value = await runPyAutoGuiCommand({
         action: "locateImageOnScreen",
         imageDataUrl,
         confidence: options.confidence ?? 0.86
-      });
+      }, pythonPath);
 
       return value && typeof value === "object" ? value as ScreenPoint : null;
     },
     async click(x, y) {
-      await runPyAutoGuiCommand({ action: "click", x, y });
+      await runPyAutoGuiCommand({ action: "click", x, y }, pythonPath);
     },
     async typeText(text) {
-      await runPyAutoGuiCommand({ action: "typeText", text });
+      await runPyAutoGuiCommand({ action: "typeText", text }, pythonPath);
     },
     async press(key) {
-      await runPyAutoGuiCommand({ action: "press", key });
+      await runPyAutoGuiCommand({ action: "press", key }, pythonPath);
     },
     async delay(ms) {
-      await runPyAutoGuiCommand({ action: "delay", ms });
+      await runPyAutoGuiCommand({ action: "delay", ms }, pythonPath);
     }
   };
 }
@@ -378,7 +528,7 @@ export function createDesktopBrowserAutomationExecutor(options: {
     async runWorkflow(input): Promise<BrowserAutomationExecutorResult> {
       const logs: BrowserAutomationRunLog[] = [];
       const extracted: Record<string, string> = {};
-      let lastObservation: BrowserAutomationObservation | null = null;
+      let lastObservation: DesktopObservation | null = null;
       const stepById = new Map(input.workflow.steps.map((step) => [step.id, step]));
       const executedStepIds = new Set<string>();
 
@@ -410,7 +560,7 @@ export function createDesktopBrowserAutomationExecutor(options: {
           imageDataUrl: step.imageTarget?.imageDataUrl
         });
 
-        return { point, source: "视觉模型定位" };
+        return { point: scaleVisionPointToScreen(point, lastObservation), source: "视觉模型定位" };
       }
 
       async function runStep(step: BrowserAutomationStep): Promise<void> {
@@ -431,6 +581,11 @@ export function createDesktopBrowserAutomationExecutor(options: {
 
         if (step.type === "openUrl") {
           await controller.openUrlInNewTab(step.url);
+          logs.push(createLog({
+            stepId: step.id,
+            level: "info",
+            message: `已请求当前浏览器新标签打开：${step.url}`
+          }));
           lastObservation = await observeScreen(controller);
           return;
         }
