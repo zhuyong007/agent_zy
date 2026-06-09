@@ -9,6 +9,7 @@ import {
   fetchPromptTemplates,
   clearEventLogs,
   fetchEventLogs,
+  previewFileOrganization,
   generateCinematic,
   generateHistory,
   openExternalUrl,
@@ -16,6 +17,7 @@ import {
   resolveApiBase,
   restartProject,
   reportClientEvent,
+  executeFileOrganization,
   executePhotoRenames,
   applyPromptTemplate,
   deletePromptTemplate,
@@ -25,6 +27,7 @@ import {
   stopBrowserAutomationRun,
   updatePromptTemplate,
   updateBrowserAutomationWorkflow,
+  undoFileOrganization,
   undoPhotoRenames
 } from "./api";
 
@@ -104,6 +107,58 @@ describe("photo renamer API", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       expect.stringContaining("/api/tools/photo-renamer/undo"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ undoToken: "undo-1" })
+      })
+    );
+  });
+});
+
+describe("file organizer API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("previews, executes, and undoes file organization batches", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ previewToken: "preview-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ undoToken: "undo-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ summary: { restored: 1, failed: 0 } }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await previewFileOrganization({
+      directoryPath: "C:\\files",
+      mode: "time",
+      timeGranularity: "month"
+    });
+    await executeFileOrganization("preview-1");
+    await undoFileOrganization("undo-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/api/tools/file-organizer/preview"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          directoryPath: "C:\\files",
+          mode: "time",
+          timeGranularity: "month"
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/api/tools/file-organizer/execute"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ previewToken: "preview-1" })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("/api/tools/file-organizer/undo"),
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ undoToken: "undo-1" })

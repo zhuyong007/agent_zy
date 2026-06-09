@@ -40,6 +40,12 @@ export function ToolsCatalog() {
           <p>保存优秀提示词，提炼可替换内容，并按新需求生成最终提示词。</p>
           <strong>打开工具</strong>
         </Link>
+        <Link className="tools-card" to="/tools/file-organizer">
+          <span className="tools-card__index">04</span>
+          <h2>文件整理</h2>
+          <p>递归扫描本机文件夹，按时间或类型预览并移动文件。</p>
+          <strong>打开工具</strong>
+        </Link>
       </div>
     </section>
   );

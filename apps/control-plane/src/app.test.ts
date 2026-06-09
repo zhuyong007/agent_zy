@@ -1667,6 +1667,106 @@ describe("control-plane app", () => {
     }
   });
 
+  it("previews, executes, and undoes a local file organization batch without logging paths or tokens", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-file-organizer-api-test-"));
+    const filesDir = join(isolatedDataDir, "files");
+    const sourcePath = join(filesDir, "2025-01-02-note.txt");
+    const targetDir = join(filesDir, "2025_01");
+    const targetPath = join(targetDir, "2025-01-02-note.txt");
+    mkdirSync(filesDir);
+    writeFileSync(sourcePath, "note", { flag: "wx" });
+    utimesSync(sourcePath, new Date(2025, 0, 2, 12, 0, 0), new Date(2025, 0, 2, 12, 0, 0));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+    await isolatedApp.ready();
+
+    try {
+      const previewResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/file-organizer/preview",
+        payload: {
+          directoryPath: filesDir,
+          mode: "time",
+          timeGranularity: "month"
+        }
+      });
+      expect(previewResponse.statusCode).toBe(200);
+      expect(previewResponse.json()).toMatchObject({
+        previewToken: expect.any(String),
+        summary: {
+          total: 1,
+          move: 1,
+          unchanged: 0,
+          skipped: 0
+        }
+      });
+
+      const executeResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/file-organizer/execute",
+        payload: {
+          previewToken: previewResponse.json().previewToken
+        }
+      });
+      expect(executeResponse.statusCode).toBe(200);
+      expect(existsSync(sourcePath)).toBe(false);
+      expect(existsSync(targetPath)).toBe(true);
+
+      const undoResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/tools/file-organizer/undo",
+        payload: {
+          undoToken: executeResponse.json().undoToken
+        }
+      });
+      expect(undoResponse.statusCode).toBe(200);
+      expect(existsSync(sourcePath)).toBe(true);
+      expect(existsSync(targetDir)).toBe(true);
+
+      const logs = (await isolatedApp.inject({
+        method: "GET",
+        url: "/api/logs?category=tool"
+      })).json().items;
+      expect(logs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ action: "file-organizer.preview.completed" }),
+          expect.objectContaining({ action: "file-organizer.execute.completed" }),
+          expect.objectContaining({ action: "file-organizer.undo.completed" })
+        ])
+      );
+      expect(JSON.stringify(logs)).not.toContain(filesDir);
+      expect(JSON.stringify(logs)).not.toContain(previewResponse.json().previewToken);
+      expect(JSON.stringify(logs)).not.toContain(executeResponse.json().undoToken);
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
+  it("rejects file organizer requests from non-local browser origins", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/tools/file-organizer/preview",
+      headers: {
+        origin: "https://example.com"
+      },
+      payload: {
+        directoryPath: tmpdir(),
+        mode: "type"
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      message: "file organizer is only available from a local browser"
+    });
+  });
+
   it("uses a 30-minute default news refresh interval", () => {
     expect(DEFAULT_NEWS_INTERVAL_MS).toBe(30 * 60 * 1000);
   });

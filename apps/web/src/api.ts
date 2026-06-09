@@ -12,6 +12,10 @@ import type {
   EventLogInput,
   EventLogQuery,
   EventLogQueryResult,
+  FileOrganizerExecuteResult,
+  FileOrganizerPreviewInput,
+  FileOrganizerPreviewResult,
+  FileOrganizerUndoResult,
   HistoryXhsState,
   HomeModulePreference,
   LedgerFactRecord,
@@ -114,6 +118,54 @@ export async function undoPhotoRenames(undoToken: string): Promise<PhotoRenameUn
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to undo photo renames"));
+  }
+
+  return response.json();
+}
+
+export async function previewFileOrganization(input: FileOrganizerPreviewInput): Promise<FileOrganizerPreviewResult> {
+  const response = await fetch(`${API_BASE}/api/tools/file-organizer/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to preview file organization"));
+  }
+
+  return response.json();
+}
+
+export async function executeFileOrganization(previewToken: string): Promise<FileOrganizerExecuteResult> {
+  const response = await fetch(`${API_BASE}/api/tools/file-organizer/execute`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ previewToken })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to execute file organization"));
+  }
+
+  return response.json();
+}
+
+export async function undoFileOrganization(undoToken: string): Promise<FileOrganizerUndoResult> {
+  const response = await fetch(`${API_BASE}/api/tools/file-organizer/undo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ undoToken })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to undo file organization"));
   }
 
   return response.json();

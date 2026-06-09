@@ -18,6 +18,7 @@ import { SummaryPage } from "./components/summary-page";
 import { TodoPage } from "./components/todo-module";
 import { TopicPage } from "./components/topic-page";
 import { PhotoRenamerPage } from "./components/photo-renamer-page";
+import { FileOrganizerPage } from "./components/file-organizer-page";
 import { BrowserAutomationPage } from "./components/browser-automation-page";
 import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ToolsPage } from "./components/tools-page";
@@ -113,6 +114,12 @@ const photoRenamerRoute = createRoute({
   component: PhotoRenamerPage
 });
 
+const fileOrganizerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools/file-organizer",
+  component: FileOrganizerPage
+});
+
 const browserAutomationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools/browser-automation",
@@ -138,6 +145,7 @@ const routeTree = rootRoute.addChildren([
   summaryRoute,
   toolsRoute,
   photoRenamerRoute,
+  fileOrganizerRoute,
   browserAutomationRoute,
   promptTemplateRoute,
   logsRoute

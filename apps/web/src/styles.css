@@ -8262,6 +8262,7 @@ body[data-theme="day"] .cinematic-project-controls input {
 /* Local utility catalog and photo renamer */
 .tools-shell,
 .photo-renamer-shell,
+.file-organizer-shell,
 .browser-automation-shell,
 .prompt-template-shell {
   display: grid;
@@ -8280,6 +8281,7 @@ body[data-theme="day"] .cinematic-project-controls input {
 
 .tools-workspace > .tools-shell,
 .tools-workspace > .photo-renamer-shell,
+.tools-workspace > .file-organizer-shell,
 .tools-workspace > .browser-automation-shell,
 .tools-workspace > .prompt-template-shell {
   overflow-x: hidden;

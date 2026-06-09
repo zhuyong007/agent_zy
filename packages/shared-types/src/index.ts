@@ -126,6 +126,71 @@ export interface PhotoRenameUndoResult {
   }>;
 }
 
+export type FileOrganizerMode = "time" | "type";
+export type FileOrganizerTimeGranularity = "day" | "month" | "year";
+export type FileOrganizerTimeSource = "filename" | "file-birthtime" | "file-mtime" | "unknown";
+export type FileOrganizerItemStatus = "move" | "unchanged" | "skipped";
+
+export interface FileOrganizerPreviewInput {
+  directoryPath: string;
+  mode: FileOrganizerMode;
+  timeGranularity?: FileOrganizerTimeGranularity;
+}
+
+export interface FileOrganizerPreviewItem {
+  sourcePath: string;
+  sourceName: string;
+  targetPath: string;
+  targetName: string;
+  targetFolderName: string;
+  status: FileOrganizerItemStatus;
+  timeSource?: FileOrganizerTimeSource;
+  size: number;
+  modifiedAt: string;
+  skipReason?: string;
+}
+
+export interface FileOrganizerPreviewResult {
+  previewToken: string;
+  directoryPath: string;
+  mode: FileOrganizerMode;
+  timeGranularity: FileOrganizerTimeGranularity | null;
+  createdAt: string;
+  expiresAt: string;
+  summary: {
+    total: number;
+    move: number;
+    unchanged: number;
+    skipped: number;
+  };
+  items: FileOrganizerPreviewItem[];
+}
+
+export interface FileOrganizerExecuteResult {
+  undoToken: string;
+  summary: {
+    moved: number;
+    failed: number;
+  };
+  items: Array<{
+    sourcePath: string;
+    targetPath: string;
+    status: "moved";
+  }>;
+}
+
+export interface FileOrganizerUndoResult {
+  summary: {
+    restored: number;
+    failed: number;
+  };
+  items: Array<{
+    sourcePath: string;
+    targetPath: string;
+    status: "restored";
+  }>;
+}
+
 export interface KanbanGroups {
   todo: TaskRecord[];
   inProgress: TaskRecord[];

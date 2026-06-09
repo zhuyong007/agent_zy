@@ -39,4 +39,20 @@ describe("ToolsCatalog", () => {
     expect(link?.getAttribute("href")).toBe("/tools/prompt-templates");
     expect(link?.textContent).toContain("保存优秀提示词");
   });
+
+  it("shows the file organizer tool entry", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(React.createElement(ToolsCatalog));
+    });
+
+    const link = Array.from(container.querySelectorAll("a"))
+      .find((item) => item.textContent?.includes("文件整理"));
+
+    expect(link?.getAttribute("href")).toBe("/tools/file-organizer");
+    expect(link?.textContent).toContain("按时间或类型");
+  });
 });

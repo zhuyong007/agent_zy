@@ -19,6 +19,7 @@ import { getModelProvider, listModelProviders } from "./services/model-providers
 import { createModelRuntime } from "./services/model-runtime";
 import type { ModelRuntime } from "./services/model-runtime";
 import { createControlPlaneOrchestrator } from "./services/orchestrator";
+import { createFileOrganizerService } from "./services/file-organizer-service";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
@@ -133,6 +134,7 @@ export function createControlPlaneApp(options?: {
   const store = createControlPlaneStore(dataDir);
   const eventLog = createEventLogService(dataDir);
   const photoRenamer = createPhotoRenamerService();
+  const fileOrganizer = createFileOrganizerService();
   const modelSecrets = createModelSecretsRepository(dataDir);
   const modelRuntime = options?.modelRuntime ?? createModelRuntime({
     store,
@@ -282,6 +284,17 @@ export function createControlPlaneApp(options?: {
     return true;
   }
 
+  function rejectRemoteFileOrganizerRequest(request: { headers: Record<string, unknown> }, reply: any) {
+    if (isLocalBrowserRequest(request.headers.origin)) {
+      return false;
+    }
+
+    reply.code(403).send({
+      message: "file organizer is only available from a local browser"
+    });
+    return true;
+  }
+
   app.post("/api/tools/photo-renamer/preview", async (request, reply) => {
     if (rejectRemotePhotoRenamerRequest(request, reply)) {
       return reply;
@@ -378,6 +391,120 @@ export function createControlPlaneApp(options?: {
       });
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "failed to undo media renames"
+      });
+    }
+  });
+
+  app.post("/api/tools/file-organizer/preview", async (request, reply) => {
+    if (rejectRemoteFileOrganizerRequest(request, reply)) {
+      return reply;
+    }
+
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
+    const mode = body.mode === "type" ? "type" : "time";
+    const timeGranularity = body.timeGranularity === "day" || body.timeGranularity === "year"
+      ? body.timeGranularity
+      : body.timeGranularity === "month"
+        ? "month"
+        : undefined;
+
+    try {
+      const result = await fileOrganizer.preview({
+        directoryPath: typeof body.directoryPath === "string" ? body.directoryPath : "",
+        mode,
+        timeGranularity
+      });
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "file-organizer.preview.completed",
+        message: "文件整理预览完成",
+        durationMs: Date.now() - startedAt,
+        details: {
+          mode: result.mode,
+          timeGranularity: result.timeGranularity,
+          ...result.summary
+        }
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "file-organizer.preview.failed",
+        message: "文件整理预览失败",
+        durationMs: Date.now() - startedAt,
+        details: { mode, timeGranularity: timeGranularity ?? null }
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to preview file organization"
+      });
+    }
+  });
+
+  app.post("/api/tools/file-organizer/execute", async (request, reply) => {
+    if (rejectRemoteFileOrganizerRequest(request, reply)) {
+      return reply;
+    }
+
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
+
+    try {
+      const result = await fileOrganizer.execute(typeof body.previewToken === "string" ? body.previewToken : "");
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "file-organizer.execute.completed",
+        message: "文件整理执行完成",
+        durationMs: Date.now() - startedAt,
+        details: result.summary
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "file-organizer.execute.failed",
+        message: "文件整理执行失败",
+        durationMs: Date.now() - startedAt
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to execute file organization"
+      });
+    }
+  });
+
+  app.post("/api/tools/file-organizer/undo", async (request, reply) => {
+    if (rejectRemoteFileOrganizerRequest(request, reply)) {
+      return reply;
+    }
+
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
+
+    try {
+      const result = await fileOrganizer.undo(typeof body.undoToken === "string" ? body.undoToken : "");
+      eventLog.append({
+        level: "info",
+        category: "tool",
+        action: "file-organizer.undo.completed",
+        message: "文件整理撤销完成",
+        durationMs: Date.now() - startedAt,
+        details: result.summary
+      });
+      return result;
+    } catch (error) {
+      eventLog.append({
+        level: "warn",
+        category: "tool",
+        action: "file-organizer.undo.failed",
+        message: "文件整理撤销失败",
+        durationMs: Date.now() - startedAt
+      });
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to undo file organization"
       });
     }
   });
