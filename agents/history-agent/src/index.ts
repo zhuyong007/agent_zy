@@ -28,6 +28,7 @@ const HISTORY_TOPICS = [
 
 const MIN_HISTORY_CARD_COUNT = 3;
 const MAX_HISTORY_CARD_COUNT = 10;
+const MAX_HISTORY_TITLE_LENGTH = 20;
 const DYNASTY_MODULE_TYPES: HistoryDynastyModuleType[] = [
   "王朝兴衰录",
   "皇帝图鉴",
@@ -234,6 +235,10 @@ function trimToChineseCharacterLimit(value: string, maxLength: number): string {
   return result.trim();
 }
 
+function trimToCharacterLimit(value: string, maxLength: number): string {
+  return Array.from(value).slice(0, maxLength).join("").trim();
+}
+
 function removePromptLengthNotes(prompt: string): string {
   return prompt
     .replace(/[，,。；;\s]*(?:约|大约|控制在|保持在|不少于|不超过|限制在|长度为)?\s*\d+\s*(?:到|-|~|至)\s*\d+\s*(?:个)?(?:中文)?(?:字|字符)/gu, "")
@@ -277,7 +282,7 @@ function validateCard(value: unknown): HistoryPostCard | null {
   }
 
   return {
-    title,
+    title: trimToCharacterLimit(title, MAX_HISTORY_TITLE_LENGTH),
     imageText,
     prompt
   };
@@ -300,7 +305,7 @@ function validateCover(value: unknown): HistoryPostCover | null {
   }
 
   return {
-    title,
+    title: trimToCharacterLimit(title, MAX_HISTORY_TITLE_LENGTH),
     subtitle,
     imageText,
     prompt: repairImagePrompt(rawPrompt)
@@ -337,7 +342,7 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
     throw new Error("模型输出不是 JSON 对象");
   }
 
-  const topic = asString(record.topic);
+  const rawTopic = asString(record.topic);
   const summary = asString(record.summary);
   const xiaohongshuCaption = asString(record.xiaohongshuCaption);
   const cards = Array.isArray(record.cards)
@@ -348,9 +353,11 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
       ? record.cardCount
       : cards.length;
 
-  if (!topic || !summary || !xiaohongshuCaption) {
+  if (!rawTopic || !summary || !xiaohongshuCaption) {
     throw new Error("模型输出缺少 topic、summary 或 xiaohongshuCaption");
   }
+
+  const topic = trimToCharacterLimit(rawTopic, MAX_HISTORY_TITLE_LENGTH);
 
   if (
     cardCount < MIN_HISTORY_CARD_COUNT ||
@@ -496,7 +503,7 @@ async function generateWithModelRuntime(
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision"
   });
-  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。`;
+  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。topic、cover.title 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = await getModelClient().generateText({
@@ -558,6 +565,10 @@ async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: str
     mode: "dynasty"
   });
   const prompt = `请围绕朝代名称「${dynasty}」生成 4 套可直接发布的小红书历史图文策划。只输出严格 JSON 对象，不要输出 Markdown。JSON 必须是 {"dynasty":"${dynasty}","modules":[...]}，modules 必须按固定顺序包含 4 个模块：王朝兴衰录、皇帝图鉴、风云人物、历史冷知识。每个模块都必须像单独执行一次“主题模式”那样完整输出，字段必须是 type、topic、summary、cover、cardCount、cards、xiaohongshuCaption。
+
+每个模块的 topic、cover.title 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。
+
+每个模块的 xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。
 
 模块1：王朝兴衰录。以重大事件为主线，按时间顺序选择 5-8 个真正改变王朝走向的重大事件，覆盖建立、兴盛、关键转折、衰落和灭亡等阶段。每张卡片聚焦一个事件，讲清事件背景、过程、结果，以及它如何影响王朝走向；强调事件之间的因果关系，不写流水账。人物只作为事件参与者简要出现，仅说明其在事件中的作用，不展开人物生平、功绩盘点或帝王名单，避免与“皇帝图鉴”和“风云人物”重复。
 

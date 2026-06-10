@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -365,10 +368,18 @@ describe("HistoryPage", () => {
     let copyPromptButton = container.querySelector(
       'button[aria-label="复制王朝兴衰录第1张生图提示词"]'
     ) as HTMLButtonElement | null;
+    let copyCoverPromptButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录封面生图提示词"]'
+    ) as HTMLButtonElement | null;
+    let copyFinalContentButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录末尾正文"]'
+    ) as HTMLButtonElement | null;
 
     expect(copyJsonButton).toBeTruthy();
     expect(copyContentButton).toBeTruthy();
     expect(copyPromptButton).toBeTruthy();
+    expect(copyCoverPromptButton).toBeTruthy();
+    expect(copyFinalContentButton).toBeTruthy();
 
     await act(async () => {
       copyJsonButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -402,5 +413,39 @@ describe("HistoryPage", () => {
     );
     expect(copyPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
     expect(copyPromptButton?.textContent).toContain("已复制");
+
+    copyCoverPromptButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录封面生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      copyCoverPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith(
+      "东汉是怎么一步步走向灭亡的，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代场景准确，适当留白"
+    );
+    expect(copyCoverPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(copyCoverPromptButton?.textContent).toContain("已复制");
+
+    copyFinalContentButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录末尾正文"]'
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      copyFinalContentButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith("东汉是怎么一步步走向灭亡的 小红书正文");
+    expect(copyFinalContentButton?.textContent).toContain("已复制");
+  });
+
+  it("keeps the history archive list independently scrollable", () => {
+    const css = readFileSync(join(process.cwd(), "apps/web/src/styles.css"), "utf8");
+    const archiveListRules = Array.from(css.matchAll(/\.history-archive__list\s*\{(?<body>[^}]+)\}/g));
+    const archiveListRule = archiveListRules.at(-1)?.groups?.body ?? "";
+
+    expect(archiveListRule).toContain("min-height: 0");
+    expect(archiveListRule).toContain("overflow-y: auto");
   });
 });

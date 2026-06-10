@@ -405,7 +405,20 @@ export function HistoryPage() {
                         <p>{module.summary}</p>
                         {module.cover ? (
                           <div className="history-dynasty-cover">
-                            <span>封面方案</span>
+                            <div className="history-dynasty-cover__head">
+                              <span>封面方案</span>
+                              <button
+                                type="button"
+                                className={getPromptCopyButtonClass(`dynasty-cover-prompt-${index}`)}
+                                aria-label={`复制${module.type}封面生图提示词`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handlePromptCopy(`dynasty-cover-prompt-${index}`, module.cover?.prompt ?? "");
+                                }}
+                              >
+                                {copiedPromptKeys.has(`dynasty-cover-prompt-${index}`) ? "已复制" : "复制提示词"}
+                              </button>
+                            </div>
                             <strong>{module.cover.title}</strong>
                             <p>{module.cover.subtitle}</p>
                             <small>{module.cover.prompt}</small>
@@ -435,6 +448,20 @@ export function HistoryPage() {
                           ))}
                         </div>
                         <div className="history-caption-card history-caption-card--compact">
+                          <div className="history-caption-card__head">
+                            <span>小红书正文</span>
+                            <button
+                              type="button"
+                              className="history-copy-button"
+                              aria-label={`复制${module.type}末尾正文`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleCopy(`dynasty-caption-${index}`, module.xiaohongshuCaption);
+                              }}
+                            >
+                              {copiedKey === `dynasty-caption-${index}` ? "已复制" : "复制正文"}
+                            </button>
+                          </div>
                           <p>{module.xiaohongshuCaption}</p>
                         </div>
                       </article>

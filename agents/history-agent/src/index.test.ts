@@ -304,6 +304,42 @@ describe("history agent", () => {
     });
   });
 
+  it("limits all generated titles to 20 characters including punctuation", async () => {
+    const longTopic = "玄奘西行：一场跨越万里的求知之旅与文明交流";
+    const longCoverTitle = "玄奘西行，为什么改变了古代中外文明交流？";
+    const longCardTitle = "从长安出发：玄奘如何一步步抵达那烂陀并完成求学";
+    const restore = mockModelResponse({
+      topic: longTopic,
+      summary: "检查标题长度限制。",
+      cover: {
+        ...createHistoryCover(longTopic),
+        title: longCoverTitle
+      },
+      cardCount: 3,
+      cards: [
+        {
+          ...createHistoryCards(longTopic)[0],
+          title: longCardTitle
+        },
+        ...createHistoryCards(longTopic).slice(1)
+      ],
+      xiaohongshuCaption: "标题长度测试正文"
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    const payload = getPostPayload(result);
+
+    expect(result.status).toBe("completed");
+    expect(payload.topic).toBe(Array.from(longTopic).slice(0, 20).join(""));
+    expect(payload.cover?.title).toBe(Array.from(longCoverTitle).slice(0, 20).join(""));
+    expect(payload.cards[0]?.title).toBe(Array.from(longCardTitle).slice(0, 20).join(""));
+    expect(Array.from(payload.topic)).toHaveLength(20);
+    expect(Array.from(payload.cover?.title ?? "")).toHaveLength(20);
+    expect(Array.from(payload.cards[0]?.title ?? "")).toHaveLength(20);
+  });
+
   it("fails without creating a notification when model runtime is unavailable", async () => {
     const result = await agent.execute(createRequest());
 
@@ -434,7 +470,11 @@ describe("history agent", () => {
       expect(prompt).toContain("展示哪些具体知识");
       expect(prompt).not.toContain("只给出大概知识范围");
       expect(prompt).not.toContain("不必写详细知识");
+      expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
       expect(prompt).toContain("不要把字数、字符数或类似“xx字”的说明写进 prompt 字段");
+      expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
+      expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
+      expect(prompt).toContain("3–5 个相关话题标签");
 
       return JSON.stringify({
         topic: "模板测试",
@@ -775,6 +815,10 @@ ${JSON.stringify({
       expect(prompt).toContain("每张卡片聚焦一个事件");
       expect(prompt).toContain("人物只作为事件参与者简要出现");
       expect(prompt).toContain("避免与“皇帝图鉴”和“风云人物”重复");
+      expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
+      expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
+      expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
+      expect(prompt).toContain("3–5 个相关话题标签");
 
       return JSON.stringify({
         dynasty: "东汉",
