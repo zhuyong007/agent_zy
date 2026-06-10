@@ -244,7 +244,7 @@ function removePromptLengthNotes(prompt: string): string {
 
 function repairImagePrompt(prompt: string): string {
   const filler =
-    "。图片描述：竖版小红书历史知识卡片，主体清晰居中，时代场景准确，构图稳定，光线柔和，色彩克制，材质细腻。图片中应该以文字类型展示相关背景、关键人物、影响意义等大概知识范围，不必写详细知识";
+    "。图片描述：竖版小红书历史知识卡片，主体清晰居中，时代场景准确，构图稳定，光线柔和，色彩克制，材质细腻。图片中应该以文字类型展示相关背景、关键人物、影响意义等具体知识内容";
   let repaired = removePromptLengthNotes(prompt);
 
   while (countChineseCharacters(repaired) < 100) {
@@ -496,7 +496,7 @@ async function generateWithModelRuntime(
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision"
   });
-  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。`;
+  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = await getModelClient().generateText({
@@ -559,7 +559,7 @@ async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: str
   });
   const prompt = `请围绕朝代名称「${dynasty}」生成 4 套可直接发布的小红书历史图文策划。只输出严格 JSON 对象，不要输出 Markdown。JSON 必须是 {"dynasty":"${dynasty}","modules":[...]}，modules 必须按固定顺序包含 4 个模块：王朝兴衰录、皇帝图鉴、风云人物、历史冷知识。每个模块都必须像单独执行一次“主题模式”那样完整输出，字段必须是 type、topic、summary、cover、cardCount、cards、xiaohongshuCaption。
 
-模块1：王朝兴衰录。讲述整个朝代从建立到灭亡的发展脉络，覆盖建立背景、巅峰时期、关键转折点、衰落原因、灭亡过程。适合小红书阅读，不写流水账，强调故事感、戏剧冲突和因果关系。
+模块1：王朝兴衰录。以重大事件为主线，按时间顺序选择 5-8 个真正改变王朝走向的重大事件，覆盖建立、兴盛、关键转折、衰落和灭亡等阶段。每张卡片聚焦一个事件，讲清事件背景、过程、结果，以及它如何影响王朝走向；强调事件之间的因果关系，不写流水账。人物只作为事件参与者简要出现，仅说明其在事件中的作用，不展开人物生平、功绩盘点或帝王名单，避免与“皇帝图鉴”和“风云人物”重复。
 
 模块2：皇帝图鉴。展示该朝代的重要皇帝，优先选择开国皇帝、盛世皇帝、转折点皇帝、亡国相关皇帝。避免罗列全部皇帝。每位皇帝说明姓名、在位时间、一句话评价、主要功绩、主要问题。
 
@@ -569,7 +569,7 @@ async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: str
 
 每个模块的 cover 必须包含 title、subtitle、imageText、prompt。cover.prompt 是该模块的小红书首图封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。
 
-每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要强调竖版小红书知识卡片，并说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些知识，只给出大概知识范围，例如背景、人物、路线、制度、影响、时间线或关键对比，不必写详细知识。
+每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要强调竖版小红书知识卡片，并说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。
 
 四个模块的 topic 要像可直接发布的小红书选题标题，例如“东汉是怎么一步步走向灭亡的”“看懂东汉只需要认识这几位皇帝”“改变东汉命运的5个人”“东汉公务员一个月赚多少钱？”。`;
 

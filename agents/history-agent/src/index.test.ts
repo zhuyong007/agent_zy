@@ -426,13 +426,14 @@ describe("history agent", () => {
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
     const restore = mockModelRuntimeText((prompt) => {
       expect(prompt).toContain("图片描述");
-      expect(prompt).toContain("图片中应该以文字类型展示哪些知识");
+      expect(prompt).toContain("图片中应该以文字类型展示哪些具体知识");
       expect(prompt).toContain("根据内容判断需要多少张");
       expect(prompt).toContain("cover");
       expect(prompt).toContain("小红书首图封面");
       expect(prompt).toContain("下限 3 张，上限 10 张");
-      expect(prompt).toContain("只给出大概知识范围");
-      expect(prompt).toContain("不必写详细知识");
+      expect(prompt).toContain("展示哪些具体知识");
+      expect(prompt).not.toContain("只给出大概知识范围");
+      expect(prompt).not.toContain("不必写详细知识");
       expect(prompt).toContain("不要把字数、字符数或类似“xx字”的说明写进 prompt 字段");
 
       return JSON.stringify({
@@ -770,6 +771,10 @@ ${JSON.stringify({
       expect(prompt).toContain("历史冷知识");
       expect(prompt).toContain("竖版小红书知识卡片");
       expect(prompt).toContain("严格 JSON");
+      expect(prompt).toContain("按时间顺序选择 5-8 个真正改变王朝走向的重大事件");
+      expect(prompt).toContain("每张卡片聚焦一个事件");
+      expect(prompt).toContain("人物只作为事件参与者简要出现");
+      expect(prompt).toContain("避免与“皇帝图鉴”和“风云人物”重复");
 
       return JSON.stringify({
         dynasty: "东汉",

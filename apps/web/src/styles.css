@@ -3236,6 +3236,13 @@ body[data-theme="day"] .summary-list button {
   transform: translateY(-1px);
 }
 
+.history-copy-button--copied,
+.history-copy-button--copied:hover {
+  border-color: rgba(var(--accent-rgb), 0.62);
+  color: var(--accent-contrast);
+  background: rgb(var(--accent-rgb));
+}
+
 .history-archive__delete:disabled {
   cursor: wait;
   opacity: 0.62;
