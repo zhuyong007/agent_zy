@@ -95,6 +95,47 @@ export function resolveDesktopAutomationBrowserApp(options: {
   return "";
 }
 
+export type DesktopAutomationPermissionKind = "accessibility" | "screen-recording";
+
+export async function openDesktopAutomationPermissionSettings(
+  kind: DesktopAutomationPermissionKind,
+  options: {
+    platform?: NodeJS.Platform;
+    launch?: (command: string, args: string[]) => Promise<void>;
+  } = {}
+) {
+  const platform = options.platform ?? process.platform;
+
+  if (platform !== "darwin") {
+    return {
+      opened: false,
+      message: "当前系统不提供可直接打开的桌面自动化授权页面"
+    };
+  }
+
+  const uri = kind === "accessibility"
+    ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    : "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+  const launch = options.launch ?? ((command, args) => new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: "ignore"
+    });
+    child.on("error", reject);
+    child.on("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  }));
+
+  await launch("open", [uri]);
+
+  return {
+    opened: true,
+    message: kind === "accessibility" ? "已打开辅助功能设置" : "已打开屏幕录制设置"
+  };
+}
+
 function createLog(input: Omit<BrowserAutomationRunLog, "id" | "createdAt">): BrowserAutomationRunLog {
   return {
     id: `browser-log-${nanoid()}`,
@@ -308,8 +349,13 @@ except Exception as error:
 
 pyautogui.PAUSE = 0.08
 
+def json_default(value):
+    if hasattr(value, "item"):
+        return value.item()
+    raise TypeError("Object of type " + type(value).__name__ + " is not JSON serializable")
+
 def ok(value=None):
-    print(json.dumps({"ok": True, "value": value}))
+    print(json.dumps({"ok": True, "value": value}, default=json_default))
 
 def data_url_to_file(data_url, filename):
     raw = data_url.split(",", 1)[1] if "," in data_url else data_url
@@ -396,7 +442,7 @@ try:
         if point is None:
             ok(None)
         else:
-            ok({"x": point.x, "y": point.y, "confidence": confidence})
+            ok({"x": int(point.x), "y": int(point.y), "confidence": confidence})
     elif action == "click":
         pyautogui.click(float(payload.get("x", 0)), float(payload.get("y", 0)))
         ok()
@@ -424,7 +470,7 @@ try:
 except Exception as error:
     print(json.dumps({
         "ok": False,
-        "error": "桌面自动化失败，请确认已授予辅助功能和屏幕录制权限。原因：" + str(error)
+        "error": "桌面自动化失败。原因：" + str(error)
     }))
 `;
 

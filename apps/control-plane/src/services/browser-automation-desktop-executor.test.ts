@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createDesktopBrowserAutomationExecutor,
+  openDesktopAutomationPermissionSettings,
   resolveDesktopAutomationBrowserApp,
   resolveDesktopAutomationPythonPath,
   type DesktopAutomationController
@@ -74,6 +75,31 @@ describe("desktop browser automation executor", () => {
       env: {},
       platform: "linux"
     })).toBe("");
+  });
+
+  it("opens macOS desktop automation permission settings", async () => {
+    const launch = vi.fn().mockResolvedValue(undefined);
+
+    await expect(openDesktopAutomationPermissionSettings("accessibility", {
+      platform: "darwin",
+      launch
+    })).resolves.toEqual({
+      opened: true,
+      message: "已打开辅助功能设置"
+    });
+
+    expect(launch).toHaveBeenCalledWith("open", [
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    ]);
+  });
+
+  it("reports unsupported permission settings on other systems", async () => {
+    await expect(openDesktopAutomationPermissionSettings("screen-recording", {
+      platform: "win32"
+    })).resolves.toEqual({
+      opened: false,
+      message: "当前系统不提供可直接打开的桌面自动化授权页面"
+    });
   });
 
   it("opens URLs in a new tab of the current foreground browser", async () => {

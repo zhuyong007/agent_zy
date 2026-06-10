@@ -260,6 +260,24 @@ export async function fetchBrowserAutomation(): Promise<BrowserAutomationState> 
   return response.json();
 }
 
+export async function openBrowserAutomationPermissionSettings(
+  kind: "accessibility" | "screen-recording"
+): Promise<{ opened: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/api/browser-automation/permissions/open`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ kind })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to open desktop automation permission settings"));
+  }
+
+  return response.json();
+}
+
 export async function createBrowserAutomationWorkflow(input: unknown): Promise<BrowserAutomationWorkflow> {
   const response = await fetch(`${API_BASE}/api/browser-automation/workflows`, {
     method: "POST",

@@ -26,7 +26,10 @@ import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
 import { normalizeExternalUrl, openExternalUrlInBrowser, type ExternalUrlOpener } from "./services/browser-opener";
-import { createDesktopBrowserAutomationExecutor } from "./services/browser-automation-desktop-executor";
+import {
+  createDesktopBrowserAutomationExecutor,
+  openDesktopAutomationPermissionSettings
+} from "./services/browser-automation-desktop-executor";
 import {
   createBrowserAutomationExampleWorkflow
 } from "./services/browser-automation-workflow";
@@ -923,6 +926,16 @@ export function createControlPlaneApp(options?: {
   app.get("/api/news", async () => orchestrator.getNews());
 
   app.get("/api/browser-automation", async () => browserAutomation.getState());
+
+  app.post("/api/browser-automation/permissions/open", async (request, reply) => {
+    const body = request.body as { kind?: unknown };
+
+    if (body.kind !== "accessibility" && body.kind !== "screen-recording") {
+      return reply.code(400).send({ error: "kind must be accessibility or screen-recording" });
+    }
+
+    return openDesktopAutomationPermissionSettings(body.kind);
+  });
 
   app.post("/api/browser-automation/workflows", async (request, reply) => {
     try {

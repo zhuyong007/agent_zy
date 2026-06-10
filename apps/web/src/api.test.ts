@@ -6,6 +6,7 @@ import {
   createPromptTemplate,
   fetchSystemStatus,
   fetchBrowserAutomation,
+  openBrowserAutomationPermissionSettings,
   fetchPromptTemplates,
   clearEventLogs,
   fetchEventLogs,
@@ -44,7 +45,8 @@ describe("browser automation API", () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "workflow-1", name: "updated" }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "run-1" }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "rule-1" }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "rule-1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ opened: true, message: "opened" }) });
     vi.stubGlobal("fetch", fetchMock);
 
     await fetchBrowserAutomation();
@@ -53,6 +55,7 @@ describe("browser automation API", () => {
     await runBrowserAutomationWorkflow("workflow-1");
     await stopBrowserAutomationRun("run-1");
     await createBrowserAutomationTriggerRule({ workflowId: "workflow-1" });
+    await openBrowserAutomationPermissionSettings("accessibility");
 
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/browser-automation");
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/browser-automation/workflows");
@@ -68,6 +71,11 @@ describe("browser automation API", () => {
     expect(fetchMock.mock.calls[3]?.[0]).toContain("/api/browser-automation/workflows/workflow-1/run");
     expect(fetchMock.mock.calls[4]?.[0]).toContain("/api/browser-automation/runs/run-1/stop");
     expect(fetchMock.mock.calls[5]?.[0]).toContain("/api/browser-automation/trigger-rules");
+    expect(fetchMock.mock.calls[6]?.[0]).toContain("/api/browser-automation/permissions/open");
+    expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ kind: "accessibility" })
+    });
   });
 });
 

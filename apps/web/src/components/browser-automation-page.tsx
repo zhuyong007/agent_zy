@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ClipboardEvent, type DragEvent } from "react";
 
 import type {
   BrowserAutomationImageTarget,
@@ -13,6 +13,7 @@ import {
   createBrowserAutomationTriggerRule,
   createBrowserAutomationWorkflow,
   fetchBrowserAutomation,
+  openBrowserAutomationPermissionSettings,
   runBrowserAutomationWorkflow,
   stopBrowserAutomationRun,
   updateBrowserAutomationWorkflow
@@ -27,6 +28,9 @@ type BrowserAutomationWorkspaceProps = {
   runAction?: (id: string) => Promise<BrowserAutomationRun>;
   stopAction?: (id: string) => Promise<{ ok: true }>;
   createRuleAction?: (input: unknown) => Promise<BrowserAutomationTriggerRule>;
+  openPermissionSettingsAction?: (
+    kind: "accessibility" | "screen-recording"
+  ) => Promise<{ opened: boolean; message: string }>;
 };
 
 type WorkflowDraft = {
@@ -162,7 +166,8 @@ export function BrowserAutomationWorkspace({
   updateAction = updateBrowserAutomationWorkflow,
   runAction = runBrowserAutomationWorkflow,
   stopAction = stopBrowserAutomationRun,
-  createRuleAction = createBrowserAutomationTriggerRule
+  createRuleAction = createBrowserAutomationTriggerRule,
+  openPermissionSettingsAction = openBrowserAutomationPermissionSettings
 }: BrowserAutomationWorkspaceProps) {
   const [state, setState] = useState<BrowserAutomationState>({
     workflows: [],
@@ -179,6 +184,9 @@ export function BrowserAutomationWorkspace({
   const [status, setStatus] = useState<"loading" | "idle" | "saving" | "running" | "stopping" | "rule">("loading");
   const [error, setError] = useState<string | null>(null);
   const [ruleAgentId, setRuleAgentId] = useState("ledger-agent");
+  const [imageTargetMessages, setImageTargetMessages] = useState<Record<string, string>>({});
+  const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(() => new Set());
+  const [permissionMessage, setPermissionMessage] = useState<string | null>(null);
 
   async function refresh() {
     setStatus("loading");
@@ -254,7 +262,15 @@ export function BrowserAutomationWorkspace({
     }));
   }
 
-  async function handleImageTargetUpload(index: number, file: File | undefined) {
+  function removeStepImageTarget(index: number, stepId: string) {
+    updateStepImageTarget(index, null);
+    setImageTargetMessages((current) => {
+      const { [stepId]: _removed, ...next } = current;
+      return next;
+    });
+  }
+
+  async function handleImageTargetFile(index: number, file: File | undefined, message: string) {
     if (!file) {
       return;
     }
@@ -267,9 +283,41 @@ export function BrowserAutomationWorkspace({
     try {
       const imageDataUrl = await readFileAsDataUrl(file);
       updateStepImageTarget(index, { imageDataUrl });
+      setImageTargetMessages((current) => ({
+        ...current,
+        [draft.steps[index]?.id ?? String(index)]: message
+      }));
+      setError(null);
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     }
+  }
+
+  async function handleImageTargetPaste(index: number, event: ClipboardEvent<HTMLElement>) {
+    const file = Array.from(event.clipboardData.items)
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"))
+      ?.getAsFile()
+      ?? Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
+
+    if (!file) {
+      setError("剪贴板中未检测到图片");
+      return;
+    }
+
+    event.preventDefault();
+    await handleImageTargetFile(index, file, "已粘贴剪贴板图片");
+  }
+
+  async function handleImageTargetDrop(index: number, event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith("image/"));
+
+    if (!file) {
+      setError("请拖入图片文件作为目标截图");
+      return;
+    }
+
+    await handleImageTargetFile(index, file, "已拖入目标图片");
   }
 
   function changeStepType(index: number, type: BrowserAutomationStep["type"]) {
@@ -302,6 +350,20 @@ export function BrowserAutomationWorkspace({
       ...current,
       steps: current.steps.filter((_step, stepIndex) => stepIndex !== index)
     }));
+  }
+
+  function toggleStepCollapsed(stepId: string) {
+    setCollapsedStepIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(stepId)) {
+        next.delete(stepId);
+      } else {
+        next.add(stepId);
+      }
+
+      return next;
+    });
   }
 
   async function handleSaveWorkflow() {
@@ -401,48 +463,86 @@ export function BrowserAutomationWorkspace({
     }
   }
 
+  async function handleOpenPermissionSettings(kind: "accessibility" | "screen-recording") {
+    setError(null);
+    setPermissionMessage(null);
+
+    try {
+      const result = await openPermissionSettingsAction(kind);
+      setPermissionMessage(result.message);
+    } catch (nextError) {
+      setError(getErrorMessage(nextError));
+    }
+  }
+
   function renderImageTargetControls(step: BrowserAutomationStep, index: number) {
     if (step.type !== "click" && step.type !== "type") {
       return null;
     }
 
     const target = step.imageTarget;
+    const targetMessage = imageTargetMessages[step.id];
 
     return (
       <div className="browser-automation-image-target browser-automation-field-wide">
         <div className="browser-automation-image-target__header">
-          <strong>目标定位</strong>
-          <button type="button" onClick={() => updateStepImageTarget(index, null)} disabled={!target}>
+          <div>
+            <strong>目标定位</strong>
+            <span>优先使用局部截图匹配，说明文字用于视觉模型兜底。</span>
+          </div>
+          <button type="button" onClick={() => removeStepImageTarget(index, step.id)} disabled={!target}>
             移除图片
           </button>
         </div>
-        <div className="browser-automation-fields">
-          <label>
-            <span>目标截图（可选）</span>
-            <input
-              name={`step-${step.type}-image`}
-              type="file"
-              accept="image/*"
-              onChange={(event) => void handleImageTargetUpload(index, event.currentTarget.files?.[0])}
-            />
-          </label>
-          <label>
+        <div className="browser-automation-target-grid">
+          <label className="browser-automation-target-prompt">
             <span>目标说明</span>
             <input
               value={step.targetPrompt ?? target?.prompt ?? ""}
-              placeholder="例如：蓝色提交按钮、搜索框"
+              placeholder="例如：页面右上角的蓝色提交按钮"
               onChange={(event) => updateStep(index, { targetPrompt: event.currentTarget.value })}
             />
+            <small>描述得越具体，视觉模型定位越准确。</small>
           </label>
+          <div className="browser-automation-target-actions">
+            <label
+              className="browser-automation-image-upload-zone"
+              data-image-upload-target
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => void handleImageTargetDrop(index, event)}
+            >
+              <input
+                name={`step-${step.type}-image`}
+                className="browser-automation-image-upload-zone__input"
+                type="file"
+                accept="image/*"
+                onChange={(event) => void handleImageTargetFile(index, event.currentTarget.files?.[0], "已上传目标图片")}
+              />
+              <span className="browser-automation-image-upload-zone__icon" aria-hidden="true">+</span>
+              <strong>{target?.imageDataUrl ? "替换上传图片" : "上传图片"}</strong>
+              <small>点击选择或拖入图片</small>
+            </label>
+            <div
+              className="browser-automation-image-paste-zone"
+              data-image-paste-target
+              tabIndex={0}
+              onPaste={(event) => void handleImageTargetPaste(index, event)}
+            >
+              <span className="browser-automation-image-paste-zone__key">⌘V</span>
+              <div>
+                <strong>粘贴剪贴板图片</strong>
+                <small>点击此处后按 Cmd+V / Ctrl+V</small>
+              </div>
+            </div>
+          </div>
         </div>
         {target?.imageDataUrl ? (
           <div className="browser-automation-image-preview">
             <img src={target.imageDataUrl} alt="目标截图预览" />
-            <span>运行时先用本地图片匹配；找不到时再用视觉模型定位。</span>
+            <span>当前目标截图</span>
           </div>
-        ) : (
-          <p>上传按钮、输入框或局部截图可减少模型调用；未上传时使用目标说明让视觉模型定位。</p>
-        )}
+        ) : null}
+        {targetMessage ? <p className="browser-automation-image-target__message">{targetMessage}</p> : null}
       </div>
     );
   }
@@ -555,91 +655,73 @@ export function BrowserAutomationWorkspace({
                 <button type="button" data-action="add-step" onClick={addStep}>添加步骤</button>
               </div>
               <div className="browser-automation-steps">
-                {draft.steps.map((step, index) => (
-                  <article className="browser-automation-step" key={`${step.id}-${index}`}>
-                    <div className="browser-automation-step__header">
-                      <strong>{index + 1}. {STEP_TYPE_OPTIONS.find((option) => option.value === step.type)?.label ?? step.type}</strong>
-                      <button type="button" onClick={() => removeStep(index)} disabled={draft.steps.length <= 1}>
-                        删除
-                      </button>
-                    </div>
-                    <div className="browser-automation-fields browser-automation-fields--step">
-                      <label>
-                        <span>步骤类型</span>
-                        <select
-                          value={step.type}
-                          onChange={(event) => changeStepType(index, event.currentTarget.value as BrowserAutomationStep["type"])}
-                        >
-                          {STEP_TYPE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>步骤 ID</span>
-                        <input
-                          value={step.id}
-                          onChange={(event) => updateStep(index, { id: event.currentTarget.value })}
-                        />
-                      </label>
-                      <label>
-                        <span>显示名称</span>
-                        <input
-                          value={step.label ?? ""}
-                          onChange={(event) => updateStep(index, { label: event.currentTarget.value })}
-                        />
-                      </label>
-                      <label>
-                        <span>超时毫秒</span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={step.timeoutMs ?? 30000}
-                          onChange={(event) => updateStep(index, { timeoutMs: Number(event.currentTarget.value) })}
-                        />
-                      </label>
+                {draft.steps.map((step, index) => {
+                  const typeLabel = STEP_TYPE_OPTIONS.find((option) => option.value === step.type)?.label ?? step.type;
+                  const isCollapsed = collapsedStepIds.has(step.id);
 
+                  return (
+                  <article className={`browser-automation-step${isCollapsed ? " is-collapsed" : ""}`} key={`${step.id}-${index}`}>
+                    <div className="browser-automation-step__header">
+                      <div className="browser-automation-step__identity">
+                        <span className="browser-automation-step__number">{index + 1}</span>
+                        <div>
+                          <strong>{step.label || typeLabel}</strong>
+                          <span>{step.label ? typeLabel : step.id}</span>
+                        </div>
+                      </div>
+                      <div className="browser-automation-step__actions">
+                        <label className="browser-automation-step__type">
+                          <span>动作</span>
+                          <select
+                            value={step.type}
+                            onChange={(event) => changeStepType(index, event.currentTarget.value as BrowserAutomationStep["type"])}
+                          >
+                            {STEP_TYPE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="browser-automation-icon-button"
+                          aria-label={`${isCollapsed ? "展开" : "折叠"}步骤 ${index + 1}`}
+                          title={isCollapsed ? "展开步骤" : "折叠步骤"}
+                          onClick={() => toggleStepCollapsed(step.id)}
+                        >
+                          {isCollapsed ? "▸" : "▾"}
+                        </button>
+                        <button
+                          type="button"
+                          className="browser-automation-icon-button browser-automation-icon-button--danger"
+                          aria-label={`删除步骤 ${index + 1}`}
+                          title="删除步骤"
+                          onClick={() => removeStep(index)}
+                          disabled={draft.steps.length <= 1}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                    {!isCollapsed ? (
+                    <div className="browser-automation-step__body" data-step-body>
+                    <div className="browser-automation-fields browser-automation-fields--step">
                       {step.type === "openUrl" ? (
                         <label className="browser-automation-field-wide">
-                          <span>网址</span>
+                          <span>打开网址</span>
                           <input
                             name="step-open-url"
                             value={step.url}
+                            placeholder="https://example.com"
                             onChange={(event) => updateStep(index, { url: event.currentTarget.value })}
                           />
                         </label>
                       ) : null}
 
-                      {step.type === "click" ? (
-                        <>
-                          {renderImageTargetControls(step, index)}
-                          <label>
-                            <span>屏幕 X 坐标（高级）</span>
-                            <input
-                              type="number"
-                              value={step.x ?? ""}
-                              onChange={(event) => updateStep(index, {
-                                x: event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value)
-                              })}
-                            />
-                          </label>
-                          <label>
-                            <span>屏幕 Y 坐标（高级）</span>
-                            <input
-                              type="number"
-                              value={step.y ?? ""}
-                              onChange={(event) => updateStep(index, {
-                                y: event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value)
-                              })}
-                            />
-                          </label>
-                        </>
-                      ) : null}
+                      {step.type === "click" ? renderImageTargetControls(step, index) : null}
 
                       {step.type === "type" ? (
                         <>
-                          {renderImageTargetControls(step, index)}
-                          <label className="browser-automation-field-wide">
+                          <label className="browser-automation-field-wide browser-automation-primary-field">
                             <span>输入内容</span>
                             <input value={step.text} onChange={(event) => updateStep(index, { text: event.currentTarget.value })} />
                           </label>
@@ -649,8 +731,9 @@ export function BrowserAutomationWorkspace({
                               checked={step.clearBeforeType ?? true}
                               onChange={(event) => updateStep(index, { clearBeforeType: event.currentTarget.checked })}
                             />
-                            <span>输入前清空</span>
+                            <span>输入前清空原内容</span>
                           </label>
+                          {renderImageTargetControls(step, index)}
                         </>
                       ) : null}
 
@@ -727,8 +810,64 @@ export function BrowserAutomationWorkspace({
                         </>
                       ) : null}
                     </div>
+                    <details className="browser-automation-step-advanced">
+                      <summary>高级设置</summary>
+                      <div className="browser-automation-fields browser-automation-fields--advanced">
+                        <label>
+                          <span>步骤 ID</span>
+                          <input
+                            value={step.id}
+                            onChange={(event) => updateStep(index, { id: event.currentTarget.value })}
+                          />
+                        </label>
+                        <label>
+                          <span>显示名称</span>
+                          <input
+                            value={step.label ?? ""}
+                            placeholder={typeLabel}
+                            onChange={(event) => updateStep(index, { label: event.currentTarget.value })}
+                          />
+                        </label>
+                        <label>
+                          <span>超时毫秒</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={step.timeoutMs ?? 30000}
+                            onChange={(event) => updateStep(index, { timeoutMs: Number(event.currentTarget.value) })}
+                          />
+                        </label>
+                        {step.type === "click" ? (
+                          <>
+                            <label>
+                              <span>屏幕 X 坐标</span>
+                              <input
+                                type="number"
+                                value={step.x ?? ""}
+                                onChange={(event) => updateStep(index, {
+                                  x: event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value)
+                                })}
+                              />
+                            </label>
+                            <label>
+                              <span>屏幕 Y 坐标</span>
+                              <input
+                                type="number"
+                                value={step.y ?? ""}
+                                onChange={(event) => updateStep(index, {
+                                  y: event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value)
+                                })}
+                              />
+                            </label>
+                          </>
+                        ) : null}
+                      </div>
+                    </details>
+                    </div>
+                    ) : null}
                   </article>
-                ))}
+                  );
+                })}
               </div>
             </section>
 
@@ -740,6 +879,19 @@ export function BrowserAutomationWorkspace({
         </div>
 
         <aside className="browser-automation-side">
+          <section>
+            <h2>桌面权限</h2>
+            <p>macOS 需要手动允许运行项目的终端或应用控制键盘鼠标，并读取屏幕。</p>
+            <div className="browser-automation-permission-actions">
+              <button type="button" onClick={() => void handleOpenPermissionSettings("accessibility")}>
+                打开辅助功能设置
+              </button>
+              <button type="button" onClick={() => void handleOpenPermissionSettings("screen-recording")}>
+                打开屏幕录制设置
+              </button>
+            </div>
+            {permissionMessage ? <p className="browser-automation-permission-message">{permissionMessage}</p> : null}
+          </section>
           <section>
             <h2>触发规则</h2>
             <div className="browser-automation-rule">
