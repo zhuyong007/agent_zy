@@ -22,6 +22,7 @@ import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createFileOrganizerService } from "./services/file-organizer-service";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
+import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -117,6 +118,48 @@ function parseFallbackMultipartUpload(contentType: unknown, body: unknown) {
   };
 }
 
+function parseFallbackMultipartImage(contentType: unknown, body: unknown) {
+  const boundary = parseMultipartBoundary(contentType);
+
+  if (!boundary || !Buffer.isBuffer(body)) {
+    throw new Error("图片上传格式无效");
+  }
+
+  const fields: Record<string, string> = {};
+  let image: { filename: string; mimetype: string; buffer: Buffer } | null = null;
+  const raw = body.toString("binary");
+
+  for (const segment of raw.split(`--${boundary}`)) {
+    const trimmed = segment.replace(/^\r\n/, "");
+    const headerEnd = trimmed.indexOf("\r\n\r\n");
+    if (!trimmed || trimmed.startsWith("--") || headerEnd < 0) {
+      continue;
+    }
+    const headerText = trimmed.slice(0, headerEnd);
+    const contentText = trimmed.slice(headerEnd + 4).replace(/\r\n$/, "");
+    const disposition = /content-disposition:\s*form-data;([^\r\n]+)/i.exec(headerText)?.[1] ?? "";
+    const name = /name="([^"]+)"/i.exec(disposition)?.[1];
+    const filename = /filename="([^"]*)"/i.exec(disposition)?.[1];
+    if (!name) {
+      continue;
+    }
+    if (filename !== undefined && name === "image") {
+      image = {
+        filename: filename || "uploaded-image",
+        mimetype: /content-type:\s*([^\r\n]+)/i.exec(headerText)?.[1]?.trim() ?? "",
+        buffer: Buffer.from(contentText, "binary")
+      };
+    } else if (filename === undefined) {
+      fields[name] = contentText;
+    }
+  }
+
+  if (!image) {
+    throw new Error("请上传 image 文件");
+  }
+  return { fields, image };
+}
+
 export function createControlPlaneApp(options?: {
   dataDir?: string;
   startSchedulers?: boolean;
@@ -158,6 +201,11 @@ export function createControlPlaneApp(options?: {
   const ledgerReportService = createLedgerReportService();
   const summaryService = createSummaryService(store);
   const promptTemplateService = createPromptTemplateService({
+    store,
+    modelRuntime
+  });
+  const imageToVideoPlanner = createImageToVideoPlannerService({
+    dataDir,
     store,
     modelRuntime
   });
@@ -1063,6 +1111,96 @@ export function createControlPlaneApp(options?: {
     const body = (request.body ?? {}) as Record<string, unknown>;
 
     return orchestrator.generateCinematicProject(body);
+  });
+
+  app.get("/api/image-to-video/projects", async () => imageToVideoPlanner.listProjects());
+
+  app.get("/api/image-to-video/projects/:id", async (request, reply) => {
+    try {
+      return imageToVideoPlanner.getProject((request.params as { id: string }).id);
+    } catch (error) {
+      return reply.code(404).send({ message: error instanceof Error ? error.message : "项目不存在" });
+    }
+  });
+
+  app.delete("/api/image-to-video/projects/:id", async (request, reply) => {
+    try {
+      return imageToVideoPlanner.deleteProject((request.params as { id: string }).id);
+    } catch (error) {
+      return reply.code(404).send({ message: error instanceof Error ? error.message : "项目不存在" });
+    }
+  });
+
+  app.get("/api/image-to-video/assets/:projectId/:assetId", async (request, reply) => {
+    try {
+      const params = request.params as { projectId: string; assetId: string };
+      const result = imageToVideoPlanner.readAsset(params.projectId, params.assetId);
+      return reply.type(result.asset.mimeType).send(result.buffer);
+    } catch (error) {
+      return reply.code(404).send({ message: error instanceof Error ? error.message : "图片不存在" });
+    }
+  });
+
+  app.post("/api/image-to-video/analyze", async (request, reply) => {
+    try {
+      const upload = parseFallbackMultipartImage(request.headers["content-type"], request.body);
+      return await imageToVideoPlanner.analyze({
+        projectId: upload.fields.projectId || undefined,
+        fileName: upload.image.filename,
+        mimeType: upload.image.mimetype,
+        buffer: upload.image.buffer
+      });
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "图片分析失败" });
+    }
+  });
+
+  app.post("/api/image-to-video/plan", async (request, reply) => {
+    try {
+      return await imageToVideoPlanner.plan(String((request.body as any)?.projectId ?? ""));
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "视频方案生成失败" });
+    }
+  });
+
+  app.post("/api/image-to-video/keyframes", async (request, reply) => {
+    try {
+      return await imageToVideoPlanner.planKeyframes(String((request.body as any)?.projectId ?? ""));
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "关键帧规划失败" });
+    }
+  });
+
+  app.post("/api/image-to-video/review-keyframe", async (request, reply) => {
+    try {
+      const upload = parseFallbackMultipartImage(request.headers["content-type"], request.body);
+      return await imageToVideoPlanner.reviewKeyframe(upload.fields.projectId, upload.fields.keyframeId, {
+        fileName: upload.image.filename,
+        mimeType: upload.image.mimetype,
+        buffer: upload.image.buffer
+      });
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "关键帧审核失败" });
+    }
+  });
+
+  app.post("/api/image-to-video/keyframes/:keyframeId/override", async (request, reply) => {
+    try {
+      return imageToVideoPlanner.overrideKeyframe(
+        String((request.body as any)?.projectId ?? ""),
+        (request.params as { keyframeId: string }).keyframeId
+      );
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "人工通过失败" });
+    }
+  });
+
+  app.post("/api/image-to-video/final-prompt", async (request, reply) => {
+    try {
+      return await imageToVideoPlanner.generateFinalPrompt(String((request.body as any)?.projectId ?? ""));
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "最终提示词生成失败" });
+    }
   });
 
   app.get("/api/classic-shots", async () => orchestrator.getClassicShots());

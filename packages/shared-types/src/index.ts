@@ -583,6 +583,134 @@ export interface HistoryXhsState {
   sourceUrl: string;
 }
 
+export type ImageToVideoProjectStage =
+  | "INIT"
+  | "FIRST_IMAGE_UPLOADED"
+  | "IMAGE_ANALYZED"
+  | "VIDEO_PLAN_GENERATED"
+  | "WAITING_FOR_KEYFRAMES"
+  | "MATERIALS_READY"
+  | "FINAL_PROMPT_GENERATED";
+
+export type ImageToVideoOperation = "analyzing" | "planning" | "planning-keyframes" | "reviewing" | "finalizing";
+export type ImageRoleSuggestion = "首帧" | "中间帧" | "尾帧" | "风格参考";
+export type KeyframeRole = "首帧" | "中间帧" | "尾帧";
+export type KeyframeStatus = "PENDING" | "UPLOADED" | "REVIEWING" | "APPROVED" | "REJECTED" | "APPROVED_BY_USER";
+
+export interface ImageToVideoAsset {
+  id: string;
+  projectId: string;
+  fileName: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
+export interface ImageAnalysisResult {
+  imageId: string;
+  suitableForVideo: boolean;
+  unsuitableReason: string | null;
+  roleSuggestion: ImageRoleSuggestion;
+  subjectDescription: string;
+  sceneDescription: string;
+  composition: string;
+  lighting: string;
+  mood: string;
+  style: string;
+  motionPotential: string;
+  risks: string[];
+}
+
+export interface VideoPlanKeyframeRecommendation {
+  keyframeId: string;
+  timestamp: number;
+  role: KeyframeRole;
+  reason: string;
+}
+
+export interface VideoPlan {
+  videoDuration: number;
+  coreConcept: string;
+  visualStyle: string;
+  cameraMovement: string;
+  subjectMovement: string;
+  sceneMovement: string;
+  rhythm: string;
+  emotionalArc: string;
+  recommendedKeyframes: VideoPlanKeyframeRecommendation[];
+  bgmSuggestion: string;
+  soundEffectSuggestion: string;
+  reason: string;
+}
+
+export interface KeyframeReviewResult {
+  keyframeId: string;
+  approved: boolean;
+  score: number;
+  problems: string[];
+  improvementAdvice: string;
+  revisedGenerationPrompt: string;
+  revisedNegativePrompt: string;
+  reviewedAt?: string;
+}
+
+export interface KeyframeRequirement {
+  keyframeId: string;
+  timestamp: number;
+  role: KeyframeRole;
+  requiredImageDescription: string;
+  purpose: string;
+  transitionRelation: string;
+  generationPrompt: string;
+  negativePrompt: string;
+  status: KeyframeStatus;
+  imageAssetId?: string;
+  reviewResult?: KeyframeReviewResult;
+  reviewHistory?: KeyframeReviewResult[];
+}
+
+export interface FinalVideoPrompt {
+  duration: number;
+  keyframeTimeline: Array<{
+    keyframeId: string;
+    timestamp: number;
+    description: string;
+  }>;
+  promptText: string;
+  negativePrompt: string;
+  bgm: string;
+  soundEffects: string[];
+  usageNotes: string;
+}
+
+export interface ImageToVideoProject {
+  id: string;
+  title: string;
+  stage: ImageToVideoProjectStage;
+  activeOperation: ImageToVideoOperation | null;
+  lastError: string | null;
+  originalImageAssetId: string | null;
+  assets: ImageToVideoAsset[];
+  imageAnalysis: ImageAnalysisResult | null;
+  videoPlan: VideoPlan | null;
+  keyframes: KeyframeRequirement[];
+  finalPrompt: FinalVideoPrompt | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImageToVideoState {
+  projects: ImageToVideoProject[];
+  recentProjectIds: string[];
+}
+
+export interface ImageToVideoDashboardSummary {
+  projectCount: number;
+  latestProject: ImageToVideoProject | null;
+  waitingKeyframeCount: number;
+}
+
 export interface StoryboardShot {
   id: string;
   sceneId?: string;
@@ -1074,6 +1202,7 @@ export interface AppState {
   topics: TopicState;
   cinematic: CinematicState;
   classicShots: ClassicShotState;
+  imageToVideo?: ImageToVideoState;
   browserAutomation?: BrowserAutomationState;
   promptTemplates?: PromptTemplateState;
   summary: SummaryState;
@@ -1112,6 +1241,9 @@ export interface DashboardData {
   };
   classicShots: ClassicShotState & {
     dashboard: ClassicShotDashboardSummary;
+  };
+  imageToVideo?: ImageToVideoState & {
+    dashboard: ImageToVideoDashboardSummary;
   };
   browserAutomation?: BrowserAutomationState;
   promptTemplates?: PromptTemplateState;

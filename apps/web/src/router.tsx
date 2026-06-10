@@ -22,6 +22,7 @@ import { FileOrganizerPage } from "./components/file-organizer-page";
 import { BrowserAutomationPage } from "./components/browser-automation-page";
 import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ToolsPage } from "./components/tools-page";
+import { ImageToVideoPage } from "./components/image-to-video-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
 
 const queryClient = new QueryClient();
@@ -70,6 +71,12 @@ const classicShotRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/classic-shots",
   component: ClassicShotPage
+});
+
+const imageToVideoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/image-to-video",
+  component: ImageToVideoPage
 });
 
 const manageRoute = createRoute({
@@ -140,6 +147,7 @@ const routeTree = rootRoute.addChildren([
   historyRoute,
   cinematicRoute,
   classicShotRoute,
+  imageToVideoRoute,
   ledgerRoute,
   todoRoute,
   summaryRoute,

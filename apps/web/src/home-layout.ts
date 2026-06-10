@@ -16,6 +16,7 @@ export type BuiltInHomeModuleId =
   | "history"
   | "cinematic"
   | "classicShots"
+  | "imageToVideo"
   | "summary";
 export type { HomeModuleId, HomeModulePreference, HomeModuleSize };
 
@@ -92,6 +93,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "history",
   "cinematic",
   "classicShots",
+  "imageToVideo",
   "summary"
 ]);
 

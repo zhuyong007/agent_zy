@@ -54,6 +54,7 @@ describe("home-layout", () => {
       "history",
       "cinematic",
       "classicShots",
+      "imageToVideo",
       "summary",
       "browserAutomation"
     ]);
@@ -64,6 +65,7 @@ describe("home-layout", () => {
       "small",
       "smaller",
       "smaller",
+      "large",
       "large",
       "large",
       "smaller",
@@ -79,6 +81,7 @@ describe("home-layout", () => {
       true,
       true,
       true,
+      true,
       false
     ]);
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
@@ -88,6 +91,7 @@ describe("home-layout", () => {
       true,
       true,
       false,
+      true,
       true,
       true,
       true,
@@ -125,6 +129,15 @@ describe("home-layout", () => {
   test("shows classic shots module in top navigation by default", () => {
     expect(canShowHomeModuleInNavigation("classicShots")).toBe(true);
     expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "classicShots")).toMatchObject({
+      visible: true,
+      showInNavigation: true,
+      size: "large"
+    });
+  });
+
+  test("shows image-to-video planner in top navigation by default", () => {
+    expect(canShowHomeModuleInNavigation("imageToVideo")).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "imageToVideo")).toMatchObject({
       visible: true,
       showInNavigation: true,
       size: "large"
@@ -314,10 +327,11 @@ describe("home-layout", () => {
       "history",
       "cinematic",
       "classicShots",
+      "imageToVideo",
       "summary",
       "browserAutomation"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {

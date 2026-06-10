@@ -17,6 +17,8 @@ import type {
   FileOrganizerPreviewResult,
   FileOrganizerUndoResult,
   HistoryXhsState,
+  ImageToVideoProject,
+  ImageToVideoState,
   HomeModulePreference,
   LedgerFactRecord,
   LedgerReportRecord,
@@ -71,6 +73,63 @@ export function resolveApiBase(
 }
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
+
+export function resolveImageToVideoAssetUrl(url: string) {
+  return url.startsWith("/api/") ? `${API_BASE}${url}` : url;
+}
+
+async function imageToVideoJsonRequest(path: string, body: unknown): Promise<ImageToVideoProject> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "图片转视频策划请求失败"));
+  }
+  return response.json();
+}
+
+export async function fetchImageToVideoProjects(): Promise<ImageToVideoState> {
+  const response = await fetch(`${API_BASE}/api/image-to-video/projects`);
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "读取图片转视频项目失败"));
+  }
+  return response.json();
+}
+
+export async function analyzeImageToVideo(input: FormData): Promise<ImageToVideoProject> {
+  const response = await fetch(`${API_BASE}/api/image-to-video/analyze`, { method: "POST", body: input });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "图片分析失败"));
+  }
+  return response.json();
+}
+
+export const generateImageToVideoPlan = (projectId: string) =>
+  imageToVideoJsonRequest("/api/image-to-video/plan", { projectId });
+export const generateImageToVideoKeyframes = (projectId: string) =>
+  imageToVideoJsonRequest("/api/image-to-video/keyframes", { projectId });
+export const generateImageToVideoFinalPrompt = (projectId: string) =>
+  imageToVideoJsonRequest("/api/image-to-video/final-prompt", { projectId });
+export const overrideImageToVideoKeyframe = (projectId: string, keyframeId: string) =>
+  imageToVideoJsonRequest(`/api/image-to-video/keyframes/${keyframeId}/override`, { projectId });
+
+export async function reviewImageToVideoKeyframe(input: FormData): Promise<ImageToVideoProject> {
+  const response = await fetch(`${API_BASE}/api/image-to-video/review-keyframe`, { method: "POST", body: input });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "关键帧审核失败"));
+  }
+  return response.json();
+}
+
+export async function deleteImageToVideoProject(projectId: string): Promise<ImageToVideoState> {
+  const response = await fetch(`${API_BASE}/api/image-to-video/projects/${projectId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "删除项目失败"));
+  }
+  return response.json();
+}
 
 export async function previewPhotoRenames(
   directoryPath: string,

@@ -2,6 +2,7 @@ import type { AgentManifest } from "@agent-zy/agent-sdk";
 import { manifest as browserAutomationManifest } from "@agent-zy/browser-automation-agent/manifest";
 import { manifest as classicShotManifest } from "@agent-zy/classic-shot-agent/manifest";
 import { manifest as cinematicManifest } from "@agent-zy/cinematic-agent/manifest";
+import { manifest as imageToVideoManifest } from "@agent-zy/image-to-video-planner-agent/manifest";
 import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
 import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
@@ -115,6 +116,18 @@ export const SUB_AGENT_ROUTES = [
     }
   },
   {
+    agentId: "image-to-video-planner-agent",
+    manifest: imageToVideoManifest,
+    homeModule: {
+      id: "imageToVideo",
+      label: "图片转视频策划",
+      description: "分析图片并逐步规划、补齐和审核视频关键帧",
+      defaultSize: "large",
+      defaultVisible: true,
+      order: 8
+    }
+  },
+  {
     agentId: "browser-automation-agent",
     manifest: browserAutomationManifest,
     homeModule: {
@@ -123,7 +136,7 @@ export const SUB_AGENT_ROUTES = [
       description: "结构化网页操作、等待判断和跨模块触发",
       defaultSize: "smaller",
       defaultVisible: false,
-      order: 9
+      order: 10
     }
   },
   {
@@ -135,7 +148,7 @@ export const SUB_AGENT_ROUTES = [
       description: "每日、每周、每月、每年个人复盘",
       defaultSize: "smaller",
       defaultVisible: true,
-      order: 8
+      order: 9
     }
   }
 ] as const satisfies readonly SubAgentRouteConfig[];

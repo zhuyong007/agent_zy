@@ -23,6 +23,8 @@ import type {
   LedgerSemanticRecord,
   HistoryPushState,
   HistoryXhsState,
+  ImageToVideoDashboardSummary,
+  ImageToVideoState,
   LifeStageRecord,
   ModelProfile,
   ModelProviderId,
@@ -117,6 +119,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "history",
   "cinematic",
   "classicShots",
+  "imageToVideo",
   "summary"
 ]);
 
@@ -223,6 +226,7 @@ function createInitialState(): AppState {
     },
     cinematic: createEmptyCinematicState(),
     classicShots: createEmptyClassicShotState(),
+    imageToVideo: createEmptyImageToVideoState(),
     browserAutomation: createEmptyBrowserAutomationState(),
     promptTemplates: createEmptyPromptTemplateState(),
     summary: createEmptySummaryState(),
@@ -369,6 +373,13 @@ function createEmptyClassicShotState(): ClassicShotState {
     lastGeneratedAt: null,
     status: "idle",
     lastError: null
+  };
+}
+
+function createEmptyImageToVideoState(): ImageToVideoState {
+  return {
+    projects: [],
+    recentProjectIds: []
   };
 }
 
@@ -947,6 +958,38 @@ function normalizeClassicShotProject(project: Partial<ClassicShotProject>, index
     targetPlatform: project.targetPlatform ?? "generic",
     createdAt: typeof project.createdAt === "string" ? project.createdAt : now,
     updatedAt: typeof project.updatedAt === "string" ? project.updatedAt : now
+  };
+}
+
+function normalizeImageToVideoState(imageToVideo: Partial<ImageToVideoState> | undefined): ImageToVideoState {
+  const projects = Array.isArray(imageToVideo?.projects) ? imageToVideo.projects : [];
+  const projectIds = new Set(projects.map((project) => project.id));
+  const recentProjectIds = [
+    ...(imageToVideo?.recentProjectIds ?? []).filter((id) => projectIds.has(id)),
+    ...projects.map((project) => project.id)
+  ].filter((id, index, items) => items.indexOf(id) === index);
+
+  return {
+    projects,
+    recentProjectIds
+  };
+}
+
+function buildImageToVideoDashboard(imageToVideo: ImageToVideoState): ImageToVideoDashboardSummary {
+  const projectById = new Map(imageToVideo.projects.map((project) => [project.id, project]));
+  const latestProject =
+    imageToVideo.recentProjectIds.map((id) => projectById.get(id)).find(Boolean) ??
+    imageToVideo.projects[0] ??
+    null;
+
+  return {
+    projectCount: imageToVideo.projects.length,
+    latestProject,
+    waitingKeyframeCount: imageToVideo.projects.reduce(
+      (count, project) =>
+        count + project.keyframes.filter((keyframe) => !["APPROVED", "APPROVED_BY_USER"].includes(keyframe.status)).length,
+      0
+    )
   };
 }
 
@@ -1586,6 +1629,7 @@ function normalizeAppState(state: AppState): AppState {
     topics: normalizeTopicState(state.topics),
     cinematic: normalizeCinematicState(state.cinematic),
     classicShots: normalizeClassicShotState(state.classicShots),
+    imageToVideo: normalizeImageToVideoState(state.imageToVideo),
     browserAutomation: normalizeBrowserAutomationState(state.browserAutomation),
     promptTemplates: normalizePromptTemplateState(state.promptTemplates),
     summary: normalizeSummaryState(state.summary),
@@ -1615,6 +1659,7 @@ export interface ControlPlaneStore {
   getLedgerStages(): LifeStageRecord[];
   upsertLedgerReport(report: LedgerReportRecord): LedgerReportRecord;
   setCinematicState(cinematic: CinematicState): CinematicState;
+  setImageToVideoState(imageToVideo: ImageToVideoState): ImageToVideoState;
   setBrowserAutomationState(browserAutomation: BrowserAutomationState): BrowserAutomationState;
   setPromptTemplateState(promptTemplates: PromptTemplateState): PromptTemplateState;
   setSummaryState(summary: SummaryState): SummaryState;
@@ -1780,6 +1825,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.cinematic);
+    },
+    setImageToVideoState(imageToVideo) {
+      state.imageToVideo = normalizeImageToVideoState(imageToVideo);
+      persist();
+
+      return structuredClone(state.imageToVideo);
     },
     setBrowserAutomationState(browserAutomation) {
       state.browserAutomation = normalizeBrowserAutomationState(browserAutomation);
@@ -2001,6 +2052,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         classicShots: {
           ...state.classicShots,
           dashboard: buildClassicShotDashboard(state.classicShots)
+        },
+        imageToVideo: {
+          ...normalizeImageToVideoState(state.imageToVideo),
+          dashboard: buildImageToVideoDashboard(normalizeImageToVideoState(state.imageToVideo))
         },
         browserAutomation: state.browserAutomation,
         promptTemplates: state.promptTemplates,

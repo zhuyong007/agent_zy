@@ -16,6 +16,7 @@ describe("sub-agent route config", () => {
       "history-agent",
       "cinematic-agent",
       "classic-shot-agent",
+      "image-to-video-planner-agent",
       "browser-automation-agent",
       "summary-agent"
     ]);
@@ -43,6 +44,7 @@ describe("sub-agent route config", () => {
       "history",
       "cinematic",
       "classicShots",
+      "imageToVideo",
       "summary",
       "browserAutomation"
     ]);

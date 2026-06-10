@@ -1,0 +1,11 @@
+{
+  "name": "@agent-zy/image-to-video-planner-agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts",
+    "./schemas": "./src/schemas.ts",
+    "./prompts": "./src/prompts.ts"
+  }
+}

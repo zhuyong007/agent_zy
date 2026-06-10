@@ -39,6 +39,12 @@
       "@agent-zy/classic-shot-agent": [
         "agents/classic-shot-agent/src/index.ts"
       ],
+      "@agent-zy/image-to-video-planner-agent": [
+        "agents/image-to-video-planner-agent/src/index.ts"
+      ],
+      "@agent-zy/image-to-video-planner-agent/manifest": [
+        "agents/image-to-video-planner-agent/src/manifest.ts"
+      ],
       "@agent-zy/browser-automation-agent/manifest": [
         "agents/browser-automation-agent/src/manifest.ts"
       ],
