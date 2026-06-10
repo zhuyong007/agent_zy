@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -40,12 +43,17 @@ const historyNotification: NotificationRecord = {
       imageText: "Silk Road\nroutes / exchanges / long-term impact",
       prompt: "丝绸之路，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、驿站与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域，中部留出副标题和知识标签，下方保留简短解释文字空间，适合信息流首屏点击"
     },
-    cardCount: 1,
+    cardCount: 2,
     cards: [
       {
         title: "Route map",
         imageText: "From Chang'an to the west",
         prompt: "丝绸之路商队穿过沙漠驿站，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，暖金光线，青灰地图背景，画面上方预留标题，下方保留解释文字空间，细节丰富但不拥挤"
+      },
+      {
+        title: "Exchange map",
+        imageText: "Goods and ideas moved together",
+        prompt: "丝绸之路沿线城市交流货物与思想，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，暖金光线，青灰地图背景，画面上方预留标题，下方保留解释文字空间，细节丰富但不拥挤"
       }
     ],
     xiaohongshuCaption: "Caption body for history post",
@@ -226,9 +234,13 @@ describe("HistoryPage", () => {
     const copyPromptButton = container.querySelector(
       'button[aria-label="复制第1张生图提示词"]'
     ) as HTMLButtonElement | null;
+    const secondCopyPromptButton = container.querySelector(
+      'button[aria-label="复制第2张生图提示词"]'
+    ) as HTMLButtonElement | null;
 
     expect(copyCaptionButton).toBeTruthy();
     expect(copyPromptButton).toBeTruthy();
+    expect(secondCopyPromptButton).toBeTruthy();
 
     await act(async () => {
       copyCaptionButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -241,6 +253,15 @@ describe("HistoryPage", () => {
     });
 
     expect(writeText).toHaveBeenLastCalledWith((historyNotification.payload as HistoryPostPayload).cards[0]?.prompt);
+
+    await act(async () => {
+      secondCopyPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(copyPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(secondCopyPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(copyPromptButton?.textContent).toContain("已复制");
+    expect(secondCopyPromptButton?.textContent).toContain("已复制");
   });
 
   it("shows and copies xiaohongshu cover plan text from the selected history item", async () => {
@@ -279,6 +300,8 @@ describe("HistoryPage", () => {
     });
 
     expect(writeText).toHaveBeenLastCalledWith((historyNotification.payload as HistoryPostPayload).cover?.prompt);
+    expect(copyCoverPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(copyCoverPromptButton?.textContent).toContain("已复制");
   });
 
   it("deletes an archived history notification from the history list", async () => {
@@ -345,10 +368,18 @@ describe("HistoryPage", () => {
     let copyPromptButton = container.querySelector(
       'button[aria-label="复制王朝兴衰录第1张生图提示词"]'
     ) as HTMLButtonElement | null;
+    let copyCoverPromptButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录封面生图提示词"]'
+    ) as HTMLButtonElement | null;
+    let copyFinalContentButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录末尾正文"]'
+    ) as HTMLButtonElement | null;
 
     expect(copyJsonButton).toBeTruthy();
     expect(copyContentButton).toBeTruthy();
     expect(copyPromptButton).toBeTruthy();
+    expect(copyCoverPromptButton).toBeTruthy();
+    expect(copyFinalContentButton).toBeTruthy();
 
     await act(async () => {
       copyJsonButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -380,5 +411,41 @@ describe("HistoryPage", () => {
     expect(writeText).toHaveBeenLastCalledWith(
       "东汉是怎么一步步走向灭亡的 图1，竖版小红书历史知识卡片，主体清晰居中，历史时代准确，适当留白"
     );
+    expect(copyPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(copyPromptButton?.textContent).toContain("已复制");
+
+    copyCoverPromptButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录封面生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      copyCoverPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith(
+      "东汉是怎么一步步走向灭亡的，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代场景准确，适当留白"
+    );
+    expect(copyCoverPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(copyCoverPromptButton?.textContent).toContain("已复制");
+
+    copyFinalContentButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录末尾正文"]'
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      copyFinalContentButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith("东汉是怎么一步步走向灭亡的 小红书正文");
+    expect(copyFinalContentButton?.textContent).toContain("已复制");
+  });
+
+  it("keeps the history archive list independently scrollable", () => {
+    const css = readFileSync(join(process.cwd(), "apps/web/src/styles.css"), "utf8");
+    const archiveListRules = Array.from(css.matchAll(/\.history-archive__list\s*\{(?<body>[^}]+)\}/g));
+    const archiveListRule = archiveListRules.at(-1)?.groups?.body ?? "";
+
+    expect(archiveListRule).toContain("min-height: 0");
+    expect(archiveListRule).toContain("overflow-y: auto");
   });
 });

@@ -50,6 +50,7 @@ export function HistoryPage() {
   const [topicInput, setTopicInput] = useState("");
   const [generationMode, setGenerationMode] = useState<"topic" | "dynasty">("topic");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [copiedPromptKeys, setCopiedPromptKeys] = useState<Set<string>>(() => new Set());
   const { layout } = useHomeLayoutPreferences();
 
   const dashboardQuery = useQuery({
@@ -123,6 +124,21 @@ export function HistoryPage() {
     window.setTimeout(() => setCopiedKey(null), 1500);
   }
 
+  async function handlePromptCopy(key: string, value: string) {
+    await copyText(value);
+    setCopiedPromptKeys((current) => {
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+  }
+
+  function getPromptCopyButtonClass(key: string) {
+    return copiedPromptKeys.has(key)
+      ? "history-copy-button history-copy-button--copied"
+      : "history-copy-button";
+  }
+
   useEffect(() => {
     return openDashboardStream((data) => {
       queryClient.setQueryData(["home-layout"], data.homeLayout);
@@ -145,6 +161,10 @@ export function HistoryPage() {
 
   const selectedNotification =
     historyNotifications.find((notification) => notification.id === selectedId) ?? historyNotifications[0] ?? null;
+
+  useEffect(() => {
+    setCopiedPromptKeys(new Set());
+  }, [selectedNotification?.id]);
   const selectedPayload = selectedNotification?.payload ?? null;
   const selectedPostPayload: HistoryPostPayload | null =
     selectedPayload && isHistoryPostPayload(selectedPayload) ? selectedPayload : null;
@@ -385,7 +405,20 @@ export function HistoryPage() {
                         <p>{module.summary}</p>
                         {module.cover ? (
                           <div className="history-dynasty-cover">
-                            <span>封面方案</span>
+                            <div className="history-dynasty-cover__head">
+                              <span>封面方案</span>
+                              <button
+                                type="button"
+                                className={getPromptCopyButtonClass(`dynasty-cover-prompt-${index}`)}
+                                aria-label={`复制${module.type}封面生图提示词`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handlePromptCopy(`dynasty-cover-prompt-${index}`, module.cover?.prompt ?? "");
+                                }}
+                              >
+                                {copiedPromptKeys.has(`dynasty-cover-prompt-${index}`) ? "已复制" : "复制提示词"}
+                              </button>
+                            </div>
                             <strong>{module.cover.title}</strong>
                             <p>{module.cover.subtitle}</p>
                             <small>{module.cover.prompt}</small>
@@ -402,19 +435,33 @@ export function HistoryPage() {
                               <small>{card.prompt}</small>
                               <button
                                 type="button"
-                                className="history-copy-button"
+                                className={getPromptCopyButtonClass(`dynasty-card-prompt-${index}-${cardIndex}`)}
                                 aria-label={`复制${module.type}第${cardIndex + 1}张生图提示词`}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  void handleCopy(`dynasty-card-prompt-${index}-${cardIndex}`, card.prompt);
+                                  void handlePromptCopy(`dynasty-card-prompt-${index}-${cardIndex}`, card.prompt);
                                 }}
                               >
-                                {copiedKey === `dynasty-card-prompt-${index}-${cardIndex}` ? "已复制" : "复制提示词"}
+                                {copiedPromptKeys.has(`dynasty-card-prompt-${index}-${cardIndex}`) ? "已复制" : "复制提示词"}
                               </button>
                             </div>
                           ))}
                         </div>
                         <div className="history-caption-card history-caption-card--compact">
+                          <div className="history-caption-card__head">
+                            <span>小红书正文</span>
+                            <button
+                              type="button"
+                              className="history-copy-button"
+                              aria-label={`复制${module.type}末尾正文`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleCopy(`dynasty-caption-${index}`, module.xiaohongshuCaption);
+                              }}
+                            >
+                              {copiedKey === `dynasty-caption-${index}` ? "已复制" : "复制正文"}
+                            </button>
+                          </div>
                           <p>{module.xiaohongshuCaption}</p>
                         </div>
                       </article>
@@ -441,11 +488,11 @@ export function HistoryPage() {
                       </button>
                       <button
                         type="button"
-                        className="history-copy-button"
+                        className={getPromptCopyButtonClass("cover-prompt")}
                         aria-label="复制封面生图提示词"
-                        onClick={() => void handleCopy("cover-prompt", selectedCover.prompt)}
+                        onClick={() => void handlePromptCopy("cover-prompt", selectedCover.prompt)}
                       >
-                        {copiedKey === "cover-prompt" ? "已复制" : "复制提示词"}
+                        {copiedPromptKeys.has("cover-prompt") ? "已复制" : "复制提示词"}
                       </button>
                     </div>
                   </div>
@@ -482,11 +529,11 @@ export function HistoryPage() {
                           <span>图 {index + 1}</span>
                           <button
                             type="button"
-                            className="history-copy-button"
+                            className={getPromptCopyButtonClass(`prompt-${index}`)}
                             aria-label={`复制第${index + 1}张生图提示词`}
-                            onClick={() => void handleCopy(`prompt-${index}`, card.prompt)}
+                            onClick={() => void handlePromptCopy(`prompt-${index}`, card.prompt)}
                           >
-                            {copiedKey === `prompt-${index}` ? "已复制" : "复制"}
+                            {copiedPromptKeys.has(`prompt-${index}`) ? "已复制" : "复制"}
                           </button>
                         </div>
                         <strong>{card.title}</strong>

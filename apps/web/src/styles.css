@@ -3162,6 +3162,13 @@ body[data-theme="day"] .summary-list button {
     rgba(255, 255, 255, 0.018);
 }
 
+.history-dynasty-cover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .history-dynasty-cards {
   display: grid;
   gap: 8px;
@@ -3175,8 +3182,23 @@ body[data-theme="day"] .summary-list button {
 }
 
 .history-caption-card--compact {
+  display: grid;
+  gap: 12px;
   padding: 12px;
   border-radius: 14px;
+}
+
+.history-caption-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-caption-card__head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .history-xhs-panel {
@@ -3234,6 +3256,13 @@ body[data-theme="day"] .summary-list button {
 .history-archive__delete:hover {
   border-color: rgba(var(--accent-rgb), 0.34);
   transform: translateY(-1px);
+}
+
+.history-copy-button--copied,
+.history-copy-button--copied:hover {
+  border-color: rgba(var(--accent-rgb), 0.62);
+  color: var(--accent-contrast);
+  background: rgb(var(--accent-rgb));
 }
 
 .history-archive__delete:disabled {
@@ -3439,6 +3468,13 @@ body[data-theme="day"] .summary-list button {
   padding: 18px;
 }
 
+.history-archive__list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
 .history-stage__hero,
 .history-stage__heading {
   display: flex;
@@ -3483,6 +3519,8 @@ body[data-theme="day"] .summary-list button {
 }
 
 .history-caption-card p {
+  margin: 0;
+  line-height: 1.9;
   white-space: pre-wrap;
 }
 
