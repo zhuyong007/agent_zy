@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import type { DashboardData, NewsFeedItem } from "@agent-zy/shared-types";
+import { getDefaultHomeLayout } from "./home-layout";
 
 vi.mock("@tanstack/react-router", async () => {
   const react = await import("react");
@@ -342,8 +343,41 @@ describe("CommandRail", () => {
 
     expect(container.textContent).toContain("日志");
     expect(container.textContent).toContain("工具");
+    });
   });
-});
+
+  it("renders browser automation navigation when enabled", async () => {
+    const layout = getDefaultHomeLayout().map((item) => ({
+      ...item,
+      showInNavigation: item.id === "browserAutomation"
+    }));
+    const testContainer = document.createElement("div");
+    document.body.appendChild(testContainer);
+    const testRoot = createRoot(testContainer);
+
+    await act(async () => {
+      testRoot.render(React.createElement(CommandRail, {
+        activeSection: "browserAutomation",
+        expanded: true,
+        onToggle: () => undefined,
+        themeKey: "night",
+        onThemeChange: () => undefined,
+        rightMeta: [],
+        clockLine: "2026-05-21 21:20:00 · 星期四 · 农历四月初五",
+        navigationLayout: layout
+      }));
+    });
+
+    const browserAutomationLink = Array.from(testContainer.querySelectorAll("a"))
+      .find((link) => link.textContent?.includes("浏览器自动化"));
+
+    expect(browserAutomationLink?.getAttribute("to")).toBe("/tools/browser-automation");
+
+    act(() => {
+      testRoot.unmount();
+    });
+    testContainer.remove();
+  });
 
 describe("CinematicPanel", () => {
   let container: HTMLDivElement;

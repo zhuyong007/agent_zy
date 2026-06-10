@@ -448,12 +448,9 @@ try:
         ok()
     elif action == "typeText":
         text = str(payload.get("text", ""))
-        if all(ord(ch) < 128 for ch in text):
-            pyautogui.write(text, interval=0.01)
-        else:
-            set_clipboard_text(text)
-            modifier = "command" if platform.system() == "Darwin" else "ctrl"
-            pyautogui.hotkey(modifier, "v")
+        set_clipboard_text(text)
+        modifier = "command" if platform.system() == "Darwin" else "ctrl"
+        pyautogui.hotkey(modifier, "v")
         ok()
     elif action == "press":
         key = str(payload.get("key", ""))
@@ -660,6 +657,7 @@ export function createDesktopBrowserAutomationExecutor(options: {
           await controller.click(point.x, point.y);
           if (step.clearBeforeType) {
             await controller.press(process.platform === "darwin" ? "command+a" : "ctrl+a");
+            await controller.press("backspace");
           }
           await controller.typeText(step.text);
           lastObservation = await observeScreen(controller);

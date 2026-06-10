@@ -1,6 +1,8 @@
 import { existsSync, mkdtempSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneStore } from "./store";
@@ -109,6 +111,45 @@ afterEach(() => {
 });
 
 describe("image-to-video planner service", () => {
+  it("resizes oversized images only for vision model input", async () => {
+    const { chat, service } = setup([analysis, plan, keyframes, rejectedReview]);
+    const firstImage = await sharp(randomBytes(2048 * 2048 * 3), {
+      raw: { width: 2048, height: 2048, channels: 3 }
+    }).png().toBuffer();
+    const keyframeImage = await sharp({
+      create: { width: 3000, height: 1000, channels: 3, background: "#000000" }
+    }).jpeg().toBuffer();
+
+    const project = await service.analyze({
+      fileName: "portrait.png",
+      mimeType: "image/png",
+      buffer: firstImage
+    });
+    await service.plan(project.id);
+    await service.planKeyframes(project.id);
+    await service.reviewKeyframe(project.id, "end", {
+      fileName: "wide.jpg",
+      mimeType: "image/jpeg",
+      buffer: keyframeImage
+    });
+
+    const modelCalls = chat.mock.calls as any[][];
+    for (const callIndex of [0, 3]) {
+      const request = modelCalls[callIndex]?.[0];
+      const content = request.messages[1].content;
+      const dataUrl = content[1].image_url.url as string;
+      const modelImage = Buffer.from(dataUrl.split(",")[1], "base64");
+      expect(dataUrl).toMatch(/^data:image\/jpeg;base64,/);
+      expect(modelImage.length).toBeLessThan(5 * 1024 * 1024);
+      const metadata = await sharp(modelImage).metadata();
+      expect(Math.max(metadata.width ?? 0, metadata.height ?? 0)).toBeLessThanOrEqual(2048);
+    }
+
+    const storedFirstImage = service.readAsset(project.id, project.originalImageAssetId!);
+    const storedMetadata = await sharp(storedFirstImage.buffer).metadata();
+    expect(storedMetadata).toMatchObject({ width: 2048, height: 2048, format: "png" });
+  });
+
   it("persists a project through analysis, planning and keyframe planning", async () => {
     const { service, store } = setup([analysis, plan, keyframes]);
 

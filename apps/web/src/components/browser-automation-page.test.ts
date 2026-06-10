@@ -318,6 +318,63 @@ describe("BrowserAutomationWorkspace", () => {
     expect(container.querySelector('button[aria-label="展开步骤 1"]')).not.toBeNull();
   });
 
+  it("builds multi-key press combinations with the visual keyboard", async () => {
+    const createAction = vi.fn().mockResolvedValue({
+      id: "workflow-keyboard",
+      name: "组合键流程",
+      description: "",
+      enabled: true,
+      steps: [],
+      createdAt: "2026-06-04T00:00:00.000Z",
+      updatedAt: "2026-06-04T00:00:00.000Z"
+    });
+
+    await renderWorkspace({
+      fetchAction: vi.fn().mockResolvedValue({
+        workflows: [],
+        runs: [],
+        triggerRules: [],
+        lastUpdatedAt: null
+      }),
+      createAction,
+      updateAction: vi.fn(),
+      runAction: vi.fn(),
+      stopAction: vi.fn(),
+      createRuleAction: vi.fn()
+    });
+
+    await act(async () => {
+      selectValue(container.querySelector("select") as HTMLSelectElement, "press");
+    });
+
+    expect(container.querySelector(".browser-automation-keyboard input")).toBeNull();
+
+    await act(async () => {
+      container.querySelector('button[data-key-value="enter"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      container.querySelector('button[data-key-value="ctrl"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      container.querySelector('button[data-key-value="shift"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      container.querySelector('button[data-key-value="enter"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      container.querySelector('button[data-action="save-workflow"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(createAction).toHaveBeenCalledWith(expect.objectContaining({
+      steps: [
+        expect.objectContaining({
+          type: "press",
+          key: "ctrl+shift+enter"
+        })
+      ]
+    }));
+  });
+
   it("opens desktop permission settings from dedicated controls", async () => {
     const openPermissionSettingsAction = vi.fn().mockResolvedValue({
       opened: true,

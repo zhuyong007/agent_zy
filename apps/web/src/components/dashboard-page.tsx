@@ -130,6 +130,7 @@ export type RailSection =
   | "ledger"
   | "todo"
   | "summary"
+  | "browserAutomation"
   | "tools"
   | "logs";
 type NewsFilter = "all" | NewsCategory;
@@ -152,8 +153,15 @@ const railItems: Array<{
   { key: "ledger", label: "记账", stamp: "08", to: "/ledger", moduleId: "ledger" },
   { key: "todo", label: "待办", stamp: "09", to: "/todo", moduleId: "todo" },
   { key: "summary", label: "总结", stamp: "10", to: "/summaries", moduleId: "summary" },
-  { key: "tools", label: "工具", stamp: "11", to: "/tools" },
-  { key: "logs", label: "日志", stamp: "12", to: "/logs" }
+  {
+    key: "browserAutomation",
+    label: "浏览器自动化",
+    stamp: "11",
+    to: "/tools/browser-automation",
+    moduleId: "browserAutomation"
+  },
+  { key: "tools", label: "工具", stamp: "12", to: "/tools" },
+  { key: "logs", label: "日志", stamp: "13", to: "/logs" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];

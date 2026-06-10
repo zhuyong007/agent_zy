@@ -120,7 +120,8 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "cinematic",
   "classicShots",
   "imageToVideo",
-  "summary"
+  "summary",
+  "browserAutomation"
 ]);
 
 function canShowHomeModuleInNavigation(id: HomeModuleId) {

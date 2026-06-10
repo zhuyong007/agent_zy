@@ -317,6 +317,33 @@ describe("control-plane store", () => {
     });
   });
 
+  it("persists browser automation top navigation preference in state.json", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+
+    store.setHomeLayout(
+      store.getState().homeLayout.map((item) =>
+        item.id === "browserAutomation"
+          ? {
+              ...item,
+              showInNavigation: true
+            }
+          : item
+      )
+    );
+
+    expect(store.getState().homeLayout.find((item) => item.id === "browserAutomation")).toMatchObject({
+      showInNavigation: true
+    });
+
+    const reloadedStore = createControlPlaneStore(dataDir);
+
+    expect(reloadedStore.getState().homeLayout.find((item) => item.id === "browserAutomation")).toMatchObject({
+      showInNavigation: true
+    });
+  });
+
   it("persists history xiaohongshu analytics in state.json", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);

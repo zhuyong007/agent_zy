@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
+import sharp from "sharp";
 
 import {
   IMAGE_TO_VIDEO_SYSTEM_PROMPT,
@@ -29,6 +30,8 @@ import type { ModelRuntime } from "./model-runtime";
 import type { ControlPlaneStore } from "./store";
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_VISION_IMAGE_DIMENSION = 2048;
+const MAX_VISION_IMAGE_BYTES = Math.floor(4.75 * 1024 * 1024);
 const IMAGE_EXTENSIONS: Record<ImageToVideoAsset["mimeType"], string> = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
@@ -129,18 +132,49 @@ export function createImageToVideoPlannerService(options: {
     return target;
   }
 
+  async function prepareVisionImage(asset: ImageToVideoAsset) {
+    const original = readFileSync(assetPath(asset));
+    try {
+      for (const dimension of [MAX_VISION_IMAGE_DIMENSION, 1792, 1536, 1280, 1024]) {
+        for (const quality of [85, 70, 55, 40]) {
+          const buffer = await sharp(original)
+            .rotate()
+            .flatten({ background: "#ffffff" })
+            .resize({
+              width: dimension,
+              height: dimension,
+              fit: "inside",
+              withoutEnlargement: true
+            })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+          if (buffer.length <= MAX_VISION_IMAGE_BYTES) {
+            return { buffer, mimeType: "image/jpeg" as const };
+          }
+        }
+      }
+      throw new Error("图片无法压缩到模型支持的 5 MB 以内");
+    } catch {
+      if (original.length <= MAX_VISION_IMAGE_BYTES) {
+        return { buffer: original, mimeType: asset.mimeType };
+      }
+      throw new Error("图片无法压缩到模型支持的 5 MB 以内");
+    }
+  }
+
   async function callModel<T>(
     prompt: string,
     schema: Parameters<typeof parseModelResultWithRepair<T>>[1],
     imageAsset?: ImageToVideoAsset
   ) {
+    const visionImage = imageAsset ? await prepareVisionImage(imageAsset) : null;
     const content = imageAsset
       ? [
           { type: "text" as const, text: prompt },
           {
             type: "image_url" as const,
             image_url: {
-              url: `data:${imageAsset.mimeType};base64,${readFileSync(assetPath(imageAsset)).toString("base64")}`
+              url: `data:${visionImage!.mimeType};base64,${visionImage!.buffer.toString("base64")}`
             }
           }
         ]

@@ -188,6 +188,48 @@ describe("desktop browser automation executor", () => {
     expect(result.logs.some((log) => log.message.includes("视觉模型定位点击：(340, 220)"))).toBe(true);
   });
 
+  it("clears the target before typing text to avoid input method composition", async () => {
+    const controller = createController({
+      locateImageOnScreen: vi.fn().mockResolvedValue({ x: 120, y: 80, confidence: 0.96 })
+    });
+    const executor = createDesktopBrowserAutomationExecutor({
+      controller
+    });
+
+    const result = await executor.runWorkflow({
+      runId: "run-1",
+      signal: new AbortController().signal,
+      workflow: {
+        id: "workflow-1",
+        name: "清空后输入",
+        description: "",
+        enabled: true,
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+        steps: [
+          {
+            id: "type",
+            type: "type",
+            text: "test1111",
+            clearBeforeType: true,
+            imageTarget: {
+              imageDataUrl: "data:image/png;base64,dGFyZ2V0"
+            },
+            timeoutMs: 30000
+          }
+        ]
+      }
+    });
+
+    expect(result.status).toBe("completed");
+    expect(controller.press).toHaveBeenNthCalledWith(
+      1,
+      process.platform === "darwin" ? "command+a" : "ctrl+a"
+    );
+    expect(controller.press).toHaveBeenNthCalledWith(2, "backspace");
+    expect(controller.typeText).toHaveBeenCalledWith("test1111");
+  });
+
   it("scales vision model coordinates from resized screenshots back to screen coordinates", async () => {
     const controller = createController({
       screenshot: vi.fn().mockResolvedValue({

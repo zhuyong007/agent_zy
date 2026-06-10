@@ -117,6 +117,14 @@ describe("home-layout", () => {
     });
   });
 
+  test("allows browser automation module to opt into top navigation from manage page", () => {
+    expect(canShowHomeModuleInNavigation("browserAutomation")).toBe(true);
+    expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "browserAutomation")).toMatchObject({
+      visible: false,
+      showInNavigation: false
+    });
+  });
+
   test("shows cinematic module in top navigation by default", () => {
     expect(canShowHomeModuleInNavigation("cinematic")).toBe(true);
     expect(DEFAULT_HOME_LAYOUT.find((item) => item.id === "cinematic")).toMatchObject({

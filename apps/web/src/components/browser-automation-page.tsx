@@ -52,6 +52,76 @@ const STEP_TYPE_OPTIONS: Array<{ value: BrowserAutomationStep["type"]; label: st
   { value: "extract", label: "提取内容" }
 ];
 
+const KEYBOARD_MODIFIER_KEYS = [
+  { value: "ctrl", label: "Ctrl" },
+  { value: "shift", label: "Shift" },
+  { value: "alt", label: "Alt / Option" },
+  { value: "command", label: "Cmd" },
+  { value: "win", label: "Win" }
+] as const;
+
+const KEYBOARD_COMMON_KEYS = [
+  { value: "enter", label: "Enter", width: "wide" },
+  { value: "tab", label: "Tab" },
+  { value: "esc", label: "Esc" },
+  { value: "space", label: "Space", width: "wide" },
+  { value: "backspace", label: "Backspace", width: "wide" },
+  { value: "delete", label: "Delete" },
+  { value: "home", label: "Home" },
+  { value: "end", label: "End" },
+  { value: "pageup", label: "Page Up" },
+  { value: "pagedown", label: "Page Down" },
+  { value: "left", label: "←" },
+  { value: "up", label: "↑" },
+  { value: "down", label: "↓" },
+  { value: "right", label: "→" }
+] as const;
+
+const KEYBOARD_FUNCTION_KEYS = Array.from({ length: 12 }, (_, index) => ({
+  value: `f${index + 1}`,
+  label: `F${index + 1}`
+}));
+
+const KEYBOARD_ALPHA_NUMERIC_KEYS = [
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  ..."0123456789"
+].map((key) => ({
+  value: key.toLowerCase(),
+  label: key
+}));
+
+const keyboardModifierValues = new Set(KEYBOARD_MODIFIER_KEYS.map((key) => key.value as string));
+const keyboardKeyLabels = new Map(
+  [
+    ...KEYBOARD_MODIFIER_KEYS,
+    ...KEYBOARD_COMMON_KEYS,
+    ...KEYBOARD_FUNCTION_KEYS,
+    ...KEYBOARD_ALPHA_NUMERIC_KEYS
+  ].map((key) => [key.value, key.label])
+);
+
+function parseKeyboardCombination(value: string) {
+  return value.split("+").map((key) => key.trim().toLowerCase()).filter(Boolean);
+}
+
+function toggleKeyboardCombination(value: string, key: string) {
+  const selected = parseKeyboardCombination(value);
+
+  if (selected.includes(key)) {
+    return selected.filter((item) => item !== key).join("+");
+  }
+
+  if (keyboardModifierValues.has(key)) {
+    const firstRegularKeyIndex = selected.findIndex((item) => !keyboardModifierValues.has(item));
+    const insertIndex = firstRegularKeyIndex < 0 ? selected.length : firstRegularKeyIndex;
+    selected.splice(insertIndex, 0, key);
+  } else {
+    selected.push(key);
+  }
+
+  return selected.join("+");
+}
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "操作失败，请稍后重试";
 }
@@ -228,6 +298,17 @@ export function BrowserAutomationWorkspace({
     setDraft((current) => ({
       ...current,
       steps: current.steps.map((step, stepIndex) => stepIndex === index ? { ...step, ...patch } as BrowserAutomationStep : step)
+    }));
+  }
+
+  function toggleStepKey(index: number, key: string) {
+    setDraft((current) => ({
+      ...current,
+      steps: current.steps.map((step, stepIndex) =>
+        stepIndex === index && step.type === "press"
+          ? { ...step, key: toggleKeyboardCombination(step.key, key) }
+          : step
+      )
     }));
   }
 
@@ -473,6 +554,79 @@ export function BrowserAutomationWorkspace({
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     }
+  }
+
+  function renderKeyboardControls(step: Extract<BrowserAutomationStep, { type: "press" }>, index: number) {
+    const selectedKeys = parseKeyboardCombination(step.key);
+    const selectedKeySet = new Set(selectedKeys);
+
+    function renderKey(key: { value: string; label: string; width?: string }) {
+      const selected = selectedKeySet.has(key.value);
+
+      return (
+        <button
+          key={key.value}
+          type="button"
+          className={`browser-automation-key${selected ? " is-selected" : ""}${key.width ? ` is-${key.width}` : ""}`}
+          data-key-value={key.value}
+          aria-pressed={selected}
+          onClick={() => toggleStepKey(index, key.value)}
+        >
+          {key.label}
+        </button>
+      );
+    }
+
+    return (
+      <div className="browser-automation-keyboard browser-automation-field-wide">
+        <div className="browser-automation-keyboard__header">
+          <div>
+            <strong>组合按键</strong>
+            <span>选中的按键会作为一个组合同时按下。</span>
+          </div>
+          <button
+            type="button"
+            className="browser-automation-keyboard__clear"
+            disabled={selectedKeys.length === 0}
+            onClick={() => updateStep(index, { key: "" })}
+          >
+            清空
+          </button>
+        </div>
+        <div className="browser-automation-keyboard__selection" aria-label="已选择按键">
+          {selectedKeys.length > 0 ? selectedKeys.map((key, keyIndex) => (
+            <span key={`${key}-${keyIndex}`}>
+              <button
+                type="button"
+                aria-label={`移除 ${keyboardKeyLabels.get(key) ?? key}`}
+                onClick={() => toggleStepKey(index, key)}
+              >
+                {keyboardKeyLabels.get(key) ?? key}
+              </button>
+              {keyIndex < selectedKeys.length - 1 ? <b>+</b> : null}
+            </span>
+          )) : <small>请选择至少一个按键</small>}
+        </div>
+        <section className="browser-automation-keyboard__section">
+          <span>修饰键</span>
+          <div className="browser-automation-keyboard__row">
+            {KEYBOARD_MODIFIER_KEYS.map(renderKey)}
+          </div>
+        </section>
+        <section className="browser-automation-keyboard__section">
+          <span>常用键</span>
+          <div className="browser-automation-keyboard__row">
+            {KEYBOARD_COMMON_KEYS.map(renderKey)}
+          </div>
+        </section>
+        <details className="browser-automation-keyboard__more">
+          <summary>字母、数字与功能键</summary>
+          <div className="browser-automation-keyboard__grid">
+            {[...KEYBOARD_ALPHA_NUMERIC_KEYS, ...KEYBOARD_FUNCTION_KEYS].map(renderKey)}
+          </div>
+        </details>
+      </div>
+    );
   }
 
   function renderImageTargetControls(step: BrowserAutomationStep, index: number) {
@@ -737,12 +891,7 @@ export function BrowserAutomationWorkspace({
                         </>
                       ) : null}
 
-                      {step.type === "press" ? (
-                        <label>
-                          <span>按键</span>
-                          <input value={step.key} onChange={(event) => updateStep(index, { key: event.currentTarget.value })} />
-                        </label>
-                      ) : null}
+                      {step.type === "press" ? renderKeyboardControls(step, index) : null}
 
                       {step.type === "waitForCondition" ? (
                         <>
@@ -946,7 +1095,7 @@ export function BrowserAutomationPage() {
   return (
     <main className="workspace tools-workspace">
       <CommandRail
-        activeSection="tools"
+        activeSection="browserAutomation"
         expanded={railExpanded}
         onToggle={() => setRailExpanded((value) => !value)}
         themeKey={themeKey}
