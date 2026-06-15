@@ -23,6 +23,7 @@ import { createFileOrganizerService } from "./services/file-organizer-service";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
+import { createMhxyService } from "./services/mhxy-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -209,6 +210,7 @@ export function createControlPlaneApp(options?: {
     store,
     modelRuntime
   });
+  const mhxyService = createMhxyService(dataDir);
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
   const classicShotVideoProcessor = options?.classicShotVideoProcessor ?? createClassicShotVideoProcessor();
   const router = createHybridRouter({
@@ -1392,6 +1394,49 @@ export function createControlPlaneApp(options?: {
 
     return orchestrator.handleLedgerChat(typeof body.message === "string" ? body.message : "");
   });
+
+  const mhxyAction = async (reply: { code(statusCode: number): { send(payload: unknown): unknown } }, action: () => unknown) => {
+    try {
+      return action();
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "梦幻西游账本操作失败"
+      });
+    }
+  };
+
+  app.get("/api/mhxy", async () => mhxyService.getDashboard());
+
+  app.post("/api/mhxy/trades", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.createTrade((request.body ?? {}) as any))
+  );
+
+  app.patch("/api/mhxy/trades/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updateTrade((request.params as { id: string }).id, (request.body ?? {}) as any)
+    )
+  );
+
+  app.post("/api/mhxy/price-snapshots", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.createPriceSnapshot((request.body ?? {}) as any))
+  );
+
+  app.post("/api/mhxy/inventory-transfers", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.createInventoryTransfer((request.body ?? {}) as any))
+  );
+
+  app.patch("/api/mhxy/inventory-transfers/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updateInventoryTransfer(
+        (request.params as { id: string }).id,
+        (request.body ?? {}) as any
+      )
+    )
+  );
+
+  app.put("/api/mhxy/inventory-targets", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.setInventoryTarget((request.body ?? {}) as any))
+  );
 
   app.get("/api/stream", async (_request, reply) => {
     reply.raw.setHeader("Content-Type", "text/event-stream");

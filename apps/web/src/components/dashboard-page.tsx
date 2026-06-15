@@ -44,6 +44,7 @@ import {
   fetchHomeLayout,
   fetchModelProfiles,
   fetchModelProviders,
+  fetchMhxyDashboard,
   fetchSystemStatus,
   generateClassicShot,
   generateCinematic,
@@ -128,6 +129,7 @@ export type RailSection =
   | "classicShots"
   | "imageToVideo"
   | "ledger"
+  | "mhxy"
   | "todo"
   | "summary"
   | "browserAutomation"
@@ -151,17 +153,18 @@ const railItems: Array<{
   { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
   { key: "imageToVideo", label: "图转视频", stamp: "07", to: "/image-to-video", moduleId: "imageToVideo" },
   { key: "ledger", label: "记账", stamp: "08", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "09", to: "/todo", moduleId: "todo" },
-  { key: "summary", label: "总结", stamp: "10", to: "/summaries", moduleId: "summary" },
+  { key: "mhxy", label: "梦幻西游", stamp: "09", to: "/mhxy", moduleId: "mhxy" },
+  { key: "todo", label: "待办", stamp: "10", to: "/todo", moduleId: "todo" },
+  { key: "summary", label: "总结", stamp: "11", to: "/summaries", moduleId: "summary" },
   {
     key: "browserAutomation",
     label: "浏览器自动化",
-    stamp: "11",
+    stamp: "12",
     to: "/tools/browser-automation",
     moduleId: "browserAutomation"
   },
-  { key: "tools", label: "工具", stamp: "12", to: "/tools" },
-  { key: "logs", label: "日志", stamp: "13", to: "/logs" }
+  { key: "tools", label: "工具", stamp: "13", to: "/tools" },
+  { key: "logs", label: "日志", stamp: "14", to: "/logs" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -919,6 +922,34 @@ function LedgerPanel({
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function MhxyPanel() {
+  const query = useQuery({
+    queryKey: ["mhxy"],
+    queryFn: fetchMhxyDashboard
+  });
+  const summary = query.data?.summary;
+  const format = (value: number | undefined) =>
+    `¥${(value ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
+
+  return (
+    <section className="mhxy-panel">
+      <div className="mhxy-panel__header">
+        <div>
+          <p className="eyebrow">RMB MAIN LEDGER</p>
+          <h2>梦幻西游交易</h2>
+        </div>
+        <Link to="/mhxy" className="panel-link">打开账本</Link>
+      </div>
+      <div className="mhxy-panel__metrics">
+        <span>库存成本<strong>{format(summary?.inventoryCostRmb)}</strong></span>
+        <span>已实现收益<strong>{format(summary?.realizedProfitRmb)}</strong></span>
+        <span>未实现浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
+      </div>
+      <p>{summary?.pendingValuationCount ? `${summary.pendingValuationCount} 项库存待补价格快照` : "全部库存已按人民币口径估值"}</p>
     </section>
   );
 }
@@ -2054,6 +2085,10 @@ function renderHomeModuleContent({
 
   if (id === "ledger") {
     return <LedgerPanel dashboard={dashboard} size={size} />;
+  }
+
+  if (id === "mhxy") {
+    return <MhxyPanel />;
   }
 
   if (id === "topics") {

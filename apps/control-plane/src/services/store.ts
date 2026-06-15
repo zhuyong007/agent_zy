@@ -98,6 +98,11 @@ const CORE_HOME_MODULE_DEFINITIONS = [
     id: "chat",
     defaultSize: "max",
     defaultVisible: true
+  },
+  {
+    id: "mhxy",
+    defaultSize: "smaller",
+    defaultVisible: true
   }
 ] as const satisfies ReadonlyArray<{
   id: HomeModuleId;
@@ -115,6 +120,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "news",
   "topics",
   "ledger",
+  "mhxy",
   "todo",
   "history",
   "cinematic",
@@ -163,6 +169,13 @@ function normalizeHomeLayout(layout: HomeModulePreference[] | undefined): HomeMo
       const stored = storedById.get(definition.id);
 
       if (!stored) {
+        if (definition.id === "mhxy") {
+          return {
+            ...definition,
+            order: fallbackOrderOffset + index
+          };
+        }
+
         return {
           ...definition,
           visible: false,

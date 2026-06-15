@@ -9,6 +9,7 @@ import {
   getHomeModulePlacements,
   getHomeModulePreviewSize,
   loadHomeLayout,
+  mergeHomeLayoutPreferences,
   moveHomeModule,
   persistHomeLayout,
   resetHomeLayout,
@@ -48,6 +49,7 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.id)).toEqual([
       "news",
       "chat",
+      "mhxy",
       "todo",
       "ledger",
       "topics",
@@ -61,6 +63,7 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
       "large",
       "max",
+      "smaller",
       "max",
       "small",
       "smaller",
@@ -77,6 +80,7 @@ describe("home-layout", () => {
       true,
       true,
       true,
+      true,
       false,
       true,
       true,
@@ -87,6 +91,7 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
       true,
       false,
+      true,
       true,
       true,
       true,
@@ -323,6 +328,17 @@ describe("home-layout", () => {
     });
   });
 
+  test("enables the new mhxy module for previously saved layouts", () => {
+    const stored = DEFAULT_HOME_LAYOUT.filter((item) => item.id !== "mhxy");
+    const merged = mergeHomeLayoutPreferences(stored);
+
+    expect(merged.find((item) => item.id === "mhxy")).toMatchObject({
+      visible: true,
+      showInNavigation: true,
+      size: "smaller"
+    });
+  });
+
   test("moves modules by id and normalizes their order values", () => {
     const moved = moveHomeModule(DEFAULT_HOME_LAYOUT, "topics", "news");
 
@@ -330,6 +346,7 @@ describe("home-layout", () => {
       "topics",
       "news",
       "chat",
+      "mhxy",
       "todo",
       "ledger",
       "history",
@@ -339,7 +356,7 @@ describe("home-layout", () => {
       "summary",
       "browserAutomation"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {

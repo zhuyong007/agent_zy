@@ -322,6 +322,114 @@ export interface LedgerState {
   dashboard?: LedgerDashboardSummary;
 }
 
+export type MhxyTradeCurrency = "rmb" | "gameCoin";
+export type MhxyTradeType = "buy" | "sell";
+
+export interface MhxyTradeInput {
+  type: MhxyTradeType;
+  itemName: string;
+  quantity: number;
+  unitPrice: number;
+  currency: MhxyTradeCurrency;
+  feeRmb?: number;
+  rmbPerGameCoinWan?: number;
+  occurredAt: string;
+  serverName?: string;
+  characterName?: string;
+  note?: string;
+}
+
+export interface MhxyTradeRecord extends Omit<MhxyTradeInput, "feeRmb"> {
+  id: string;
+  rmbAmount: number;
+  feeRmb: number;
+  gameCoinAmountWan?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyPriceSnapshotInput {
+  itemName: string;
+  currency: MhxyTradeCurrency;
+  rmbUnitPrice?: number;
+  gameCoinUnitPriceWan?: number;
+  rmbPerGameCoinWan?: number;
+  capturedAt: string;
+  serverName?: string;
+  note?: string;
+}
+
+export interface MhxyPriceSnapshot extends MhxyPriceSnapshotInput {
+  id: string;
+  rmbUnitPrice: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyInventoryTransferInput {
+  itemName: string;
+  quantity: number;
+  sourceServerName: string;
+  sourceCharacterName: string;
+  targetServerName: string;
+  targetCharacterName: string;
+  transferCostRmb: number;
+  occurredAt: string;
+  note?: string;
+}
+
+export interface MhxyInventoryTransferRecord extends MhxyInventoryTransferInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyInventoryTarget {
+  itemName: string;
+  serverName: string;
+  characterName: string;
+  expectedSellServerName: string;
+  updatedAt: string;
+}
+
+export interface MhxyTradeResult {
+  tradeId: string;
+  costBasisRmb: number;
+  netIncomeRmb: number;
+  realizedProfitRmb: number;
+}
+
+export interface MhxyInventoryPosition {
+  itemName: string;
+  serverName: string;
+  characterName: string;
+  quantity: number;
+  inventoryCostRmb: number;
+  averageUnitCostRmb: number;
+  expectedSellServerName: string;
+  latestRmbUnitPrice: number | null;
+  marketValueRmb: number | null;
+  unrealizedProfitRmb: number | null;
+}
+
+export interface MhxyDashboardSummary {
+  inventoryCostRmb: number;
+  realizedProfitRmb: number;
+  marketValueRmb: number;
+  unrealizedProfitRmb: number;
+  pendingValuationCount: number;
+}
+
+export interface MhxyDashboard {
+  trades: MhxyTradeRecord[];
+  tradeResults: MhxyTradeResult[];
+  priceSnapshots: MhxyPriceSnapshot[];
+  inventoryTransfers: MhxyInventoryTransferRecord[];
+  inventoryTargets: MhxyInventoryTarget[];
+  inventory: MhxyInventoryPosition[];
+  summary: MhxyDashboardSummary;
+}
+
 export type ScheduleUrgency = "low" | "medium" | "high";
 export type ScheduleItemStatus = "pending" | "done";
 

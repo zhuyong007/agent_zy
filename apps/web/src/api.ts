@@ -30,6 +30,14 @@ import type {
   ModelProviderId,
   ModelPurpose,
   ModelSettingsState,
+  MhxyDashboard,
+  MhxyInventoryTarget,
+  MhxyInventoryTransferInput,
+  MhxyInventoryTransferRecord,
+  MhxyPriceSnapshot,
+  MhxyPriceSnapshotInput,
+  MhxyTradeInput,
+  MhxyTradeRecord,
   NewsState,
   PromptTemplateApplyResult,
   PromptTemplateRecord,
@@ -1251,6 +1259,32 @@ export async function fetchLedgerStages(): Promise<LifeStageRecord[]> {
 
   return response.json();
 }
+
+async function mhxyJsonRequest<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "梦幻西游账本操作失败"));
+  }
+  return response.json();
+}
+
+export const fetchMhxyDashboard = () => mhxyJsonRequest<MhxyDashboard>("/api/mhxy", "GET");
+export const createMhxyTrade = (input: MhxyTradeInput) =>
+  mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
+export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>
+  mhxyJsonRequest<MhxyTradeRecord>(`/api/mhxy/trades/${id}`, "PATCH", input);
+export const createMhxyPriceSnapshot = (input: MhxyPriceSnapshotInput) =>
+  mhxyJsonRequest<MhxyPriceSnapshot>("/api/mhxy/price-snapshots", "POST", input);
+export const createMhxyInventoryTransfer = (input: MhxyInventoryTransferInput) =>
+  mhxyJsonRequest<MhxyInventoryTransferRecord>("/api/mhxy/inventory-transfers", "POST", input);
+export const updateMhxyInventoryTransfer = (id: string, input: Partial<MhxyInventoryTransferInput>) =>
+  mhxyJsonRequest<MhxyInventoryTransferRecord>(`/api/mhxy/inventory-transfers/${id}`, "PATCH", input);
+export const setMhxyInventoryTarget = (input: Omit<MhxyInventoryTarget, "updatedAt">) =>
+  mhxyJsonRequest<MhxyInventoryTarget>("/api/mhxy/inventory-targets", "PUT", input);
 
 export function openDashboardStream(onData: (data: DashboardData) => void) {
   const stream = new EventSource(`${API_BASE}/api/stream`);

@@ -468,6 +468,8 @@ describe("history agent", () => {
       expect(prompt).toContain("小红书首图封面");
       expect(prompt).toContain("下限 3 张，上限 10 张");
       expect(prompt).toContain("展示哪些具体知识");
+      expect(prompt).toContain("不能只写“留出空白位置以用于某种内容”");
+      expect(prompt).toContain("同步明确空白部分需要填充的具体文字内容");
       expect(prompt).not.toContain("只给出大概知识范围");
       expect(prompt).not.toContain("不必写详细知识");
       expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
@@ -819,6 +821,8 @@ ${JSON.stringify({
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
       expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
       expect(prompt).toContain("3–5 个相关话题标签");
+      expect(prompt).toContain("不能只写“留出空白位置以用于某种内容”");
+      expect(prompt).toContain("同步明确空白部分需要填充的具体文字内容");
 
       return JSON.stringify({
         dynasty: "东汉",
