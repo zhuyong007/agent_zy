@@ -117,7 +117,16 @@ import {
   isHistoryDynastyPayload,
   isHistoryPostPayload
 } from "../history-view";
-import { getTodoModuleSummary, TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
+import { TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
+import {
+  formatAmount,
+  formatClockLine,
+  formatDateTime,
+  formatShortCount,
+  formatTime,
+  getModuleSummary,
+  waitForRestartRecovery
+} from "./dashboard-utils";
 
 export type RailSection =
   | "home"
@@ -167,7 +176,6 @@ const railItems: Array<{
   { key: "logs", label: "日志", stamp: "14", to: "/logs" }
 ];
 
-const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
   HOME_MODULE_DEFINITIONS.map((definition) => [definition.id, definition])
 );
@@ -208,54 +216,6 @@ export function useThemePreference() {
   return [themeKey, setThemeKey] as const;
 }
 
-function formatTime(timestamp?: string | null) {
-  if (!timestamp) {
-    return "--:--";
-  }
-
-  return new Date(timestamp).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function formatDateTime(timestamp?: string | null) {
-  if (!timestamp) {
-    return "--";
-  }
-
-  return new Date(timestamp).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function formatLunarDate(date: Date) {
-  try {
-    const formatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {
-      month: "long",
-      day: "numeric"
-    });
-
-    return formatter.format(date);
-  } catch {
-    return "--";
-  }
-}
-
-function formatClockLine(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} · ${weekdayMap[date.getDay()]} · 农历${formatLunarDate(date)}`;
-}
-
 export function useLiveClock() {
   const [now, setNow] = useState(() => new Date());
 
@@ -284,17 +244,6 @@ function getMessageLabel(role: DashboardData["messages"][number]["role"]) {
   return "AGENT";
 }
 
-function formatAmount(amount: number) {
-  return amount.toLocaleString("zh-CN");
-}
-
-function formatShortCount(count: number) {
-  return count.toLocaleString("zh-CN", {
-    minimumIntegerDigits: count < 10 ? 2 : 1,
-    useGrouping: false
-  });
-}
-
 function getModuleDefinition(id: HomeModuleId) {
   return moduleDefinitionsById.get(id) ?? {
     id,
@@ -315,51 +264,6 @@ function getModuleFrameStyle(size: HomeModuleSize, collapsed: boolean) {
     "--home-module-preview-width": `${previewSize.width}px`,
     "--home-module-preview-height": `${previewSize.height}px`
   } as CSSProperties;
-}
-
-function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
-  if (id === "news") {
-    return `${formatShortCount(dashboard.news.feed.items.length)} 条热点`;
-  }
-
-  if (id === "chat") {
-    return dashboard.tasks.inProgress.length > 0 ? "会话运行中" : `${formatShortCount(dashboard.messages.length)} 条消息`;
-  }
-
-  if (id === "todo") {
-    return getTodoModuleSummary(dashboard);
-  }
-
-  if (id === "ledger") {
-    return `结余 ${formatAmount(dashboard.ledger.summary.balance)}`;
-  }
-
-  if (id === "topics") {
-    return `${formatShortCount(dashboard.topics.current.length)} 个选题`;
-  }
-
-  if (id === "history") {
-    const historyCount = dashboard.notifications.filter((item) => item.kind === "history-post" && item.payload).length;
-    return `${formatShortCount(historyCount)} 条知识卡`;
-  }
-
-  if (id === "cinematic") {
-    return `${formatShortCount(dashboard.cinematic.dashboard.projectCount)} 个镜头项目`;
-  }
-
-  if (id === "classicShots") {
-    return `${formatShortCount(dashboard.classicShots.dashboard.projectCount)} 个复刻镜头`;
-  }
-
-  if (id === "imageToVideo") {
-    return `${formatShortCount(dashboard.imageToVideo?.dashboard.projectCount ?? 0)} 个策划项目`;
-  }
-
-  if (id === "summary") {
-    return `${formatShortCount(dashboard.summary.dashboard.totalCount)} 条总结`;
-  }
-
-  return "待接入";
 }
 
 export function useHomeLayoutPreferences() {
@@ -2929,47 +2833,6 @@ type RestartNotice = {
 };
 
 const RESTART_PENDING_STORAGE_KEY = "agent-zy-restart-pending-started-at";
-const RESTART_RECOVERY_TIMEOUT_MS = 90000;
-const RESTART_RECOVERY_POLL_MS = 1200;
-
-function wait(milliseconds: number) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, milliseconds);
-  });
-}
-
-async function waitForRestartRecovery(previousStartedAt: string | null, requestedAt: number) {
-  const deadline = Date.now() + RESTART_RECOVERY_TIMEOUT_MS;
-  const minimumWaitUntil = requestedAt + 3500;
-  let stableChecks = 0;
-
-  while (Date.now() < deadline) {
-    await wait(RESTART_RECOVERY_POLL_MS);
-
-    try {
-      const status = await fetchSystemStatus();
-      if (!previousStartedAt || status.startedAt !== previousStartedAt) {
-        await fetchDashboard();
-        return status;
-      }
-
-      if (Date.now() >= minimumWaitUntil) {
-        stableChecks += 1;
-
-        if (stableChecks >= 2) {
-          await fetchDashboard();
-          return status;
-        }
-      }
-    } catch {
-      stableChecks = 0;
-      // The API is expected to be unavailable for a short window while restarting.
-    }
-  }
-
-  throw new Error("Restart did not complete within timeout");
-}
-
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const [railExpanded, setRailExpanded] = useState(false);

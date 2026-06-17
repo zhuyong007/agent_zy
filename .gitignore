@@ -7,6 +7,7 @@
 .agent-zy-data/
 .agent-zy-data/secrets/
 .agent-zy-test-data/
+.tmp-*/
 .superpowers/
 
 # Build output
@@ -19,5 +20,10 @@ node_modules/
 
 # npm / tooling caches (optional local artifacts)
 .npm/
+.npm-cache/
 .cache/
 .playwright-cli/
+
+# OS metadata
+.DS_Store
+**/.DS_Store

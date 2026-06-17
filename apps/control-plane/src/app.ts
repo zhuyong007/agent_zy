@@ -45,121 +45,10 @@ import {
   type ClassicShotVideoProcessor
 } from "./services/classic-shot-video-service";
 import { restartProjectWithScript, type ProjectRestarter } from "./services/system-restart";
+import { isLocalBrowserRequest, parseFallbackMultipartImage, parseFallbackMultipartUpload } from "./app-helpers";
 
 const CLASSIC_SHOT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const CLASSIC_SHOT_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
-
-function parseMultipartBoundary(contentType: unknown) {
-  const header = Array.isArray(contentType) ? contentType[0] : contentType;
-  const match = typeof header === "string" ? /boundary=(?:"([^"]+)"|([^;]+))/i.exec(header) : null;
-
-  return match?.[1] ?? match?.[2]?.trim() ?? null;
-}
-
-function parseFallbackMultipartUpload(contentType: unknown, body: unknown) {
-  const boundary = parseMultipartBoundary(contentType);
-
-  if (!boundary || !Buffer.isBuffer(body)) {
-    throw new Error("video upload support is not installed; run npm install to restore @fastify/multipart");
-  }
-
-  const fields: Record<string, string> = {};
-  let video:
-    | {
-        filename: string;
-        mimetype: string;
-        buffer: Buffer;
-      }
-    | null = null;
-  const raw = body.toString("binary");
-  const marker = `--${boundary}`;
-
-  for (const segment of raw.split(marker)) {
-    const trimmed = segment.replace(/^\r\n/, "");
-
-    if (!trimmed || trimmed.startsWith("--")) {
-      continue;
-    }
-
-    const headerEnd = trimmed.indexOf("\r\n\r\n");
-
-    if (headerEnd < 0) {
-      continue;
-    }
-
-    const headerText = trimmed.slice(0, headerEnd);
-    const contentText = trimmed.slice(headerEnd + 4).replace(/\r\n$/, "");
-    const disposition = /content-disposition:\s*form-data;([^\r\n]+)/i.exec(headerText)?.[1] ?? "";
-    const name = /name="([^"]+)"/i.exec(disposition)?.[1];
-    const filename = /filename="([^"]*)"/i.exec(disposition)?.[1];
-
-    if (!name) {
-      continue;
-    }
-
-    if (filename !== undefined) {
-      video = {
-        filename: filename || "uploaded-video",
-        mimetype: /content-type:\s*([^\r\n]+)/i.exec(headerText)?.[1]?.trim() ?? "",
-        buffer: Buffer.from(contentText, "binary")
-      };
-      continue;
-    }
-
-    fields[name] = contentText;
-  }
-
-  if (!video) {
-    throw new Error("请上传 video 文件");
-  }
-
-  return {
-    fields,
-    video
-  };
-}
-
-function parseFallbackMultipartImage(contentType: unknown, body: unknown) {
-  const boundary = parseMultipartBoundary(contentType);
-
-  if (!boundary || !Buffer.isBuffer(body)) {
-    throw new Error("图片上传格式无效");
-  }
-
-  const fields: Record<string, string> = {};
-  let image: { filename: string; mimetype: string; buffer: Buffer } | null = null;
-  const raw = body.toString("binary");
-
-  for (const segment of raw.split(`--${boundary}`)) {
-    const trimmed = segment.replace(/^\r\n/, "");
-    const headerEnd = trimmed.indexOf("\r\n\r\n");
-    if (!trimmed || trimmed.startsWith("--") || headerEnd < 0) {
-      continue;
-    }
-    const headerText = trimmed.slice(0, headerEnd);
-    const contentText = trimmed.slice(headerEnd + 4).replace(/\r\n$/, "");
-    const disposition = /content-disposition:\s*form-data;([^\r\n]+)/i.exec(headerText)?.[1] ?? "";
-    const name = /name="([^"]+)"/i.exec(disposition)?.[1];
-    const filename = /filename="([^"]*)"/i.exec(disposition)?.[1];
-    if (!name) {
-      continue;
-    }
-    if (filename !== undefined && name === "image") {
-      image = {
-        filename: filename || "uploaded-image",
-        mimetype: /content-type:\s*([^\r\n]+)/i.exec(headerText)?.[1]?.trim() ?? "",
-        buffer: Buffer.from(contentText, "binary")
-      };
-    } else if (filename === undefined) {
-      fields[name] = contentText;
-    }
-  }
-
-  if (!image) {
-    throw new Error("请上传 image 文件");
-  }
-  return { fields, image };
-}
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
@@ -313,18 +202,6 @@ export function createControlPlaneApp(options?: {
   }));
 
   app.get("/api/dashboard", async () => orchestrator.getDashboard());
-
-  function isLocalBrowserRequest(origin: unknown) {
-    if (typeof origin !== "string" || !origin.trim()) {
-      return true;
-    }
-
-    try {
-      return ["127.0.0.1", "localhost", "::1"].includes(new URL(origin).hostname);
-    } catch {
-      return false;
-    }
-  }
 
   function rejectRemotePhotoRenamerRequest(request: { headers: Record<string, unknown> }, reply: any) {
     if (isLocalBrowserRequest(request.headers.origin)) {
