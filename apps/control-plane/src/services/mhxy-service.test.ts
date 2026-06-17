@@ -241,4 +241,70 @@ describe("mhxy service", () => {
     expect(() => service.updateTrade(buy.id, { quantity: 1 })).toThrow("库存不足");
     expect(service.getDashboard().trades.find((trade) => trade.id === buy.id)?.quantity).toBe(2);
   });
+
+  it("tracks summon and equipment asset flips with RMB-only holding cost and realized profit", () => {
+    const service = createService();
+
+    service.createAssetFlip({
+      category: "summon",
+      name: "须弥画魂",
+      buyAt: "2026-06-01T10:00:00.000Z",
+      buyPriceRmb: 1200,
+      serverName: "长安城",
+      characterName: "商人甲"
+    });
+    service.createAssetFlip({
+      category: "equipment",
+      name: "160 项链",
+      buyAt: "2026-06-02T10:00:00.000Z",
+      buyPriceRmb: 3000,
+      sellAt: "2026-06-04T10:00:00.000Z",
+      sellPriceRmb: 2800
+    });
+
+    const dashboard = service.getDashboard();
+    expect(dashboard.assetFlips).toHaveLength(2);
+    expect(dashboard.assetFlips.find((item) => item.name === "160 项链")).toMatchObject({
+      status: "sold",
+      profitRmb: -200
+    });
+    expect(dashboard.assetFlipSummary).toMatchObject({
+      holdingCount: 1,
+      soldCount: 1,
+      holdingCostRmb: 1200,
+      realizedRevenueRmb: 2800,
+      realizedProfitRmb: -200
+    });
+  });
+
+  it("updates a holding asset flip to sold and validates sell fields", () => {
+    const service = createService();
+    const record = service.createAssetFlip({
+      category: "summon",
+      name: "力劈童子",
+      buyAt: "2026-06-01T10:00:00.000Z",
+      buyPriceRmb: 800
+    });
+
+    expect(() => service.updateAssetFlip(record.id, { sellPriceRmb: 950 })).toThrow(
+      "卖出时间和卖出价格必须同时填写"
+    );
+
+    const sold = service.updateAssetFlip(record.id, {
+      sellAt: "2026-06-05T10:00:00.000Z",
+      sellPriceRmb: 950.235
+    });
+
+    expect(sold).toMatchObject({
+      status: "sold",
+      sellPriceRmb: 950.24,
+      profitRmb: 150.24
+    });
+    expect(service.getDashboard().assetFlipSummary).toMatchObject({
+      holdingCount: 0,
+      soldCount: 1,
+      holdingCostRmb: 0,
+      realizedProfitRmb: 150.24
+    });
+  });
 });

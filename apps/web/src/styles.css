@@ -2342,18 +2342,275 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.mhxy-segment {
+  position: relative;
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+.mhxy-segment button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.mhxy-segment button.is-active {
+  background: var(--panel-strong);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.2);
+}
+
+.mhxy-assets {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  animation: mhxy-panel-in 180ms ease-out;
+}
+
+.mhxy-assets__lead,
+.mhxy-asset-list,
+.mhxy-asset-editor {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.mhxy-assets__lead {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(520px, 1.5fr);
+  gap: 18px;
+  align-items: center;
+  padding: 22px;
+  border-radius: 22px;
+}
+
+.mhxy-assets__lead h2,
+.mhxy-asset-toolbar h3,
+.mhxy-asset-editor h3 {
+  margin: 0;
+}
+
+.mhxy-assets__lead p,
+.mhxy-asset-toolbar p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.mhxy-asset-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mhxy-asset-metrics span {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  color: var(--muted);
+}
+
+.mhxy-asset-metrics strong {
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.mhxy-assets__board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, .8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.mhxy-asset-list,
+.mhxy-asset-editor {
+  border-radius: 22px;
+}
+
+.mhxy-asset-list {
+  min-width: 0;
+  padding: 18px;
+}
+
+.mhxy-asset-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.mhxy-filter-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mhxy-filter-strip select,
+.mhxy-asset-editor input,
+.mhxy-asset-editor select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.mhxy-asset-table {
+  display: grid;
+  gap: 8px;
+}
+
+.mhxy-asset-row {
+  display: grid;
+  grid-template-columns: 1.4fr .8fr .8fr .7fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.mhxy-asset-row:not(.mhxy-asset-row--head):hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--panel-strong) 82%, rgba(var(--accent-rgb), 0.16));
+}
+
+.mhxy-asset-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.mhxy-asset-row small,
+.mhxy-empty,
+.mhxy-asset-preview small {
+  color: var(--muted);
+}
+
+.mhxy-asset-row--head {
+  color: var(--muted);
+  background: transparent;
+}
+
+.mhxy-asset-row button,
+.mhxy-asset-editor button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.mhxy-asset-row .is-profit {
+  color: #16a34a;
+}
+
+.mhxy-asset-row .is-loss {
+  color: #dc2626;
+}
+
+.mhxy-asset-row .is-muted {
+  color: var(--muted);
+}
+
+.mhxy-asset-editor {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  animation: mhxy-editor-in 180ms ease-out;
+}
+
+.mhxy-asset-editor label,
+.mhxy-asset-sell-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.mhxy-asset-editor label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.mhxy-asset-sell-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mhxy-asset-preview {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--panel-strong);
+}
+
+.mhxy-secondary-button {
+  background: var(--panel-strong) !important;
+  color: var(--text) !important;
+}
+
+@keyframes mhxy-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mhxy-editor-in {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @media (max-width: 1000px) {
   .mhxy-hero,
-  .mhxy-grid {
+  .mhxy-grid,
+  .mhxy-assets__lead,
+  .mhxy-assets__board {
     grid-template-columns: 1fr;
   }
 
-  .mhxy-row {
+  .mhxy-row,
+  .mhxy-asset-row {
     grid-template-columns: 1fr 1fr;
   }
 
-  .mhxy-row--head {
+  .mhxy-row--head,
+  .mhxy-asset-row--head {
     display: none;
+  }
+
+  .mhxy-asset-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mhxy-asset-editor {
+    position: static;
   }
 }
 

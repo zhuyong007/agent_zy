@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type {
+  MhxyAssetFlipRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
@@ -17,6 +18,8 @@ export interface MhxyRepository {
   writeInventoryTransfers(records: MhxyInventoryTransferRecord[]): void;
   readInventoryTargets(): MhxyInventoryTarget[];
   writeInventoryTargets(records: MhxyInventoryTarget[]): void;
+  readAssetFlips(): MhxyAssetFlipRecord[];
+  writeAssetFlips(records: MhxyAssetFlipRecord[]): void;
 }
 
 function ensureArrayFile(path: string) {
@@ -45,7 +48,8 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
   const snapshots = resolve(dir, "price-snapshots.json");
   const transfers = resolve(dir, "inventory-transfers.json");
   const targets = resolve(dir, "inventory-targets.json");
-  [trades, snapshots, transfers, targets].forEach(ensureArrayFile);
+  const assetFlips = resolve(dir, "asset-flips.json");
+  [trades, snapshots, transfers, targets, assetFlips].forEach(ensureArrayFile);
 
   return {
     readTrades: () => readArray(trades),
@@ -55,6 +59,8 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
     readInventoryTransfers: () => readArray(transfers),
     writeInventoryTransfers: (records) => writeArray(transfers, records),
     readInventoryTargets: () => readArray(targets),
-    writeInventoryTargets: (records) => writeArray(targets, records)
+    writeInventoryTargets: (records) => writeArray(targets, records),
+    readAssetFlips: () => readArray(assetFlips),
+    writeAssetFlips: (records) => writeArray(assetFlips, records)
   };
 }

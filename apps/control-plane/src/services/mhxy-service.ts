@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  MhxyAssetFlipInput,
+  MhxyAssetFlipRecord,
+  MhxyAssetFlipSummary,
   MhxyDashboard,
   MhxyInventoryPosition,
   MhxyInventoryTarget,
@@ -31,6 +34,76 @@ function assertFiniteNonNegative(value: number, name: string) {
 
 function assertPositiveInteger(value: number, name = "数量") {
   if (!Number.isInteger(value) || value <= 0) throw new Error(`${name}必须是大于 0 的整数`);
+}
+
+function normalizeOptionalDate(value: string | undefined, name: string) {
+  if (value === undefined || value.trim() === "") return undefined;
+  if (Number.isNaN(Date.parse(value))) throw new Error(`${name}无效`);
+  return new Date(value).toISOString();
+}
+
+function normalizeAssetFlip(
+  input: MhxyAssetFlipInput,
+  existing?: MhxyAssetFlipRecord
+): MhxyAssetFlipRecord {
+  if (input.category !== "summon" && input.category !== "equipment") {
+    throw new Error("资产类型必须是召唤兽或装备");
+  }
+  const name = input.name.trim();
+  if (!name) throw new Error("名称不能为空");
+  if (!input.buyAt || Number.isNaN(Date.parse(input.buyAt))) throw new Error("买入时间无效");
+  assertFiniteNonNegative(input.buyPriceRmb, "买入价格");
+  const hasSellAt = Boolean(input.sellAt?.trim());
+  const hasSellPrice = input.sellPriceRmb !== undefined && input.sellPriceRmb !== null;
+  if (hasSellAt !== hasSellPrice) {
+    throw new Error("卖出时间和卖出价格必须同时填写");
+  }
+  if (hasSellPrice) assertFiniteNonNegative(input.sellPriceRmb as number, "卖出价格");
+
+  const buyPriceRmb = roundRmb(input.buyPriceRmb);
+  const sellPriceRmb = hasSellPrice ? roundRmb(input.sellPriceRmb as number) : undefined;
+  const timestamp = nowIso();
+  const status = hasSellPrice ? "sold" : "holding";
+
+  return {
+    id: existing?.id ?? randomUUID(),
+    category: input.category,
+    name,
+    buyAt: new Date(input.buyAt).toISOString(),
+    buyPriceRmb,
+    ...(hasSellAt ? { sellAt: normalizeOptionalDate(input.sellAt, "卖出时间") } : {}),
+    ...(sellPriceRmb !== undefined ? { sellPriceRmb } : {}),
+    status,
+    profitRmb: sellPriceRmb === undefined ? null : roundRmb(sellPriceRmb - buyPriceRmb),
+    ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
+    ...(normalizeLabel(input.characterName) ? { characterName: normalizeLabel(input.characterName) } : {}),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function summarizeAssetFlips(records: MhxyAssetFlipRecord[]): MhxyAssetFlipSummary {
+  return records.reduce<MhxyAssetFlipSummary>(
+    (summary, record) => {
+      if (record.status === "holding") {
+        summary.holdingCount += 1;
+        summary.holdingCostRmb = roundRmb(summary.holdingCostRmb + record.buyPriceRmb);
+        return summary;
+      }
+      summary.soldCount += 1;
+      summary.realizedRevenueRmb = roundRmb(summary.realizedRevenueRmb + (record.sellPriceRmb ?? 0));
+      summary.realizedProfitRmb = roundRmb(summary.realizedProfitRmb + (record.profitRmb ?? 0));
+      return summary;
+    },
+    {
+      holdingCount: 0,
+      soldCount: 0,
+      holdingCostRmb: 0,
+      realizedProfitRmb: 0,
+      realizedRevenueRmb: 0
+    }
+  );
 }
 
 function normalizeTrade(input: MhxyTradeInput, existing?: MhxyTradeRecord): MhxyTradeRecord {
@@ -243,6 +316,12 @@ export function createMhxyService(dataDir: string) {
     const priceSnapshots = repository.readPriceSnapshots();
     const inventoryTransfers = repository.readInventoryTransfers();
     const inventoryTargets = repository.readInventoryTargets();
+    const assetFlips = repository
+      .readAssetFlips()
+      .sort((left, right) => {
+        const buyAt = right.buyAt.localeCompare(left.buyAt);
+        return buyAt !== 0 ? buyAt : right.createdAt.localeCompare(left.createdAt);
+      });
     const replayed = replay(trades, inventoryTransfers);
     const targets = new Map(
       inventoryTargets.map((target) => [
@@ -290,7 +369,9 @@ export function createMhxyService(dataDir: string) {
           inventory.reduce((sum, item) => sum + (item.unrealizedProfitRmb ?? 0), 0)
         ),
         pendingValuationCount: inventory.filter((item) => item.marketValueRmb === null).length
-      }
+      },
+      assetFlips,
+      assetFlipSummary: summarizeAssetFlips(assetFlips)
     };
   }
 
@@ -354,6 +435,19 @@ export function createMhxyService(dataDir: string) {
           .filter((target) => inventoryKey(target.itemName, target.serverName, target.characterName) !== key),
         record
       ]);
+      return record;
+    },
+    createAssetFlip(input: MhxyAssetFlipInput) {
+      const record = normalizeAssetFlip(input);
+      repository.writeAssetFlips([...repository.readAssetFlips(), record]);
+      return record;
+    },
+    updateAssetFlip(id: string, patch: Partial<MhxyAssetFlipInput>) {
+      const records = repository.readAssetFlips();
+      const existing = records.find((record) => record.id === id);
+      if (!existing) throw new Error("召唤兽装备记录不存在");
+      const record = normalizeAssetFlip({ ...existing, ...patch }, existing);
+      repository.writeAssetFlips(records.map((item) => (item.id === id ? record : item)));
       return record;
     }
   };

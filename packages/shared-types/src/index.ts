@@ -412,6 +412,39 @@ export interface MhxyInventoryPosition {
   unrealizedProfitRmb: number | null;
 }
 
+export type MhxyAssetFlipCategory = "summon" | "equipment";
+export type MhxyAssetFlipStatus = "holding" | "sold";
+
+export interface MhxyAssetFlipInput {
+  category: MhxyAssetFlipCategory;
+  name: string;
+  buyAt: string;
+  buyPriceRmb: number;
+  sellAt?: string;
+  sellPriceRmb?: number;
+  serverName?: string;
+  characterName?: string;
+  note?: string;
+}
+
+export interface MhxyAssetFlipRecord extends MhxyAssetFlipInput {
+  id: string;
+  buyPriceRmb: number;
+  sellPriceRmb?: number;
+  status: MhxyAssetFlipStatus;
+  profitRmb: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyAssetFlipSummary {
+  holdingCount: number;
+  soldCount: number;
+  holdingCostRmb: number;
+  realizedProfitRmb: number;
+  realizedRevenueRmb: number;
+}
+
 export interface MhxyDashboardSummary {
   inventoryCostRmb: number;
   realizedProfitRmb: number;
@@ -428,6 +461,8 @@ export interface MhxyDashboard {
   inventoryTargets: MhxyInventoryTarget[];
   inventory: MhxyInventoryPosition[];
   summary: MhxyDashboardSummary;
+  assetFlips: MhxyAssetFlipRecord[];
+  assetFlipSummary: MhxyAssetFlipSummary;
 }
 
 export type ScheduleUrgency = "low" | "medium" | "high";

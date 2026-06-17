@@ -1294,6 +1294,16 @@ export function createControlPlaneApp(options?: {
     )
   );
 
+  app.post("/api/mhxy/asset-flips", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.createAssetFlip((request.body ?? {}) as any))
+  );
+
+  app.patch("/api/mhxy/asset-flips/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updateAssetFlip((request.params as { id: string }).id, (request.body ?? {}) as any)
+    )
+  );
+
   app.post("/api/mhxy/price-snapshots", async (request, reply) =>
     mhxyAction(reply, () => mhxyService.createPriceSnapshot((request.body ?? {}) as any))
   );

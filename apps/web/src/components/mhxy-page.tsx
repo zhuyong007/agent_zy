@@ -3,6 +3,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
+  MhxyAssetFlipCategory,
+  MhxyAssetFlipInput,
+  MhxyAssetFlipRecord,
+  MhxyAssetFlipStatus,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshotInput,
@@ -11,11 +15,13 @@ import type {
 } from "@agent-zy/shared-types";
 
 import {
+  createMhxyAssetFlip,
   createMhxyInventoryTransfer,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   fetchMhxyDashboard,
   setMhxyInventoryTarget,
+  updateMhxyAssetFlip,
   updateMhxyInventoryTransfer,
   updateMhxyTrade
 } from "../api";
@@ -46,6 +52,18 @@ const emptyTrade = (): MhxyTradeInput => ({
   note: ""
 });
 
+const emptyAssetFlip = (): MhxyAssetFlipInput => ({
+  category: "summon",
+  name: "",
+  buyAt: localDateTime(),
+  buyPriceRmb: 0,
+  sellAt: "",
+  sellPriceRmb: undefined,
+  serverName: "",
+  characterName: "",
+  note: ""
+});
+
 export function MhxyPage() {
   const queryClient = useQueryClient();
   const [themeKey, setThemeKey] = useThemePreference();
@@ -53,6 +71,11 @@ export function MhxyPage() {
   const [railExpanded, setRailExpanded] = useState(false);
   const [trade, setTrade] = useState<MhxyTradeInput>(emptyTrade);
   const [editingTradeId, setEditingTradeId] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<"ledger" | "assets">("ledger");
+  const [assetFlip, setAssetFlip] = useState<MhxyAssetFlipInput>(emptyAssetFlip);
+  const [editingAssetFlipId, setEditingAssetFlipId] = useState<string | null>(null);
+  const [assetStatusFilter, setAssetStatusFilter] = useState<"all" | MhxyAssetFlipStatus>("all");
+  const [assetCategoryFilter, setAssetCategoryFilter] = useState<"all" | MhxyAssetFlipCategory>("all");
   const [snapshotCurrency, setSnapshotCurrency] = useState<MhxyTradeCurrency>("rmb");
   const [editingTransfer, setEditingTransfer] = useState<MhxyInventoryTransferRecord | null>(null);
   const query = useQuery({ queryKey: ["mhxy"], queryFn: fetchMhxyDashboard });
@@ -62,6 +85,17 @@ export function MhxyPage() {
     onSuccess: () => {
       setTrade(emptyTrade());
       setEditingTradeId(null);
+      void refresh();
+    }
+  });
+  const assetFlipMutation = useMutation({
+    mutationFn: () =>
+      editingAssetFlipId
+        ? updateMhxyAssetFlip(editingAssetFlipId, assetFlip)
+        : createMhxyAssetFlip(assetFlip),
+    onSuccess: () => {
+      setAssetFlip(emptyAssetFlip());
+      setEditingAssetFlipId(null);
       void refresh();
     }
   });
@@ -86,7 +120,22 @@ export function MhxyPage() {
   const gameCoinAmount = trade.quantity * trade.unitPrice;
   const convertedRmb = gameCoinAmount * (trade.rmbPerGameCoinWan ?? 0);
   const gameCoinSellFee = trade.type === "sell" ? convertedRmb * 0.05 : 0;
-  const error = [tradeMutation.error, snapshotMutation.error, transferMutation.error, targetMutation.error]
+  const filteredAssetFlips = (dashboard?.assetFlips ?? []).filter(
+    (item) =>
+      (assetStatusFilter === "all" || item.status === assetStatusFilter) &&
+      (assetCategoryFilter === "all" || item.category === assetCategoryFilter)
+  );
+  const previewAssetProfit =
+    assetFlip.sellPriceRmb === undefined || assetFlip.sellPriceRmb === null
+      ? null
+      : assetFlip.sellPriceRmb - assetFlip.buyPriceRmb;
+  const error = [
+    tradeMutation.error,
+    assetFlipMutation.error,
+    snapshotMutation.error,
+    transferMutation.error,
+    targetMutation.error
+  ]
     .find((item) => item instanceof Error) as Error | undefined;
 
   function submitTrade(event: FormEvent<HTMLFormElement>) {
@@ -96,6 +145,15 @@ export function MhxyPage() {
 
   function field(name: keyof MhxyTradeInput, value: string | number) {
     setTrade((current) => ({ ...current, [name]: value }));
+  }
+
+  function assetField(name: keyof MhxyAssetFlipInput, value: string | number | undefined) {
+    setAssetFlip((current) => ({ ...current, [name]: value }));
+  }
+
+  function submitAssetFlip(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    assetFlipMutation.mutate();
   }
 
   return (
@@ -127,6 +185,25 @@ export function MhxyPage() {
 
         {error ? <p className="mhxy-error">{error.message}</p> : null}
 
+        <div className="mhxy-segment" aria-label="梦幻西游模块切换">
+          <button
+            type="button"
+            className={workspace === "ledger" ? "is-active" : ""}
+            onClick={() => setWorkspace("ledger")}
+          >
+            人民主账本
+          </button>
+          <button
+            type="button"
+            className={workspace === "assets" ? "is-active" : ""}
+            onClick={() => setWorkspace("assets")}
+          >
+            召唤兽装备
+          </button>
+        </div>
+
+        {workspace === "ledger" ? (
+          <>
         <div className="mhxy-grid">
           <form className="mhxy-card mhxy-form" data-form="trade" onSubmit={submitTrade}>
             <h2>{editingTradeId ? "编辑交易" : "记录买入 / 卖出"}</h2>
@@ -180,6 +257,138 @@ export function MhxyPage() {
             <div className="mhxy-history">{(dashboard?.inventoryTransfers ?? []).map((item) => <article key={item.id}><div><strong>{item.itemName}｜{item.quantity} 个</strong><p>{item.sourceServerName}/{item.sourceCharacterName} → {item.targetServerName}/{item.targetCharacterName}｜转移成本 {money(item.transferCostRmb)}</p></div><button type="button" onClick={() => setEditingTransfer(item)}>编辑</button></article>)}</div>
           </section>
         </div>
+          </>
+        ) : (
+          <section className="mhxy-assets">
+            <div className="mhxy-assets__lead">
+              <div>
+                <p className="eyebrow">ASSET FLIP DESK</p>
+                <h2>召唤兽 / 装备人民币盈亏</h2>
+                <p>一条记录对应一个具体资产，只看买入价、卖出价和单件赚亏。</p>
+              </div>
+              <div className="mhxy-asset-metrics">
+                <span>在手成本<strong>{money(dashboard?.assetFlipSummary?.holdingCostRmb ?? 0)}</strong></span>
+                <span>在手数量<strong>{dashboard?.assetFlipSummary?.holdingCount ?? 0}</strong></span>
+                <span>已实现盈亏<strong>{money(dashboard?.assetFlipSummary?.realizedProfitRmb ?? 0)}</strong></span>
+                <span>已卖出<strong>{dashboard?.assetFlipSummary?.soldCount ?? 0}</strong></span>
+              </div>
+            </div>
+
+            <div className="mhxy-assets__board">
+              <section className="mhxy-asset-list" aria-label="召唤兽装备记录">
+                <div className="mhxy-asset-toolbar">
+                  <div>
+                    <h3>资产流水</h3>
+                    <p>{filteredAssetFlips.length} 条记录 · 绿色为盈利，红色为亏损</p>
+                  </div>
+                  <div className="mhxy-filter-strip">
+                    <select
+                      aria-label="状态筛选"
+                      value={assetStatusFilter}
+                      onChange={(event) => setAssetStatusFilter(event.target.value as "all" | MhxyAssetFlipStatus)}
+                    >
+                      <option value="all">全部状态</option>
+                      <option value="holding">持有中</option>
+                      <option value="sold">已卖出</option>
+                    </select>
+                    <select
+                      aria-label="类型筛选"
+                      value={assetCategoryFilter}
+                      onChange={(event) => setAssetCategoryFilter(event.target.value as "all" | MhxyAssetFlipCategory)}
+                    >
+                      <option value="all">全部类型</option>
+                      <option value="summon">召唤兽</option>
+                      <option value="equipment">装备</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mhxy-asset-table">
+                  <div className="mhxy-asset-row mhxy-asset-row--head">
+                    <span>资产</span>
+                    <span>买入</span>
+                    <span>卖出</span>
+                    <span>盈亏</span>
+                    <span>操作</span>
+                  </div>
+                  {filteredAssetFlips.map((item) => (
+                    <article className="mhxy-asset-row" key={item.id}>
+                      <span>
+                        <strong>{item.name}</strong>
+                        <small>{item.category === "summon" ? "召唤兽" : "装备"} · {item.serverName || "未填区服"} · {item.characterName || "未填角色"}</small>
+                      </span>
+                      <span>
+                        {money(item.buyPriceRmb)}
+                        <small>{item.buyAt.slice(0, 10)}</small>
+                      </span>
+                      <span>
+                        {item.status === "sold" ? money(item.sellPriceRmb ?? 0) : "持有中"}
+                        <small>{item.sellAt?.slice(0, 10) ?? "未卖出"}</small>
+                      </span>
+                      <span className={item.profitRmb === null ? "is-muted" : item.profitRmb >= 0 ? "is-profit" : "is-loss"}>
+                        {item.profitRmb === null ? "未实现" : money(item.profitRmb)}
+                      </span>
+                      <span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAssetFlipId(item.id);
+                            setAssetFlip({
+                              ...item,
+                              buyAt: item.buyAt.slice(0, 16),
+                              sellAt: item.sellAt?.slice(0, 16) ?? "",
+                              sellPriceRmb: item.sellPriceRmb
+                            });
+                          }}
+                        >
+                          编辑
+                        </button>
+                      </span>
+                    </article>
+                  ))}
+                  {filteredAssetFlips.length === 0 ? (
+                    <p className="mhxy-empty">还没有符合筛选条件的召唤兽或装备记录。</p>
+                  ) : null}
+                </div>
+              </section>
+
+              <form className="mhxy-asset-editor" data-form="asset-flip" onSubmit={submitAssetFlip}>
+                <div>
+                  <p className="eyebrow">{editingAssetFlipId ? "EDIT ASSET" : "NEW ASSET"}</p>
+                  <h3>{editingAssetFlipId ? "编辑记录" : "记录买入"}</h3>
+                </div>
+                <label>类型<select name="category" value={assetFlip.category} onChange={(e) => assetField("category", e.target.value)}><option value="summon">召唤兽</option><option value="equipment">装备</option></select></label>
+                <label>名称<input name="name" required value={assetFlip.name} onChange={(e) => assetField("name", e.target.value)} placeholder="例如：须弥画魂 / 160 项链" /></label>
+                <label>买入时间<input name="buyAt" type="datetime-local" required value={assetFlip.buyAt.slice(0, 16)} onChange={(e) => assetField("buyAt", e.target.value)} /></label>
+                <label>买入价格<input name="buyPriceRmb" type="number" min="0" step="any" required value={assetFlip.buyPriceRmb} onChange={(e) => assetField("buyPriceRmb", Number(e.target.value))} /></label>
+                <div className="mhxy-asset-sell-fields">
+                  <label>卖出时间<input name="sellAt" type="datetime-local" value={assetFlip.sellAt?.slice(0, 16) ?? ""} onChange={(e) => assetField("sellAt", e.target.value)} /></label>
+                  <label>卖出价格<input name="sellPriceRmb" type="number" min="0" step="any" value={assetFlip.sellPriceRmb ?? ""} onChange={(e) => assetField("sellPriceRmb", e.target.value === "" ? undefined : Number(e.target.value))} /></label>
+                </div>
+                <label>区服<input name="serverName" value={assetFlip.serverName ?? ""} onChange={(e) => assetField("serverName", e.target.value)} /></label>
+                <label>角色<input name="characterName" value={assetFlip.characterName ?? ""} onChange={(e) => assetField("characterName", e.target.value)} /></label>
+                <label>备注<input name="note" value={assetFlip.note ?? ""} onChange={(e) => assetField("note", e.target.value)} /></label>
+                <div className="mhxy-asset-preview">
+                  <span>{previewAssetProfit === null ? "当前状态：持有中" : `预计盈亏：${money(previewAssetProfit)}`}</span>
+                  <small>未填写卖出信息时，这条记录会计入在手买入成本。</small>
+                </div>
+                <button type="submit" disabled={assetFlipMutation.isPending}>{editingAssetFlipId ? "保存记录" : "保存资产"}</button>
+                {editingAssetFlipId ? (
+                  <button
+                    className="mhxy-secondary-button"
+                    type="button"
+                    onClick={() => {
+                      setEditingAssetFlipId(null);
+                      setAssetFlip(emptyAssetFlip());
+                    }}
+                  >
+                    取消编辑
+                  </button>
+                ) : null}
+              </form>
+            </div>
+          </section>
+        )}
       </section>
     </main>
   );

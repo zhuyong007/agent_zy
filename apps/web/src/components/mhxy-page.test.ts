@@ -19,8 +19,45 @@ vi.mock("../api", () => ({
       marketValueRmb: 0,
       unrealizedProfitRmb: 0,
       pendingValuationCount: 0
+    },
+    assetFlips: [
+      {
+        id: "asset-1",
+        category: "summon",
+        name: "须弥画魂",
+        buyAt: "2026-06-01T10:00:00.000Z",
+        buyPriceRmb: 1200,
+        status: "holding",
+        profitRmb: null,
+        serverName: "长安城",
+        characterName: "商人甲",
+        createdAt: "2026-06-01T10:00:00.000Z",
+        updatedAt: "2026-06-01T10:00:00.000Z"
+      },
+      {
+        id: "asset-2",
+        category: "equipment",
+        name: "160 项链",
+        buyAt: "2026-06-01T10:00:00.000Z",
+        buyPriceRmb: 3000,
+        sellAt: "2026-06-03T10:00:00.000Z",
+        sellPriceRmb: 3300,
+        status: "sold",
+        profitRmb: 300,
+        createdAt: "2026-06-01T10:00:00.000Z",
+        updatedAt: "2026-06-03T10:00:00.000Z"
+      }
+    ],
+    assetFlipSummary: {
+      holdingCount: 1,
+      soldCount: 1,
+      holdingCostRmb: 1200,
+      realizedProfitRmb: 300,
+      realizedRevenueRmb: 3300
     }
   })),
+  createMhxyAssetFlip: vi.fn(async (input) => ({ id: "asset-new", ...input })),
+  updateMhxyAssetFlip: vi.fn(),
   createMhxyTrade: vi.fn(async (input) => ({ id: "trade-1", ...input })),
   updateMhxyTrade: vi.fn(),
   createMhxyPriceSnapshot: vi.fn(),
@@ -36,7 +73,7 @@ vi.mock("./dashboard-page", () => ({
   useThemePreference: () => ["day", vi.fn()]
 }));
 
-import { createMhxyTrade } from "../api";
+import { createMhxyAssetFlip, createMhxyTrade } from "../api";
 import { MhxyPage } from "./mhxy-page";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -117,5 +154,50 @@ describe("MhxyPage", () => {
 
     expect(page).not.toBeNull();
     expect(page.classList.contains("mhxy-page--scrollable")).toBe(true);
+  });
+
+  it("switches to asset flips, shows RMB summary, and submits raw asset inputs", async () => {
+    const container = await renderPage();
+
+    await act(async () => {
+      Array.from(container.querySelectorAll(".mhxy-segment button"))
+        .find((button) => button.textContent === "召唤兽装备")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("召唤兽 / 装备人民币盈亏");
+    expect(container.textContent).toContain("在手成本");
+    expect(container.textContent).toContain("¥1,200.00");
+    expect(container.textContent).toContain("¥300.00");
+    expect(container.textContent).toContain("须弥画魂");
+    expect(container.textContent).toContain("持有中");
+
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    await act(async () => {
+      change(form.querySelector('[name="category"]') as HTMLSelectElement, "equipment");
+      change(form.querySelector('[name="name"]') as HTMLInputElement, "140 鞋子");
+      change(form.querySelector('[name="buyPriceRmb"]') as HTMLInputElement, "800");
+      change(form.querySelector('[name="sellPriceRmb"]') as HTMLInputElement, "950");
+      change(form.querySelector('[name="sellAt"]') as HTMLInputElement, "2026-06-08T10:00");
+    });
+
+    expect(container.textContent).toContain("预计盈亏：¥150.00");
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyAssetFlip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "equipment",
+        name: "140 鞋子",
+        buyPriceRmb: 800,
+        sellPriceRmb: 950,
+        sellAt: "2026-06-08T10:00"
+      })
+    );
+    expect(createMhxyAssetFlip).not.toHaveBeenCalledWith(
+      expect.objectContaining({ profitRmb: expect.anything() })
+    );
   });
 });

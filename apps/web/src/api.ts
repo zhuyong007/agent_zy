@@ -30,6 +30,8 @@ import type {
   ModelProviderId,
   ModelPurpose,
   ModelSettingsState,
+  MhxyAssetFlipInput,
+  MhxyAssetFlipRecord,
   MhxyDashboard,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
@@ -1273,6 +1275,10 @@ async function mhxyJsonRequest<T>(path: string, method: string, body?: unknown):
 }
 
 export const fetchMhxyDashboard = () => mhxyJsonRequest<MhxyDashboard>("/api/mhxy", "GET");
+export const createMhxyAssetFlip = (input: MhxyAssetFlipInput) =>
+  mhxyJsonRequest<MhxyAssetFlipRecord>("/api/mhxy/asset-flips", "POST", input);
+export const updateMhxyAssetFlip = (id: string, input: Partial<MhxyAssetFlipInput>) =>
+  mhxyJsonRequest<MhxyAssetFlipRecord>(`/api/mhxy/asset-flips/${id}`, "PATCH", input);
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>

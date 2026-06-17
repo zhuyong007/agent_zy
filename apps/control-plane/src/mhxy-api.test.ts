@@ -159,4 +159,77 @@ describe("mhxy API", () => {
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
+
+  it("creates and edits RMB-only summon equipment asset flips", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const missingName = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "summon",
+          name: "",
+          buyAt: "2026-06-01T10:00:00.000Z",
+          buyPriceRmb: 1000
+        }
+      });
+      expect(missingName.statusCode).toBe(400);
+      expect(missingName.json().message).toContain("名称不能为空");
+
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "equipment",
+          name: "160 项链",
+          buyAt: "2026-06-01T10:00:00.000Z",
+          buyPriceRmb: 3000.236,
+          serverName: "长安城"
+        }
+      });
+      expect(created.statusCode).toBe(200);
+      expect(created.json()).toMatchObject({
+        name: "160 项链",
+        buyPriceRmb: 3000.24,
+        status: "holding",
+        profitRmb: null
+      });
+
+      const invalidEdit = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/asset-flips/${created.json().id}`,
+        payload: { sellPriceRmb: 3300 }
+      });
+      expect(invalidEdit.statusCode).toBe(400);
+      expect(invalidEdit.json().message).toContain("卖出时间和卖出价格");
+
+      const sold = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/asset-flips/${created.json().id}`,
+        payload: {
+          sellAt: "2026-06-03T10:00:00.000Z",
+          sellPriceRmb: 3300
+        }
+      });
+      expect(sold.json()).toMatchObject({
+        status: "sold",
+        profitRmb: 299.76
+      });
+
+      const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      expect(dashboard.assetFlips).toHaveLength(1);
+      expect(dashboard.assetFlipSummary).toMatchObject({
+        holdingCount: 0,
+        soldCount: 1,
+        holdingCostRmb: 0,
+        realizedProfitRmb: 299.76
+      });
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
 });
