@@ -7,6 +7,8 @@ import type {
   MhxyAssetFlipInput,
   MhxyAssetFlipRecord,
   MhxyAssetFlipStatus,
+  MhxyGameCoinPurchaseInput,
+  MhxyGameCoinPurchaseRecord,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshotInput,
@@ -16,12 +18,14 @@ import type {
 
 import {
   createMhxyAssetFlip,
+  createMhxyGameCoinPurchase,
   createMhxyInventoryTransfer,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   fetchMhxyDashboard,
   setMhxyInventoryTarget,
   updateMhxyAssetFlip,
+  updateMhxyGameCoinPurchase,
   updateMhxyInventoryTransfer,
   updateMhxyTrade
 } from "../api";
@@ -31,6 +35,7 @@ import {
   useLiveClock,
   useThemePreference
 } from "./dashboard-page";
+import { DataSyncControl } from "./data-sync-control";
 
 const localDateTime = () => {
   const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
@@ -38,6 +43,7 @@ const localDateTime = () => {
 };
 const money = (value: number | null) =>
   value === null ? "待估值" : `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const gameCoin = (value: number) => `${value.toLocaleString("zh-CN")} 游戏币`;
 
 const emptyTrade = (): MhxyTradeInput => ({
   type: "buy",
@@ -56,11 +62,20 @@ const emptyAssetFlip = (): MhxyAssetFlipInput => ({
   category: "summon",
   name: "",
   buyAt: localDateTime(),
+  purchaseCurrency: "rmb",
   buyPriceRmb: 0,
+  gameCoinCost: undefined,
   sellAt: "",
   sellPriceRmb: undefined,
   serverName: "",
   characterName: "",
+  note: ""
+});
+
+const emptyGameCoinPurchase = (): MhxyGameCoinPurchaseInput => ({
+  acquiredAt: localDateTime(),
+  gameCoinAmount: 30_000_000,
+  rmbCost: 0,
   note: ""
 });
 
@@ -74,6 +89,8 @@ export function MhxyPage() {
   const [workspace, setWorkspace] = useState<"ledger" | "assets">("ledger");
   const [assetFlip, setAssetFlip] = useState<MhxyAssetFlipInput>(emptyAssetFlip);
   const [editingAssetFlipId, setEditingAssetFlipId] = useState<string | null>(null);
+  const [gameCoinPurchase, setGameCoinPurchase] = useState<MhxyGameCoinPurchaseInput>(emptyGameCoinPurchase);
+  const [editingGameCoinPurchaseId, setEditingGameCoinPurchaseId] = useState<string | null>(null);
   const [assetStatusFilter, setAssetStatusFilter] = useState<"all" | MhxyAssetFlipStatus>("all");
   const [assetCategoryFilter, setAssetCategoryFilter] = useState<"all" | MhxyAssetFlipCategory>("all");
   const [snapshotCurrency, setSnapshotCurrency] = useState<MhxyTradeCurrency>("rmb");
@@ -96,6 +113,17 @@ export function MhxyPage() {
     onSuccess: () => {
       setAssetFlip(emptyAssetFlip());
       setEditingAssetFlipId(null);
+      void refresh();
+    }
+  });
+  const gameCoinPurchaseMutation = useMutation({
+    mutationFn: () =>
+      editingGameCoinPurchaseId
+        ? updateMhxyGameCoinPurchase(editingGameCoinPurchaseId, gameCoinPurchase)
+        : createMhxyGameCoinPurchase(gameCoinPurchase),
+    onSuccess: () => {
+      setGameCoinPurchase(emptyGameCoinPurchase());
+      setEditingGameCoinPurchaseId(null);
       void refresh();
     }
   });
@@ -125,13 +153,41 @@ export function MhxyPage() {
       (assetStatusFilter === "all" || item.status === assetStatusFilter) &&
       (assetCategoryFilter === "all" || item.category === assetCategoryFilter)
   );
+  const estimatedGameCoinRmb = (() => {
+    if (assetFlip.purchaseCurrency !== "gameCoin" || !assetFlip.gameCoinCost) return null;
+    const editing = (dashboard?.assetFlips ?? []).find((item) => item.id === editingAssetFlipId);
+    const returned = new Map<string, number>();
+    for (const allocation of editing?.gameCoinAllocations ?? []) {
+      returned.set(
+        allocation.gameCoinPurchaseId,
+        (returned.get(allocation.gameCoinPurchaseId) ?? 0) + allocation.gameCoinAmount
+      );
+    }
+    let needed = assetFlip.gameCoinCost;
+    let rmbCost = 0;
+    for (const purchase of [...(dashboard?.gameCoinPurchases ?? [])].sort((a, b) =>
+      a.acquiredAt.localeCompare(b.acquiredAt)
+    )) {
+      if (purchase.acquiredAt > assetFlip.buyAt || needed === 0) continue;
+      const available = purchase.remainingGameCoinAmount + (returned.get(purchase.id) ?? 0);
+      const used = Math.min(available, needed);
+      rmbCost += used * purchase.rmbCost / purchase.gameCoinAmount;
+      needed -= used;
+    }
+    return needed > 0 ? null : Math.round((rmbCost + Number.EPSILON) * 100) / 100;
+  })();
+  const previewAssetBuyPrice =
+    assetFlip.purchaseCurrency === "gameCoin"
+      ? estimatedGameCoinRmb
+      : assetFlip.buyPriceRmb ?? 0;
   const previewAssetProfit =
-    assetFlip.sellPriceRmb === undefined || assetFlip.sellPriceRmb === null
+    assetFlip.sellPriceRmb === undefined || previewAssetBuyPrice === null
       ? null
-      : assetFlip.sellPriceRmb - assetFlip.buyPriceRmb;
+      : assetFlip.sellPriceRmb - previewAssetBuyPrice;
   const error = [
     tradeMutation.error,
     assetFlipMutation.error,
+    gameCoinPurchaseMutation.error,
     snapshotMutation.error,
     transferMutation.error,
     targetMutation.error
@@ -156,6 +212,18 @@ export function MhxyPage() {
     assetFlipMutation.mutate();
   }
 
+  function gameCoinPurchaseField(
+    name: keyof MhxyGameCoinPurchaseInput,
+    value: string | number
+  ) {
+    setGameCoinPurchase((current) => ({ ...current, [name]: value }));
+  }
+
+  function submitGameCoinPurchase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    gameCoinPurchaseMutation.mutate();
+  }
+
   return (
     <main className="workspace mhxy-workspace">
       <CommandRail
@@ -175,11 +243,14 @@ export function MhxyPage() {
             <h1>梦幻西游交易主账本</h1>
             <p>游戏币保留成交比例，库存成本、已实现收益和浮盈统一按人民币计算。</p>
           </div>
-          <div className="mhxy-summary">
-            <span>库存成本<strong>{money(dashboard?.summary.inventoryCostRmb ?? 0)}</strong></span>
-            <span>已实现收益<strong>{money(dashboard?.summary.realizedProfitRmb ?? 0)}</strong></span>
-            <span>市场估值<strong>{money(dashboard?.summary.marketValueRmb ?? 0)}</strong></span>
-            <span>未实现浮盈<strong>{money(dashboard?.summary.unrealizedProfitRmb ?? 0)}</strong></span>
+          <div className="mhxy-hero__aside">
+            <DataSyncControl module="mhxy" onSynced={refresh} />
+            <div className="mhxy-summary">
+              <span>库存成本<strong>{money(dashboard?.summary.inventoryCostRmb ?? 0)}</strong></span>
+              <span>已实现收益<strong>{money(dashboard?.summary.realizedProfitRmb ?? 0)}</strong></span>
+              <span>市场估值<strong>{money(dashboard?.summary.marketValueRmb ?? 0)}</strong></span>
+              <span>未实现浮盈<strong>{money(dashboard?.summary.unrealizedProfitRmb ?? 0)}</strong></span>
+            </div>
           </div>
         </header>
 
@@ -274,6 +345,43 @@ export function MhxyPage() {
               </div>
             </div>
 
+            <section className="mhxy-coin-wallet">
+              <div className="mhxy-coin-wallet__header">
+                <div>
+                  <p className="eyebrow">GAME COIN COST POOL</p>
+                  <h3>游戏币成本池</h3>
+                  <p>按购入批次保留真实人民币成本，道具买入默认优先消耗最早的可用批次。</p>
+                </div>
+                <div className="mhxy-coin-wallet__balance">
+                  <span>可用余额<strong>{gameCoin(dashboard?.gameCoinBalance?.gameCoinAmount ?? 0)}</strong></span>
+                  <span>剩余成本<strong>{money(dashboard?.gameCoinBalance?.rmbCost ?? 0)}</strong></span>
+                </div>
+              </div>
+              <div className="mhxy-coin-wallet__content">
+                <form data-form="game-coin-purchase" onSubmit={submitGameCoinPurchase}>
+                  <label>购入时间<input name="acquiredAt" type="datetime-local" required value={gameCoinPurchase.acquiredAt.slice(0, 16)} onChange={(event) => gameCoinPurchaseField("acquiredAt", event.target.value)} /></label>
+                  <label>购入游戏币数量<input name="gameCoinAmount" type="number" min="1" step="1" required value={gameCoinPurchase.gameCoinAmount} onChange={(event) => gameCoinPurchaseField("gameCoinAmount", Number(event.target.value))} /></label>
+                  <label>实际人民币成本<input name="rmbCost" type="number" min="0.01" step="any" required value={gameCoinPurchase.rmbCost} onChange={(event) => gameCoinPurchaseField("rmbCost", Number(event.target.value))} /></label>
+                  <label>备注<input name="note" value={gameCoinPurchase.note ?? ""} onChange={(event) => gameCoinPurchaseField("note", event.target.value)} placeholder="例如：藏宝阁购入" /></label>
+                  <button type="submit" disabled={gameCoinPurchaseMutation.isPending}>{editingGameCoinPurchaseId ? "保存批次" : "增加购币批次"}</button>
+                  {editingGameCoinPurchaseId ? <button className="mhxy-secondary-button" type="button" onClick={() => { setEditingGameCoinPurchaseId(null); setGameCoinPurchase(emptyGameCoinPurchase()); }}>取消</button> : null}
+                </form>
+                <div className="mhxy-coin-batches">
+                  {(dashboard?.gameCoinPurchases ?? []).map((purchase) => (
+                    <article key={purchase.id}>
+                      <div>
+                        <strong>{gameCoin(purchase.remainingGameCoinAmount)} 可用</strong>
+                        <small>原购入 {gameCoin(purchase.gameCoinAmount)} / {money(purchase.rmbCost)}</small>
+                        <small>{purchase.acquiredAt.slice(0, 10)} · 剩余人民币成本 {money(purchase.remainingRmbCost)}</small>
+                      </div>
+                      <button type="button" onClick={() => { setEditingGameCoinPurchaseId(purchase.id); setGameCoinPurchase({ acquiredAt: purchase.acquiredAt.slice(0, 16), gameCoinAmount: purchase.gameCoinAmount, rmbCost: purchase.rmbCost, note: purchase.note ?? "" }); }}>编辑</button>
+                    </article>
+                  ))}
+                  {(dashboard?.gameCoinPurchases ?? []).length === 0 ? <p className="mhxy-empty">先登记一次游戏币购入，例如 30,000,000 游戏币花费 ¥230。</p> : null}
+                </div>
+              </div>
+            </section>
+
             <div className="mhxy-assets__board">
               <section className="mhxy-asset-list" aria-label="召唤兽装备记录">
                 <div className="mhxy-asset-toolbar">
@@ -319,6 +427,7 @@ export function MhxyPage() {
                       </span>
                       <span>
                         {money(item.buyPriceRmb)}
+                        <small>{item.purchaseCurrency === "gameCoin" ? `${gameCoin(item.gameCoinCost ?? 0)} · 批次成本` : "直接人民币"}</small>
                         <small>{item.buyAt.slice(0, 10)}</small>
                       </span>
                       <span>
@@ -359,8 +468,13 @@ export function MhxyPage() {
                 </div>
                 <label>类型<select name="category" value={assetFlip.category} onChange={(e) => assetField("category", e.target.value)}><option value="summon">召唤兽</option><option value="equipment">装备</option></select></label>
                 <label>名称<input name="name" required value={assetFlip.name} onChange={(e) => assetField("name", e.target.value)} placeholder="例如：须弥画魂 / 160 项链" /></label>
+                <label>买入方式<select name="purchaseCurrency" value={assetFlip.purchaseCurrency ?? "rmb"} onChange={(e) => { const currency = e.target.value; setAssetFlip((current) => ({ ...current, purchaseCurrency: currency as "rmb" | "gameCoin", buyPriceRmb: currency === "rmb" ? current.buyPriceRmb ?? 0 : undefined, gameCoinCost: currency === "gameCoin" ? current.gameCoinCost ?? 0 : undefined })); }}><option value="rmb">直接人民币</option><option value="gameCoin">使用游戏币库存</option></select></label>
                 <label>买入时间<input name="buyAt" type="datetime-local" required value={assetFlip.buyAt.slice(0, 16)} onChange={(e) => assetField("buyAt", e.target.value)} /></label>
-                <label>买入价格<input name="buyPriceRmb" type="number" min="0" step="any" required value={assetFlip.buyPriceRmb} onChange={(e) => assetField("buyPriceRmb", Number(e.target.value))} /></label>
+                {assetFlip.purchaseCurrency === "gameCoin" ? (
+                  <label>实际花费游戏币<input name="gameCoinCost" type="number" min="1" step="1" required value={assetFlip.gameCoinCost ?? 0} onChange={(e) => assetField("gameCoinCost", Number(e.target.value))} /></label>
+                ) : (
+                  <label>买入价格<input name="buyPriceRmb" type="number" min="0" step="any" required value={assetFlip.buyPriceRmb ?? 0} onChange={(e) => assetField("buyPriceRmb", Number(e.target.value))} /></label>
+                )}
                 <div className="mhxy-asset-sell-fields">
                   <label>卖出时间<input name="sellAt" type="datetime-local" value={assetFlip.sellAt?.slice(0, 16) ?? ""} onChange={(e) => assetField("sellAt", e.target.value)} /></label>
                   <label>卖出价格<input name="sellPriceRmb" type="number" min="0" step="any" value={assetFlip.sellPriceRmb ?? ""} onChange={(e) => assetField("sellPriceRmb", e.target.value === "" ? undefined : Number(e.target.value))} /></label>
@@ -369,6 +483,7 @@ export function MhxyPage() {
                 <label>角色<input name="characterName" value={assetFlip.characterName ?? ""} onChange={(e) => assetField("characterName", e.target.value)} /></label>
                 <label>备注<input name="note" value={assetFlip.note ?? ""} onChange={(e) => assetField("note", e.target.value)} /></label>
                 <div className="mhxy-asset-preview">
+                  {assetFlip.purchaseCurrency === "gameCoin" ? <strong>{estimatedGameCoinRmb === null ? "游戏币余额不足或缺少可用批次" : `按历史批次折合：${money(estimatedGameCoinRmb)}`}</strong> : null}
                   <span>{previewAssetProfit === null ? "当前状态：持有中" : `预计盈亏：${money(previewAssetProfit)}`}</span>
                   <small>未填写卖出信息时，这条记录会计入在手买入成本。</small>
                 </div>

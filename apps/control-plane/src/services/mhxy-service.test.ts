@@ -307,4 +307,85 @@ describe("mhxy service", () => {
       realizedProfitRmb: 150.24
     });
   });
+
+  it("uses the original game coin purchase batch cost instead of a later market rate", () => {
+    const service = createService();
+
+    const firstBatch = service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 30_000_000,
+      rmbCost: 230
+    });
+    const asset = service.createAssetFlip({
+      category: "equipment",
+      name: "测试装备",
+      buyAt: "2026-06-02T10:00:00.000Z",
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 666_666
+    });
+
+    expect(asset).toMatchObject({
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 666_666,
+      buyPriceRmb: 5.11,
+      gameCoinAllocations: [
+        {
+          gameCoinPurchaseId: firstBatch.id,
+          gameCoinAmount: 666_666,
+          rmbCost: 5.11
+        }
+      ]
+    });
+
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-03T10:00:00.000Z",
+      gameCoinAmount: 30_000_000,
+      rmbCost: 240
+    });
+
+    const dashboard = service.getDashboard();
+    expect(dashboard.assetFlips.find((item) => item.id === asset.id)?.buyPriceRmb).toBe(5.11);
+    expect(dashboard.gameCoinBalance).toEqual({
+      gameCoinAmount: 59_333_334,
+      rmbCost: 464.89
+    });
+  });
+
+  it("spans FIFO game coin batches and rejects spending more than the historical balance", () => {
+    const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 1_000_000,
+      rmbCost: 10
+    });
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-02T10:00:00.000Z",
+      gameCoinAmount: 1_000_000,
+      rmbCost: 20
+    });
+
+    const asset = service.createAssetFlip({
+      category: "summon",
+      name: "跨批次召唤兽",
+      buyAt: "2026-06-03T10:00:00.000Z",
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 1_500_000
+    });
+    expect(asset.buyPriceRmb).toBe(20);
+    expect(asset.gameCoinAllocations).toEqual([
+      expect.objectContaining({ gameCoinAmount: 1_000_000, rmbCost: 10 }),
+      expect.objectContaining({ gameCoinAmount: 500_000, rmbCost: 10 })
+    ]);
+
+    expect(() =>
+      service.createAssetFlip({
+        category: "equipment",
+        name: "余额不足装备",
+        buyAt: "2026-06-04T10:00:00.000Z",
+        purchaseCurrency: "gameCoin",
+        gameCoinCost: 600_000
+      })
+    ).toThrow("游戏币余额不足");
+    expect(service.getDashboard().assetFlips).toHaveLength(1);
+  });
 });

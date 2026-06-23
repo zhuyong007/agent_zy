@@ -4,6 +4,9 @@ import type {
   MhxyAssetFlipInput,
   MhxyAssetFlipRecord,
   MhxyAssetFlipSummary,
+  MhxyGameCoinPurchaseInput,
+  MhxyGameCoinPurchasePosition,
+  MhxyGameCoinPurchaseRecord,
   MhxyDashboard,
   MhxyInventoryPosition,
   MhxyInventoryTarget,
@@ -32,6 +35,10 @@ function assertFiniteNonNegative(value: number, name: string) {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${name}不能小于 0`);
 }
 
+function assertFinitePositive(value: number, name: string) {
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name}必须大于 0`);
+}
+
 function assertPositiveInteger(value: number, name = "数量") {
   if (!Number.isInteger(value) || value <= 0) throw new Error(`${name}必须是大于 0 的整数`);
 }
@@ -52,7 +59,14 @@ function normalizeAssetFlip(
   const name = input.name.trim();
   if (!name) throw new Error("名称不能为空");
   if (!input.buyAt || Number.isNaN(Date.parse(input.buyAt))) throw new Error("买入时间无效");
-  assertFiniteNonNegative(input.buyPriceRmb, "买入价格");
+  const purchaseCurrency = input.purchaseCurrency ?? existing?.purchaseCurrency ?? "rmb";
+  if (purchaseCurrency === "rmb") {
+    if (input.buyPriceRmb === undefined) throw new Error("人民币买入价格不能为空");
+    assertFiniteNonNegative(input.buyPriceRmb, "买入价格");
+  } else {
+    if (input.gameCoinCost === undefined) throw new Error("游戏币花费不能为空");
+    assertPositiveInteger(input.gameCoinCost, "游戏币花费");
+  }
   const hasSellAt = Boolean(input.sellAt?.trim());
   const hasSellPrice = input.sellPriceRmb !== undefined && input.sellPriceRmb !== null;
   if (hasSellAt !== hasSellPrice) {
@@ -60,7 +74,7 @@ function normalizeAssetFlip(
   }
   if (hasSellPrice) assertFiniteNonNegative(input.sellPriceRmb as number, "卖出价格");
 
-  const buyPriceRmb = roundRmb(input.buyPriceRmb);
+  const buyPriceRmb = purchaseCurrency === "rmb" ? roundRmb(input.buyPriceRmb as number) : 0;
   const sellPriceRmb = hasSellPrice ? roundRmb(input.sellPriceRmb as number) : undefined;
   const timestamp = nowIso();
   const status = hasSellPrice ? "sold" : "holding";
@@ -70,7 +84,9 @@ function normalizeAssetFlip(
     category: input.category,
     name,
     buyAt: new Date(input.buyAt).toISOString(),
+    purchaseCurrency,
     buyPriceRmb,
+    ...(purchaseCurrency === "gameCoin" ? { gameCoinCost: input.gameCoinCost } : {}),
     ...(hasSellAt ? { sellAt: normalizeOptionalDate(input.sellAt, "卖出时间") } : {}),
     ...(sellPriceRmb !== undefined ? { sellPriceRmb } : {}),
     status,
@@ -80,6 +96,119 @@ function normalizeAssetFlip(
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
+  };
+}
+
+function normalizeGameCoinPurchase(
+  input: MhxyGameCoinPurchaseInput,
+  existing?: MhxyGameCoinPurchaseRecord
+): MhxyGameCoinPurchaseRecord {
+  if (!input.acquiredAt || Number.isNaN(Date.parse(input.acquiredAt))) {
+    throw new Error("游戏币购入时间无效");
+  }
+  assertPositiveInteger(input.gameCoinAmount, "购入游戏币数量");
+  assertFinitePositive(input.rmbCost, "购币人民币成本");
+  const timestamp = nowIso();
+  return {
+    id: existing?.id ?? randomUUID(),
+    acquiredAt: new Date(input.acquiredAt).toISOString(),
+    gameCoinAmount: input.gameCoinAmount,
+    rmbCost: roundRmb(input.rmbCost),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function replayAssetFlips(
+  records: MhxyAssetFlipRecord[],
+  purchases: MhxyGameCoinPurchaseRecord[]
+): { records: MhxyAssetFlipRecord[]; purchases: MhxyGameCoinPurchasePosition[] } {
+  const remaining = new Map(purchases.map((purchase) => [purchase.id, purchase.gameCoinAmount]));
+  const orderedPurchases = [...purchases].sort((left, right) => {
+    const acquiredAt = left.acquiredAt.localeCompare(right.acquiredAt);
+    if (acquiredAt !== 0) return acquiredAt;
+    const createdAt = left.createdAt.localeCompare(right.createdAt);
+    return createdAt !== 0 ? createdAt : left.id.localeCompare(right.id);
+  });
+  const recalculated = [...records]
+    .map((record) => ({ ...record, purchaseCurrency: record.purchaseCurrency ?? "rmb" }))
+    .sort((left, right) => {
+      const buyAt = left.buyAt.localeCompare(right.buyAt);
+      if (buyAt !== 0) return buyAt;
+      const createdAt = left.createdAt.localeCompare(right.createdAt);
+      return createdAt !== 0 ? createdAt : left.id.localeCompare(right.id);
+    })
+    .map((record) => {
+      if (record.purchaseCurrency !== "gameCoin") {
+        return {
+          ...record,
+          purchaseCurrency: "rmb" as const,
+          profitRmb:
+            record.sellPriceRmb === undefined
+              ? null
+              : roundRmb(record.sellPriceRmb - record.buyPriceRmb),
+          gameCoinCost: undefined,
+          gameCoinAllocations: undefined
+        };
+      }
+
+      const gameCoinCost = record.gameCoinCost ?? 0;
+      assertPositiveInteger(gameCoinCost, "游戏币花费");
+      let needed = gameCoinCost;
+      let rawRmbCost = 0;
+      const allocations = [] as NonNullable<MhxyAssetFlipRecord["gameCoinAllocations"]>;
+      for (const purchase of orderedPurchases) {
+        if (purchase.acquiredAt > record.buyAt || needed === 0) continue;
+        const available = remaining.get(purchase.id) ?? 0;
+        if (available <= 0) continue;
+        const used = Math.min(available, needed);
+        const allocationRmbCost = used * purchase.rmbCost / purchase.gameCoinAmount;
+        allocations.push({
+          gameCoinPurchaseId: purchase.id,
+          gameCoinAmount: used,
+          rmbCost: roundRmb(allocationRmbCost)
+        });
+        rawRmbCost += allocationRmbCost;
+        remaining.set(purchase.id, available - used);
+        needed -= used;
+      }
+      if (needed > 0) {
+        throw new Error(
+          `游戏币余额不足：${record.name} 需要 ${gameCoinCost}，买入时缺少 ${needed}`
+        );
+      }
+      const buyPriceRmb = roundRmb(rawRmbCost);
+      const allocatedRmb = roundRmb(allocations.reduce((sum, item) => sum + item.rmbCost, 0));
+      if (allocations.length > 0 && allocatedRmb !== buyPriceRmb) {
+        const last = allocations[allocations.length - 1];
+        last.rmbCost = roundRmb(last.rmbCost + buyPriceRmb - allocatedRmb);
+      }
+      return {
+        ...record,
+        purchaseCurrency: "gameCoin" as const,
+        gameCoinCost,
+        buyPriceRmb,
+        gameCoinAllocations: allocations,
+        profitRmb:
+          record.sellPriceRmb === undefined
+            ? null
+            : roundRmb(record.sellPriceRmb - buyPriceRmb)
+      };
+    });
+
+  return {
+    records: recalculated,
+    purchases: orderedPurchases.map((purchase) => {
+      const remainingGameCoinAmount = remaining.get(purchase.id) ?? 0;
+      return {
+        ...purchase,
+        remainingGameCoinAmount,
+        remainingRmbCost: roundRmb(
+          remainingGameCoinAmount * purchase.rmbCost / purchase.gameCoinAmount
+        )
+      };
+    })
   };
 }
 
@@ -316,12 +445,16 @@ export function createMhxyService(dataDir: string) {
     const priceSnapshots = repository.readPriceSnapshots();
     const inventoryTransfers = repository.readInventoryTransfers();
     const inventoryTargets = repository.readInventoryTargets();
-    const assetFlips = repository
-      .readAssetFlips()
+    const gameCoinPurchases = repository.readGameCoinPurchases();
+    const assetReplay = replayAssetFlips(repository.readAssetFlips(), gameCoinPurchases);
+    const assetFlips = assetReplay.records
       .sort((left, right) => {
         const buyAt = right.buyAt.localeCompare(left.buyAt);
         return buyAt !== 0 ? buyAt : right.createdAt.localeCompare(left.createdAt);
       });
+    const gameCoinPurchasePositions = assetReplay.purchases.sort((left, right) =>
+      right.acquiredAt.localeCompare(left.acquiredAt)
+    );
     const replayed = replay(trades, inventoryTransfers);
     const targets = new Map(
       inventoryTargets.map((target) => [
@@ -371,7 +504,17 @@ export function createMhxyService(dataDir: string) {
         pendingValuationCount: inventory.filter((item) => item.marketValueRmb === null).length
       },
       assetFlips,
-      assetFlipSummary: summarizeAssetFlips(assetFlips)
+      assetFlipSummary: summarizeAssetFlips(assetFlips),
+      gameCoinPurchases: gameCoinPurchasePositions,
+      gameCoinBalance: {
+        gameCoinAmount: gameCoinPurchasePositions.reduce(
+          (sum, item) => sum + item.remainingGameCoinAmount,
+          0
+        ),
+        rmbCost: roundRmb(
+          gameCoinPurchasePositions.reduce((sum, item) => sum + item.remainingRmbCost, 0)
+        )
+      }
     };
   }
 
@@ -439,15 +582,42 @@ export function createMhxyService(dataDir: string) {
     },
     createAssetFlip(input: MhxyAssetFlipInput) {
       const record = normalizeAssetFlip(input);
-      repository.writeAssetFlips([...repository.readAssetFlips(), record]);
-      return record;
+      const replayed = replayAssetFlips(
+        [...repository.readAssetFlips(), record],
+        repository.readGameCoinPurchases()
+      );
+      repository.writeAssetFlips(replayed.records);
+      return replayed.records.find((item) => item.id === record.id) as MhxyAssetFlipRecord;
     },
     updateAssetFlip(id: string, patch: Partial<MhxyAssetFlipInput>) {
       const records = repository.readAssetFlips();
       const existing = records.find((record) => record.id === id);
       if (!existing) throw new Error("召唤兽装备记录不存在");
       const record = normalizeAssetFlip({ ...existing, ...patch }, existing);
-      repository.writeAssetFlips(records.map((item) => (item.id === id ? record : item)));
+      const replayed = replayAssetFlips(
+        records.map((item) => (item.id === id ? record : item)),
+        repository.readGameCoinPurchases()
+      );
+      repository.writeAssetFlips(replayed.records);
+      return replayed.records.find((item) => item.id === id) as MhxyAssetFlipRecord;
+    },
+    createGameCoinPurchase(input: MhxyGameCoinPurchaseInput) {
+      const record = normalizeGameCoinPurchase(input);
+      const purchases = [...repository.readGameCoinPurchases(), record];
+      const replayed = replayAssetFlips(repository.readAssetFlips(), purchases);
+      repository.writeGameCoinPurchases(purchases);
+      repository.writeAssetFlips(replayed.records);
+      return record;
+    },
+    updateGameCoinPurchase(id: string, patch: Partial<MhxyGameCoinPurchaseInput>) {
+      const purchases = repository.readGameCoinPurchases();
+      const existing = purchases.find((record) => record.id === id);
+      if (!existing) throw new Error("游戏币购入批次不存在");
+      const record = normalizeGameCoinPurchase({ ...existing, ...patch }, existing);
+      const next = purchases.map((item) => (item.id === id ? record : item));
+      const replayed = replayAssetFlips(repository.readAssetFlips(), next);
+      repository.writeGameCoinPurchases(next);
+      repository.writeAssetFlips(replayed.records);
       return record;
     }
   };

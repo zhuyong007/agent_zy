@@ -26,6 +26,7 @@ vi.mock("../api", () => ({
         category: "summon",
         name: "须弥画魂",
         buyAt: "2026-06-01T10:00:00.000Z",
+        purchaseCurrency: "rmb",
         buyPriceRmb: 1200,
         status: "holding",
         profitRmb: null,
@@ -39,6 +40,7 @@ vi.mock("../api", () => ({
         category: "equipment",
         name: "160 项链",
         buyAt: "2026-06-01T10:00:00.000Z",
+        purchaseCurrency: "rmb",
         buyPriceRmb: 3000,
         sellAt: "2026-06-03T10:00:00.000Z",
         sellPriceRmb: 3300,
@@ -54,10 +56,28 @@ vi.mock("../api", () => ({
       holdingCostRmb: 1200,
       realizedProfitRmb: 300,
       realizedRevenueRmb: 3300
+    },
+    gameCoinPurchases: [
+      {
+        id: "coin-1",
+        acquiredAt: "2026-06-01T09:00:00.000Z",
+        gameCoinAmount: 30_000_000,
+        rmbCost: 230,
+        remainingGameCoinAmount: 30_000_000,
+        remainingRmbCost: 230,
+        createdAt: "2026-06-01T09:00:00.000Z",
+        updatedAt: "2026-06-01T09:00:00.000Z"
+      }
+    ],
+    gameCoinBalance: {
+      gameCoinAmount: 30_000_000,
+      rmbCost: 230
     }
   })),
   createMhxyAssetFlip: vi.fn(async (input) => ({ id: "asset-new", ...input })),
   updateMhxyAssetFlip: vi.fn(),
+  createMhxyGameCoinPurchase: vi.fn(async (input) => ({ id: "coin-new", ...input })),
+  updateMhxyGameCoinPurchase: vi.fn(),
   createMhxyTrade: vi.fn(async (input) => ({ id: "trade-1", ...input })),
   updateMhxyTrade: vi.fn(),
   createMhxyPriceSnapshot: vi.fn(),
@@ -73,7 +93,15 @@ vi.mock("./dashboard-page", () => ({
   useThemePreference: () => ["day", vi.fn()]
 }));
 
-import { createMhxyAssetFlip, createMhxyTrade } from "../api";
+vi.mock("./data-sync-control", async () => {
+  const react = await import("react");
+  return {
+    DataSyncControl: ({ module }: { module: string }) =>
+      react.createElement("div", { "data-sync-module": module })
+  };
+});
+
+import { createMhxyAssetFlip, createMhxyGameCoinPurchase, createMhxyTrade } from "../api";
 import { MhxyPage } from "./mhxy-page";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -103,6 +131,11 @@ describe("MhxyPage", () => {
     });
     return container;
   }
+
+  it("shows the mhxy data synchronization control", async () => {
+    const container = await renderPage();
+    expect(container.querySelector('[data-sync-module="mhxy"]')).not.toBeNull();
+  });
 
   function change(input: HTMLInputElement | HTMLSelectElement, value: string) {
     Object.getOwnPropertyDescriptor(
@@ -198,6 +231,46 @@ describe("MhxyPage", () => {
     );
     expect(createMhxyAssetFlip).not.toHaveBeenCalledWith(
       expect.objectContaining({ profitRmb: expect.anything() })
+    );
+  });
+
+  it("uses a historical game coin purchase batch to preview asset RMB cost", async () => {
+    const container = await renderPage();
+    await act(async () => {
+      Array.from(container.querySelectorAll(".mhxy-segment button"))
+        .find((button) => button.textContent === "召唤兽装备")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("30,000,000 游戏币");
+    expect(container.textContent).toContain("剩余成本");
+
+    const assetForm = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    await act(async () => {
+      change(assetForm.querySelector('[name="purchaseCurrency"]') as HTMLSelectElement, "gameCoin");
+      change(assetForm.querySelector('[name="name"]') as HTMLInputElement, "批次成本装备");
+      change(assetForm.querySelector('[name="gameCoinCost"]') as HTMLInputElement, "666666");
+    });
+    expect(container.textContent).toContain("按历史批次折合：¥5.11");
+
+    await act(async () => {
+      assetForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(createMhxyAssetFlip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purchaseCurrency: "gameCoin",
+        gameCoinCost: 666_666
+      })
+    );
+
+    const purchaseForm = container.querySelector('[data-form="game-coin-purchase"]') as HTMLFormElement;
+    await act(async () => {
+      change(purchaseForm.querySelector('[name="gameCoinAmount"]') as HTMLInputElement, "30000000");
+      change(purchaseForm.querySelector('[name="rmbCost"]') as HTMLInputElement, "240");
+      purchaseForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(createMhxyGameCoinPurchase).toHaveBeenCalledWith(
+      expect.objectContaining({ gameCoinAmount: 30_000_000, rmbCost: 240 })
     );
   });
 });

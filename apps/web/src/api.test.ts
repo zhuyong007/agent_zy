@@ -5,6 +5,7 @@ import {
   createBrowserAutomationWorkflow,
   createPromptTemplate,
   fetchSystemStatus,
+  fetchDataSyncStatus,
   fetchBrowserAutomation,
   openBrowserAutomationPermissionSettings,
   fetchPromptTemplates,
@@ -29,8 +30,40 @@ import {
   updatePromptTemplate,
   updateBrowserAutomationWorkflow,
   undoFileOrganization,
-  undoPhotoRenames
+  undoPhotoRenames,
+  syncModuleData
 } from "./api";
+
+describe("data sync API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("fetches module status and posts conflict resolutions", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ enabled: true, branch: "agent-zy-data", modules: {} }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: "synced", module: "history" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchDataSyncStatus();
+    await syncModuleData("history", {
+      conflictToken: "token",
+      resolutions: [{ key: "notification:one", choice: "remote" }]
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining("/api/data-sync/status"));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/api/data-sync/history"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          conflictToken: "token",
+          resolutions: [{ key: "notification:one", choice: "remote" }]
+        })
+      })
+    );
+  });
+});
 
 describe("browser automation API", () => {
   afterEach(() => {
