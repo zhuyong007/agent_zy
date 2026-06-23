@@ -232,4 +232,65 @@ describe("mhxy API", () => {
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
+
+  it("derives asset RMB cost from historical game coin purchase batches", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const purchase = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/game-coin-purchases",
+        payload: {
+          acquiredAt: "2026-06-01T10:00:00.000Z",
+          gameCoinAmount: 30_000_000,
+          rmbCost: 230
+        }
+      });
+      expect(purchase.statusCode).toBe(200);
+
+      const asset = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "equipment",
+          name: "批次成本装备",
+          buyAt: "2026-06-02T10:00:00.000Z",
+          purchaseCurrency: "gameCoin",
+          gameCoinCost: 666_666,
+          buyPriceRmb: 999
+        }
+      });
+      expect(asset.statusCode).toBe(200);
+      expect(asset.json()).toMatchObject({
+        buyPriceRmb: 5.11,
+        purchaseCurrency: "gameCoin",
+        gameCoinCost: 666_666
+      });
+
+      const insufficient = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "summon",
+          name: "余额不足召唤兽",
+          buyAt: "2026-06-02T11:00:00.000Z",
+          purchaseCurrency: "gameCoin",
+          gameCoinCost: 30_000_000
+        }
+      });
+      expect(insufficient.statusCode).toBe(400);
+      expect(insufficient.json().message).toContain("游戏币余额不足");
+
+      const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      expect(dashboard.gameCoinBalance).toEqual({
+        gameCoinAmount: 29_333_334,
+        rmbCost: 224.89
+      });
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -6,6 +6,14 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { BrowserAutomationWorkspace } from "./browser-automation-page";
 
+vi.mock("./data-sync-control", async () => {
+  const react = await import("react");
+  return {
+    DataSyncControl: ({ module }: { module: string }) =>
+      react.createElement("div", { "data-sync-module": module })
+  };
+});
+
 describe("BrowserAutomationWorkspace", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -422,6 +430,20 @@ describe("BrowserAutomationWorkspace", () => {
     });
 
     expect(container.querySelector(".browser-automation-shell")).not.toBeNull();
+  });
+
+  it("shows browser data synchronization when enabled by the page", async () => {
+    await renderWorkspace({
+      fetchAction: vi.fn().mockResolvedValue({ workflows: [], runs: [], triggerRules: [], lastUpdatedAt: null }),
+      createAction: vi.fn(),
+      updateAction: vi.fn(),
+      runAction: vi.fn(),
+      stopAction: vi.fn(),
+      createRuleAction: vi.fn(),
+      dataSyncEnabled: true
+    });
+
+    expect(container.querySelector('[data-sync-module="browser-automation"]')).not.toBeNull();
   });
 
   it("links back to the tools catalog", async () => {

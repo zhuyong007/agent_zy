@@ -24,6 +24,9 @@ import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createMhxyService } from "./services/mhxy-service";
+import { createGitDataSyncTransport } from "./services/data-sync/git-transport";
+import { createLocalDataSyncAdapters } from "./services/data-sync/local-adapters";
+import { createDataSyncService, type DataSyncService } from "./services/data-sync/service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -59,6 +62,7 @@ export function createControlPlaneApp(options?: {
   classicShotVideoProcessor?: ClassicShotVideoProcessor;
   browserAutomationExecutor?: BrowserAutomationExecutor;
   modelRuntime?: ModelRuntime;
+  dataSyncService?: DataSyncService;
 }) {
   const app = Fastify();
   const startedAt = new Date().toISOString();
@@ -68,6 +72,19 @@ export function createControlPlaneApp(options?: {
 
   const dataDir = options?.dataDir ?? ".agent-zy-data";
   const store = createControlPlaneStore(dataDir);
+  const dataSyncService = options?.dataSyncService ?? createDataSyncService({
+    dataDir,
+    enabled: process.env.AGENT_ZY_DATA_SYNC_ENABLED === "true",
+    adapters: createLocalDataSyncAdapters({
+      dataDir,
+      projectDir: process.cwd(),
+      store
+    }),
+    transport: createGitDataSyncTransport({
+      projectDir: process.cwd(),
+      dataDir
+    })
+  });
   const eventLog = createEventLogService(dataDir);
   const photoRenamer = createPhotoRenamerService();
   const fileOrganizer = createFileOrganizerService();
@@ -108,7 +125,12 @@ export function createControlPlaneApp(options?: {
   const workerPool = createAgentWorkerPool({
     eventBus,
     modelRuntime,
-    eventLog
+    eventLog,
+    workerEnv: {
+      AGENT_ZY_DATA_DIR: dataDir,
+      HISTORY_TOPIC_ARCHIVE_PATH:
+        process.env.HISTORY_TOPIC_ARCHIVE_PATH ?? join(dataDir, "history", "topic-archive.json")
+    }
   });
   const orchestrator = createControlPlaneOrchestrator({
     store,
@@ -834,6 +856,38 @@ export function createControlPlaneApp(options?: {
 
   app.get("/api/home-layout", async () => orchestrator.getHomeLayout());
 
+  app.get("/api/data-sync/status", async () => dataSyncService.getStatus());
+
+  app.post("/api/data-sync/:module", async (request, reply) => {
+    const module = (request.params as { module?: unknown }).module;
+    if (module !== "history" && module !== "mhxy" && module !== "browser-automation") {
+      return reply.code(400).send({ message: "不支持的数据同步模块" });
+    }
+    const body = (request.body ?? {}) as {
+      conflictToken?: unknown;
+      resolutions?: unknown;
+    };
+    const resolutions = Array.isArray(body.resolutions)
+      ? body.resolutions.filter(
+          (item): item is { key: string; choice: "local" | "remote" } =>
+            Boolean(
+              item &&
+                typeof item === "object" &&
+                typeof (item as { key?: unknown }).key === "string" &&
+                ((item as { choice?: unknown }).choice === "local" ||
+                  (item as { choice?: unknown }).choice === "remote")
+            )
+        )
+      : [];
+    if (Array.isArray(body.resolutions) && resolutions.length !== body.resolutions.length) {
+      return reply.code(400).send({ message: "数据同步冲突选择无效" });
+    }
+    return dataSyncService.sync(module, {
+      ...(typeof body.conflictToken === "string" ? { conflictToken: body.conflictToken } : {}),
+      resolutions
+    });
+  });
+
   app.put("/api/home-layout", async (request) => {
     const body = (request.body ?? {}) as {
       layout?: unknown;
@@ -1301,6 +1355,19 @@ export function createControlPlaneApp(options?: {
   app.patch("/api/mhxy/asset-flips/:id", async (request, reply) =>
     mhxyAction(reply, () =>
       mhxyService.updateAssetFlip((request.params as { id: string }).id, (request.body ?? {}) as any)
+    )
+  );
+
+  app.post("/api/mhxy/game-coin-purchases", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.createGameCoinPurchase((request.body ?? {}) as any))
+  );
+
+  app.patch("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updateGameCoinPurchase(
+        (request.params as { id: string }).id,
+        (request.body ?? {}) as any
+      )
     )
   );
 

@@ -1,8 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type {
   MhxyAssetFlipRecord,
+  MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
@@ -20,6 +21,8 @@ export interface MhxyRepository {
   writeInventoryTargets(records: MhxyInventoryTarget[]): void;
   readAssetFlips(): MhxyAssetFlipRecord[];
   writeAssetFlips(records: MhxyAssetFlipRecord[]): void;
+  readGameCoinPurchases(): MhxyGameCoinPurchaseRecord[];
+  writeGameCoinPurchases(records: MhxyGameCoinPurchaseRecord[]): void;
 }
 
 function ensureArrayFile(path: string) {
@@ -38,7 +41,9 @@ function readArray<T>(path: string): T[] {
 }
 
 function writeArray<T>(path: string, records: T[]) {
-  writeFileSync(path, JSON.stringify(records, null, 2), "utf8");
+  const tempPath = `${path}.${process.pid}.tmp`;
+  writeFileSync(tempPath, JSON.stringify(records, null, 2), "utf8");
+  renameSync(tempPath, path);
 }
 
 export function createMhxyRepository(dataDir: string): MhxyRepository {
@@ -49,7 +54,8 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
   const transfers = resolve(dir, "inventory-transfers.json");
   const targets = resolve(dir, "inventory-targets.json");
   const assetFlips = resolve(dir, "asset-flips.json");
-  [trades, snapshots, transfers, targets, assetFlips].forEach(ensureArrayFile);
+  const gameCoinPurchases = resolve(dir, "game-coin-purchases.json");
+  [trades, snapshots, transfers, targets, assetFlips, gameCoinPurchases].forEach(ensureArrayFile);
 
   return {
     readTrades: () => readArray(trades),
@@ -61,6 +67,8 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
     readInventoryTargets: () => readArray(targets),
     writeInventoryTargets: (records) => writeArray(targets, records),
     readAssetFlips: () => readArray(assetFlips),
-    writeAssetFlips: (records) => writeArray(assetFlips, records)
+    writeAssetFlips: (records) => writeArray(assetFlips, records),
+    readGameCoinPurchases: () => readArray(gameCoinPurchases),
+    writeGameCoinPurchases: (records) => writeArray(gameCoinPurchases, records)
   };
 }

@@ -9,6 +9,10 @@ import type {
   ClassicShotState,
   ClassicShotTargetPlatform,
   DashboardData,
+  DataSyncModule,
+  DataSyncResolution,
+  DataSyncResult,
+  DataSyncStatusResponse,
   EventLogInput,
   EventLogQuery,
   EventLogQueryResult,
@@ -33,6 +37,8 @@ import type {
   MhxyAssetFlipInput,
   MhxyAssetFlipRecord,
   MhxyDashboard,
+  MhxyGameCoinPurchaseInput,
+  MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
@@ -52,6 +58,29 @@ import type {
   SummaryType,
   TopicState
 } from "@agent-zy/shared-types";
+
+export async function fetchDataSyncStatus(): Promise<DataSyncStatusResponse> {
+  const response = await fetch(`${API_BASE}/api/data-sync/status`);
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "读取数据同步状态失败"));
+  }
+  return response.json();
+}
+
+export async function syncModuleData(
+  module: DataSyncModule,
+  request: { conflictToken?: string; resolutions?: DataSyncResolution[] } = {}
+): Promise<DataSyncResult> {
+  const response = await fetch(`${API_BASE}/api/data-sync/${module}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request)
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "同步模块数据失败"));
+  }
+  return response.json();
+}
 
 export function resolveApiBase(
   configuredBase?: string | null,
@@ -1279,6 +1308,14 @@ export const createMhxyAssetFlip = (input: MhxyAssetFlipInput) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>("/api/mhxy/asset-flips", "POST", input);
 export const updateMhxyAssetFlip = (id: string, input: Partial<MhxyAssetFlipInput>) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>(`/api/mhxy/asset-flips/${id}`, "PATCH", input);
+export const createMhxyGameCoinPurchase = (input: MhxyGameCoinPurchaseInput) =>
+  mhxyJsonRequest<MhxyGameCoinPurchaseRecord>("/api/mhxy/game-coin-purchases", "POST", input);
+export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCoinPurchaseInput>) =>
+  mhxyJsonRequest<MhxyGameCoinPurchaseRecord>(
+    `/api/mhxy/game-coin-purchases/${id}`,
+    "PATCH",
+    input
+  );
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>

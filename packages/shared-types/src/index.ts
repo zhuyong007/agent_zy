@@ -414,12 +414,39 @@ export interface MhxyInventoryPosition {
 
 export type MhxyAssetFlipCategory = "summon" | "equipment";
 export type MhxyAssetFlipStatus = "holding" | "sold";
+export type MhxyAssetPurchaseCurrency = "rmb" | "gameCoin";
+
+export interface MhxyGameCoinPurchaseInput {
+  acquiredAt: string;
+  gameCoinAmount: number;
+  rmbCost: number;
+  note?: string;
+}
+
+export interface MhxyGameCoinPurchaseRecord extends MhxyGameCoinPurchaseInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyGameCoinPurchasePosition extends MhxyGameCoinPurchaseRecord {
+  remainingGameCoinAmount: number;
+  remainingRmbCost: number;
+}
+
+export interface MhxyAssetGameCoinAllocation {
+  gameCoinPurchaseId: string;
+  gameCoinAmount: number;
+  rmbCost: number;
+}
 
 export interface MhxyAssetFlipInput {
   category: MhxyAssetFlipCategory;
   name: string;
   buyAt: string;
-  buyPriceRmb: number;
+  purchaseCurrency?: MhxyAssetPurchaseCurrency;
+  buyPriceRmb?: number;
+  gameCoinCost?: number;
   sellAt?: string;
   sellPriceRmb?: number;
   serverName?: string;
@@ -427,9 +454,11 @@ export interface MhxyAssetFlipInput {
   note?: string;
 }
 
-export interface MhxyAssetFlipRecord extends MhxyAssetFlipInput {
+export interface MhxyAssetFlipRecord extends Omit<MhxyAssetFlipInput, "buyPriceRmb"> {
   id: string;
   buyPriceRmb: number;
+  purchaseCurrency: MhxyAssetPurchaseCurrency;
+  gameCoinAllocations?: MhxyAssetGameCoinAllocation[];
   sellPriceRmb?: number;
   status: MhxyAssetFlipStatus;
   profitRmb: number | null;
@@ -463,6 +492,11 @@ export interface MhxyDashboard {
   summary: MhxyDashboardSummary;
   assetFlips: MhxyAssetFlipRecord[];
   assetFlipSummary: MhxyAssetFlipSummary;
+  gameCoinPurchases: MhxyGameCoinPurchasePosition[];
+  gameCoinBalance: {
+    gameCoinAmount: number;
+    rmbCost: number;
+  };
 }
 
 export type ScheduleUrgency = "low" | "medium" | "high";
@@ -1195,6 +1229,61 @@ export interface BrowserAutomationState {
   triggerRules: BrowserAutomationTriggerRule[];
   lastUpdatedAt: string | null;
 }
+
+export type DataSyncModule = "history" | "mhxy" | "browser-automation";
+export type DataSyncActivityStatus = "idle" | "syncing" | "synced" | "conflict" | "failed";
+export type DataSyncResolutionChoice = "local" | "remote";
+
+export interface DataSyncResolution {
+  key: string;
+  choice: DataSyncResolutionChoice;
+}
+
+export interface DataSyncConflict {
+  key: string;
+  recordType: string;
+  recordId: string;
+  baseline: Record<string, unknown> | null;
+  local: Record<string, unknown> | null;
+  remote: Record<string, unknown> | null;
+}
+
+export interface DataSyncModuleStatus {
+  module: DataSyncModule;
+  status: DataSyncActivityStatus;
+  lastSyncedAt: string | null;
+  lastCommit: string | null;
+  error: string | null;
+}
+
+export interface DataSyncStatusResponse {
+  enabled: boolean;
+  branch: string;
+  modules: Record<DataSyncModule, DataSyncModuleStatus>;
+}
+
+export type DataSyncResult =
+  | {
+      status: "synced";
+      module: DataSyncModule;
+      commitSha: string;
+      pulledCount: number;
+      pushedCount: number;
+      deletedCount: number;
+      lastSyncedAt: string;
+    }
+  | {
+      status: "conflict";
+      module: DataSyncModule;
+      conflictToken: string;
+      remoteCommitSha: string | null;
+      conflicts: DataSyncConflict[];
+    }
+  | {
+      status: "failed";
+      module: DataSyncModule;
+      error: string;
+    };
 
 export type PromptTemplateAnalysisStatus = "pending" | "completed" | "failed";
 

@@ -58,7 +58,10 @@ interface HistoryTopicArchive {
 }
 
 function getTopicArchivePath(): string {
-  return process.env.HISTORY_TOPIC_ARCHIVE_PATH ?? resolve(process.cwd(), "data/history/topic-archive.json");
+  return process.env.HISTORY_TOPIC_ARCHIVE_PATH ?? resolve(
+    process.env.AGENT_ZY_DATA_DIR ?? ".agent-zy-data",
+    "history/topic-archive.json"
+  );
 }
 
 function parseArchive(value: string): HistoryTopicArchive {

@@ -26,6 +26,14 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
+vi.mock("./data-sync-control", async () => {
+  const react = await import("react");
+  return {
+    DataSyncControl: ({ module }: { module: string }) =>
+      react.createElement("div", { "data-sync-module": module })
+  };
+});
+
 const historyNotification: NotificationRecord = {
   id: "history-1",
   kind: "history-post",
@@ -218,6 +226,11 @@ describe("HistoryPage", () => {
       );
     });
   }
+
+  it("shows the history data synchronization control", async () => {
+    await renderHistoryPage();
+    expect(container.querySelector('[data-sync-module="history"]')).not.toBeNull();
+  });
 
   it("copies caption and image prompt text from the selected history item", async () => {
     const writeText = vi.fn(async () => undefined);
