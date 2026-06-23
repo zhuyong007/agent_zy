@@ -44,6 +44,7 @@ import {
   fetchHomeLayout,
   fetchModelProfiles,
   fetchModelProviders,
+  fetchMhxyDashboard,
   fetchSystemStatus,
   generateClassicShot,
   generateCinematic,
@@ -116,7 +117,16 @@ import {
   isHistoryDynastyPayload,
   isHistoryPostPayload
 } from "../history-view";
-import { getTodoModuleSummary, TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
+import { TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
+import {
+  formatAmount,
+  formatClockLine,
+  formatDateTime,
+  formatShortCount,
+  formatTime,
+  getModuleSummary,
+  waitForRestartRecovery
+} from "./dashboard-utils";
 
 export type RailSection =
   | "home"
@@ -126,9 +136,12 @@ export type RailSection =
   | "history"
   | "cinematic"
   | "classicShots"
+  | "imageToVideo"
   | "ledger"
+  | "mhxy"
   | "todo"
   | "summary"
+  | "browserAutomation"
   | "tools"
   | "logs";
 type NewsFilter = "all" | NewsCategory;
@@ -140,21 +153,29 @@ const railItems: Array<{
   to: string;
   moduleId?: HomeModuleId;
 }> = [
-  { key: "home", label: "工作台", stamp: "00", to: "/" },
-  { key: "manage", label: "管理", stamp: "01", to: "/manage" },
-  { key: "news", label: "热点情报", stamp: "02", to: "/news", moduleId: "news" },
-  { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
-  { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
-  { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
-  { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
-  { key: "ledger", label: "记账", stamp: "07", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "08", to: "/todo", moduleId: "todo" },
-  { key: "summary", label: "总结", stamp: "09", to: "/summaries", moduleId: "summary" },
-  { key: "tools", label: "工具", stamp: "10", to: "/tools" },
-  { key: "logs", label: "日志", stamp: "11", to: "/logs" }
-];
+    { key: "home", label: "工作台", stamp: "00", to: "/" },
+    { key: "manage", label: "管理", stamp: "01", to: "/manage" },
+    { key: "news", label: "热点情报", stamp: "02", to: "/news", moduleId: "news" },
+    { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
+    { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
+    { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
+    { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
+    { key: "imageToVideo", label: "图转视频", stamp: "07", to: "/image-to-video", moduleId: "imageToVideo" },
+    { key: "ledger", label: "记账", stamp: "08", to: "/ledger", moduleId: "ledger" },
+    { key: "mhxy", label: "梦幻西游", stamp: "09", to: "/mhxy", moduleId: "mhxy" },
+    { key: "todo", label: "待办", stamp: "10", to: "/todo", moduleId: "todo" },
+    { key: "summary", label: "总结", stamp: "11", to: "/summaries", moduleId: "summary" },
+    {
+      key: "browserAutomation",
+      label: "浏览器自动化",
+      stamp: "12",
+      to: "/tools/browser-automation",
+      moduleId: "browserAutomation"
+    },
+    { key: "tools", label: "工具", stamp: "13", to: "/tools" },
+    { key: "logs", label: "日志", stamp: "14", to: "/logs" }
+  ];
 
-const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
   HOME_MODULE_DEFINITIONS.map((definition) => [definition.id, definition])
 );
@@ -195,54 +216,6 @@ export function useThemePreference() {
   return [themeKey, setThemeKey] as const;
 }
 
-function formatTime(timestamp?: string | null) {
-  if (!timestamp) {
-    return "--:--";
-  }
-
-  return new Date(timestamp).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function formatDateTime(timestamp?: string | null) {
-  if (!timestamp) {
-    return "--";
-  }
-
-  return new Date(timestamp).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function formatLunarDate(date: Date) {
-  try {
-    const formatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {
-      month: "long",
-      day: "numeric"
-    });
-
-    return formatter.format(date);
-  } catch {
-    return "--";
-  }
-}
-
-function formatClockLine(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} · ${weekdayMap[date.getDay()]} · 农历${formatLunarDate(date)}`;
-}
-
 export function useLiveClock() {
   const [now, setNow] = useState(() => new Date());
 
@@ -271,17 +244,6 @@ function getMessageLabel(role: DashboardData["messages"][number]["role"]) {
   return "AGENT";
 }
 
-function formatAmount(amount: number) {
-  return amount.toLocaleString("zh-CN");
-}
-
-function formatShortCount(count: number) {
-  return count.toLocaleString("zh-CN", {
-    minimumIntegerDigits: count < 10 ? 2 : 1,
-    useGrouping: false
-  });
-}
-
 function getModuleDefinition(id: HomeModuleId) {
   return moduleDefinitionsById.get(id) ?? {
     id,
@@ -304,47 +266,6 @@ function getModuleFrameStyle(size: HomeModuleSize, collapsed: boolean) {
   } as CSSProperties;
 }
 
-function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
-  if (id === "news") {
-    return `${formatShortCount(dashboard.news.feed.items.length)} 条热点`;
-  }
-
-  if (id === "chat") {
-    return dashboard.tasks.inProgress.length > 0 ? "会话运行中" : `${formatShortCount(dashboard.messages.length)} 条消息`;
-  }
-
-  if (id === "todo") {
-    return getTodoModuleSummary(dashboard);
-  }
-
-  if (id === "ledger") {
-    return `结余 ${formatAmount(dashboard.ledger.summary.balance)}`;
-  }
-
-  if (id === "topics") {
-    return `${formatShortCount(dashboard.topics.current.length)} 个选题`;
-  }
-
-  if (id === "history") {
-    const historyCount = dashboard.notifications.filter((item) => item.kind === "history-post" && item.payload).length;
-    return `${formatShortCount(historyCount)} 条知识卡`;
-  }
-
-  if (id === "cinematic") {
-    return `${formatShortCount(dashboard.cinematic.dashboard.projectCount)} 个镜头项目`;
-  }
-
-  if (id === "classicShots") {
-    return `${formatShortCount(dashboard.classicShots.dashboard.projectCount)} 个复刻镜头`;
-  }
-
-  if (id === "summary") {
-    return `${formatShortCount(dashboard.summary.dashboard.totalCount)} 条总结`;
-  }
-
-  return "待接入";
-}
-
 export function useHomeLayoutPreferences() {
   const queryClient = useQueryClient();
   const layoutQuery = useQuery({
@@ -360,9 +281,9 @@ export function useHomeLayoutPreferences() {
       queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
         current
           ? {
-              ...current,
-              homeLayout: nextLayout
-            }
+            ...current,
+            homeLayout: nextLayout
+          }
           : current
       );
     }
@@ -379,9 +300,9 @@ export function useHomeLayoutPreferences() {
     queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
       current
         ? {
-            ...current,
-            homeLayout: nextLayout
-          }
+          ...current,
+          homeLayout: nextLayout
+        }
         : current
     );
     saveMutation.mutate(nextLayout);
@@ -660,9 +581,8 @@ export function CommandRail({
             <button
               key={theme.key}
               type="button"
-              className={`theme-switcher__button theme-switcher__button--${theme.key}${
-                themeKey === theme.key ? " is-active" : ""
-              }`}
+              className={`theme-switcher__button theme-switcher__button--${theme.key}${themeKey === theme.key ? " is-active" : ""
+                }`}
               aria-label={theme.label}
               aria-pressed={themeKey === theme.key}
               onClick={() => {
@@ -714,9 +634,9 @@ export function NewsPanel({
   const timelineItems = filteredItems.slice(0, visibleItemsBySize[size]);
   const dateLabel = timelineItems[0]
     ? new Date(timelineItems[0].publishedAt).toLocaleDateString("zh-CN", {
-        month: "long",
-        day: "numeric"
-      })
+      month: "long",
+      day: "numeric"
+    })
     : "等待刷新";
 
   return (
@@ -905,6 +825,34 @@ function LedgerPanel({
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function MhxyPanel() {
+  const query = useQuery({
+    queryKey: ["mhxy"],
+    queryFn: fetchMhxyDashboard
+  });
+  const summary = query.data?.summary;
+  const format = (value: number | undefined) =>
+    `¥${(value ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
+
+  return (
+    <section className="mhxy-panel">
+      <div className="mhxy-panel__header">
+        <div>
+          <p className="eyebrow">RMB MAIN LEDGER</p>
+          <h2>梦幻西游交易</h2>
+        </div>
+        <Link to="/mhxy" className="panel-link">打开账本</Link>
+      </div>
+      <div className="mhxy-panel__metrics">
+        <span>库存成本<strong>{format(summary?.inventoryCostRmb)}</strong></span>
+        <span>已实现收益<strong>{format(summary?.realizedProfitRmb)}</strong></span>
+        <span>未实现浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
+      </div>
+      <p>{summary?.pendingValuationCount ? `${summary.pendingValuationCount} 项库存待补价格快照` : "全部库存已按人民币口径估值"}</p>
     </section>
   );
 }
@@ -1106,25 +1054,25 @@ function HistoryPanel({
             <div className="history-panel__list">
               {latestDynastyPayload
                 ? dynastyModules.map((module, index) => (
-                    <div key={`${latestNotification.id}-${module.type}`} className="history-panel__item">
-                      <span>{String(index + 1).padStart(2, "0")}</span>
-                      <div>
-                        <strong>{module.type}：{module.topic}</strong>
-                        {size !== "small" ? <p>{buildCaptionExcerpt(module.summary, 64)}</p> : null}
-                        {rule.showPrompts ? <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small> : null}
-                      </div>
+                  <div key={`${latestNotification.id}-${module.type}`} className="history-panel__item">
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div>
+                      <strong>{module.type}：{module.topic}</strong>
+                      {size !== "small" ? <p>{buildCaptionExcerpt(module.summary, 64)}</p> : null}
+                      {rule.showPrompts ? <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small> : null}
                     </div>
-                  ))
+                  </div>
+                ))
                 : cards.map((card, index) => (
-                    <div key={`${latestNotification.id}-${card.title}`} className="history-panel__item">
-                      <span>{String(index + 1).padStart(2, "0")}</span>
-                      <div>
-                        <strong>{card.title}</strong>
-                        {size !== "small" ? <p>{card.imageText}</p> : null}
-                        {rule.showPrompts ? <small>{card.prompt}</small> : null}
-                      </div>
+                  <div key={`${latestNotification.id}-${card.title}`} className="history-panel__item">
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div>
+                      <strong>{card.title}</strong>
+                      {size !== "small" ? <p>{card.imageText}</p> : null}
+                      {rule.showPrompts ? <small>{card.prompt}</small> : null}
                     </div>
-                  ))}
+                  </div>
+                ))}
             </div>
             {rule.showCaption && latestPostPayload ? (
               <div className="history-panel__caption">
@@ -1524,21 +1472,21 @@ function HistoryNotificationTray({
                 <div className="history-notice__cards">
                   {isHistoryDynastyPayload(payload)
                     ? payload.modules.map((module, index) => (
-                        <div className="history-card-plan" key={`${notification.id}-${module.type}`}>
-                          <span>{String(index + 1).padStart(2, "0")} · {module.type}</span>
-                          <strong>{module.topic}</strong>
-                          <p>{module.summary}</p>
-                          <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small>
-                        </div>
-                      ))
+                      <div className="history-card-plan" key={`${notification.id}-${module.type}`}>
+                        <span>{String(index + 1).padStart(2, "0")} · {module.type}</span>
+                        <strong>{module.topic}</strong>
+                        <p>{module.summary}</p>
+                        <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small>
+                      </div>
+                    ))
                     : payload.cards.map((card, index) => (
-                        <div className="history-card-plan" key={`${notification.id}-${card.title}`}>
-                          <span>图 {index + 1}</span>
-                          <strong>{card.title}</strong>
-                          <p>{card.imageText}</p>
-                          <small>{card.prompt}</small>
-                        </div>
-                      ))}
+                      <div className="history-card-plan" key={`${notification.id}-${card.title}`}>
+                        <span>图 {index + 1}</span>
+                        <strong>{card.title}</strong>
+                        <p>{card.imageText}</p>
+                        <small>{card.prompt}</small>
+                      </div>
+                    ))}
                 </div>
               </div>
             ) : null}
@@ -1862,9 +1810,8 @@ function HomeModuleShell({
   return (
     <article
       ref={setNodeRef}
-      className={`home-module home-module--size-${preference.size}${preference.collapsed ? " is-collapsed" : ""}${
-        isDragging ? " is-dragging" : ""
-      }${preview ? " home-module--drag-overlay" : ""}`}
+      className={`home-module home-module--size-${preference.size}${preference.collapsed ? " is-collapsed" : ""}${isDragging ? " is-dragging" : ""
+        }${preview ? " home-module--drag-overlay" : ""}`}
       style={moduleStyle}
     >
       <div
@@ -2004,6 +1951,10 @@ function renderHomeModuleContent({
 
   if (id === "ledger") {
     return <LedgerPanel dashboard={dashboard} size={size} />;
+  }
+
+  if (id === "mhxy") {
+    return <MhxyPanel />;
   }
 
   if (id === "topics") {
@@ -2629,10 +2580,10 @@ export function HomeManagePage() {
                   onAgentDefaultModelChange={
                     MODULE_AGENT_IDS[preference.id]
                       ? (profileId) =>
-                          setAgentDefaultMutation.mutate({
-                            agentId: MODULE_AGENT_IDS[preference.id],
-                            profileId
-                          })
+                        setAgentDefaultMutation.mutate({
+                          agentId: MODULE_AGENT_IDS[preference.id],
+                          profileId
+                        })
                       : undefined
                   }
                 />
@@ -2663,9 +2614,8 @@ export function HomeManagePage() {
                     <button
                       key={theme.key}
                       type="button"
-                      className={`theme-switcher__button theme-switcher__button--${theme.key}${
-                        themeKey === theme.key ? " is-active" : ""
-                      }`}
+                      className={`theme-switcher__button theme-switcher__button--${theme.key}${themeKey === theme.key ? " is-active" : ""
+                        }`}
                       aria-label={theme.label}
                       aria-pressed={themeKey === theme.key}
                       onClick={() => {
@@ -2789,9 +2739,8 @@ export function HomeManagePage() {
                       {gallery.map((background) => (
                         <article
                           key={background.id}
-                          className={`background-history__item${
-                            activeBackgroundId === background.id ? " is-active" : ""
-                          }`}
+                          className={`background-history__item${activeBackgroundId === background.id ? " is-active" : ""
+                            }`}
                         >
                           <div
                             className="background-history__thumb"
@@ -2839,47 +2788,6 @@ type RestartNotice = {
 };
 
 const RESTART_PENDING_STORAGE_KEY = "agent-zy-restart-pending-started-at";
-const RESTART_RECOVERY_TIMEOUT_MS = 90000;
-const RESTART_RECOVERY_POLL_MS = 1200;
-
-function wait(milliseconds: number) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, milliseconds);
-  });
-}
-
-async function waitForRestartRecovery(previousStartedAt: string | null, requestedAt: number) {
-  const deadline = Date.now() + RESTART_RECOVERY_TIMEOUT_MS;
-  const minimumWaitUntil = requestedAt + 3500;
-  let stableChecks = 0;
-
-  while (Date.now() < deadline) {
-    await wait(RESTART_RECOVERY_POLL_MS);
-
-    try {
-      const status = await fetchSystemStatus();
-      if (!previousStartedAt || status.startedAt !== previousStartedAt) {
-        await fetchDashboard();
-        return status;
-      }
-
-      if (Date.now() >= minimumWaitUntil) {
-        stableChecks += 1;
-
-        if (stableChecks >= 2) {
-          await fetchDashboard();
-          return status;
-        }
-      }
-    } catch {
-      stableChecks = 0;
-      // The API is expected to be unavailable for a short window while restarting.
-    }
-  }
-
-  throw new Error("Restart did not complete within timeout");
-}
-
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const [railExpanded, setRailExpanded] = useState(false);
@@ -2910,9 +2818,9 @@ export function DashboardPage() {
       queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) =>
         current
           ? {
-              ...current,
-              news
-            }
+            ...current,
+            news
+          }
           : current
       );
     }

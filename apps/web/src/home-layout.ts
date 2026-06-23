@@ -12,6 +12,7 @@ export type BuiltInHomeModuleId =
   | "chat"
   | "todo"
   | "ledger"
+  | "mhxy"
   | "topics"
   | "history"
   | "cinematic"
@@ -75,6 +76,13 @@ const CORE_HOME_MODULE_DEFINITIONS = [
     description: "主 Agent 会话和处理进度",
     defaultSize: "max",
     defaultVisible: true
+  },
+  {
+    id: "mhxy",
+    label: "梦幻西游交易",
+    description: "人民币库存成本、收益与估值",
+    defaultSize: "smaller",
+    defaultVisible: true
   }
 ] as const satisfies readonly HomeModuleDefinition[];
 
@@ -89,6 +97,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "news",
   "topics",
   "ledger",
+  "mhxy",
   "todo",
   "history",
   "cinematic",
@@ -383,6 +392,17 @@ export function mergeHomeLayoutPreferences(
           ...(Object.prototype.hasOwnProperty.call(stored, "customName")
             ? { customName: stored.customName }
             : {})
+        };
+      }
+
+      if (definition.id === "mhxy") {
+        return {
+          id: definition.id,
+          visible: definition.defaultVisible,
+          showInNavigation: getDefaultNavigationVisibility(definition),
+          size: definition.defaultSize,
+          collapsed: false,
+          order: fallbackOrderOffset + index
         };
       }
 

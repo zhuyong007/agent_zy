@@ -24,6 +24,7 @@ import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ToolsPage } from "./components/tools-page";
 import { ImageToVideoPage } from "./components/image-to-video-page";
 import { ChildMealPage } from "./components/child-meal-page";
+import { MhxyPage } from "./components/mhxy-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
 
 const queryClient = new QueryClient();
@@ -92,6 +93,12 @@ const ledgerRoute = createRoute({
   component: LedgerPage
 });
 
+const mhxyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/mhxy",
+  component: MhxyPage
+});
+
 const todoRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/todo",
@@ -156,6 +163,7 @@ const routeTree = rootRoute.addChildren([
   classicShotRoute,
   imageToVideoRoute,
   ledgerRoute,
+  mhxyRoute,
   todoRoute,
   summaryRoute,
   toolsRoute,

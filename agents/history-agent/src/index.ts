@@ -503,7 +503,7 @@ async function generateWithModelRuntime(
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision"
   });
-  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。topic、cover.title 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。`;
+  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出字段。topic、cover.title 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。凡是提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = await getModelClient().generateText({
@@ -580,7 +580,7 @@ async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: str
 
 每个模块的 cover 必须包含 title、subtitle、imageText、prompt。cover.prompt 是该模块的小红书首图封面生图提示词，需要强调竖版小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。
 
-每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要强调竖版小红书知识卡片，并说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。
+每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。prompt 需要强调竖版小红书知识卡片，并说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。凡是 cover.prompt 或 cards[].prompt 提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。
 
 四个模块的 topic 要像可直接发布的小红书选题标题，例如“东汉是怎么一步步走向灭亡的”“看懂东汉只需要认识这几位皇帝”“改变东汉命运的5个人”“东汉公务员一个月赚多少钱？”。`;
 
