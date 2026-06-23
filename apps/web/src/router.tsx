@@ -23,6 +23,7 @@ import { BrowserAutomationPage } from "./components/browser-automation-page";
 import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ToolsPage } from "./components/tools-page";
 import { ImageToVideoPage } from "./components/image-to-video-page";
+import { ChildMealPage } from "./components/child-meal-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
 
 const queryClient = new QueryClient();
@@ -139,6 +140,12 @@ const promptTemplateRoute = createRoute({
   component: PromptTemplatePage
 });
 
+const childMealRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools/child-meal",
+  component: ChildMealPage
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   manageRoute,
@@ -156,6 +163,7 @@ const routeTree = rootRoute.addChildren([
   fileOrganizerRoute,
   browserAutomationRoute,
   promptTemplateRoute,
+  childMealRoute,
   logsRoute
 ]);
 

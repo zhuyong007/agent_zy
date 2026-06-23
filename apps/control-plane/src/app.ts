@@ -22,6 +22,7 @@ import { createControlPlaneOrchestrator } from "./services/orchestrator";
 import { createFileOrganizerService } from "./services/file-organizer-service";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
+import { createChildMealService } from "./services/child-meal-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
@@ -201,6 +202,10 @@ export function createControlPlaneApp(options?: {
   const ledgerReportService = createLedgerReportService();
   const summaryService = createSummaryService(store);
   const promptTemplateService = createPromptTemplateService({
+    store,
+    modelRuntime
+  });
+  const childMealService = createChildMealService({
     store,
     modelRuntime
   });
@@ -644,6 +649,48 @@ export function createControlPlaneApp(options?: {
         message: error instanceof Error ? error.message : "failed to apply prompt template"
       });
     }
+  });
+
+  const childMealError = (reply: any, error: unknown, statusCode = 400) =>
+    reply.code(statusCode).send({ message: error instanceof Error ? error.message : "孩子食谱操作失败" });
+
+  app.get("/api/tools/child-meal/overview", async () => childMealService.getOverview());
+  app.get("/api/tools/child-meal/profile", async () => childMealService.getOverview());
+  app.post("/api/tools/child-meal/profile", async (request, reply) => {
+    try { return childMealService.updateProfile(request.body); } catch (error) { return childMealError(reply, error); }
+  });
+  app.get("/api/tools/child-meal/notes", async (request) => childMealService.listNotes((request.query ?? {}) as Record<string, unknown>));
+  app.post("/api/tools/child-meal/notes", async (request, reply) => {
+    try { return childMealService.createNote(request.body); } catch (error) { return childMealError(reply, error); }
+  });
+  app.put("/api/tools/child-meal/notes/:id", async (request, reply) => {
+    try { return childMealService.updateNote((request.params as { id: string }).id, request.body); } catch (error) { return childMealError(reply, error, 404); }
+  });
+  app.delete("/api/tools/child-meal/notes/:id", async (request, reply) => {
+    try { return childMealService.deleteNote((request.params as { id: string }).id); } catch (error) { return childMealError(reply, error, 404); }
+  });
+  app.get("/api/tools/child-meal/records", async (request) => childMealService.listRecords((request.query ?? {}) as Record<string, unknown>));
+  app.post("/api/tools/child-meal/records", async (request, reply) => {
+    try { return childMealService.createRecord(request.body); } catch (error) { return childMealError(reply, error); }
+  });
+  app.put("/api/tools/child-meal/records/:id", async (request, reply) => {
+    try { return childMealService.updateRecord((request.params as { id: string }).id, request.body); } catch (error) { return childMealError(reply, error, 404); }
+  });
+  app.delete("/api/tools/child-meal/records/:id", async (request, reply) => {
+    try { return childMealService.deleteRecord((request.params as { id: string }).id); } catch (error) { return childMealError(reply, error, 404); }
+  });
+  app.post("/api/tools/child-meal/records/from-plan", async (request, reply) => {
+    try { return childMealService.convertMealToRecord(request.body); } catch (error) { return childMealError(reply, error); }
+  });
+  app.post("/api/tools/child-meal/generate-plan", async (request, reply) => {
+    try {
+      return await childMealService.generatePlan(request.body as any);
+    } catch (error) {
+      return childMealError(reply, error);
+    }
+  });
+  app.post("/api/tools/child-meal/save-plan", async (request, reply) => {
+    try { return childMealService.savePlan(request.body); } catch (error) { return childMealError(reply, error); }
   });
 
   app.get("/api/logs", async (request) => {

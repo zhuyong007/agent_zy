@@ -1089,6 +1089,139 @@ export interface PromptTemplateApplyResult {
   generatedAt: string;
 }
 
+export type ChildMealPlanType = "today" | "tomorrow" | "three_days" | "seven_days";
+export type ChildMealType = "breakfast" | "lunch" | "dinner" | "snack" | "milk" | "fruit";
+export type ChildMealAcceptance = "喜欢" | "一般" | "不喜欢" | "拒绝";
+
+export interface ChildProfile {
+  id: string;
+  name: string;
+  birthDate: string;
+  height: string;
+  weight: string;
+  region: string;
+  premature: boolean;
+  chewingAbility: string;
+  allergies: string[];
+  dislikedFoods: string[];
+  favoriteFoods: string[];
+  milkNote: string;
+  sleepNote: string;
+  wakeTime: string;
+  bedtime: string;
+  napNote: string;
+  householdIngredients: string[];
+  householdRestrictions: string[];
+  cookingEquipment: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChildSummary {
+  birthDate: string;
+  ageText: string;
+  monthAge: number;
+  stage: string;
+  importantNotes: string[];
+}
+
+export interface ChildNote {
+  id: string;
+  childId: string;
+  date: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChildMealRecord {
+  id: string;
+  childId: string;
+  date: string;
+  mealType: ChildMealType;
+  foodName: string;
+  ingredients: string[];
+  cookingMethods: string[];
+  amount: string;
+  acceptance: ChildMealAcceptance;
+  discomfort: boolean;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlannedMeal {
+  mealType: ChildMealType;
+  mealName: string;
+  ingredients: string[];
+  cookingMethods: string[];
+  textureAdvice: string;
+  simpleSteps: string[];
+  nutritionPurpose: string;
+  safetyNotes: string[];
+}
+
+export interface MealPlanDay {
+  date: string;
+  dailyNutritionFocus: string;
+  avoidRepeatReason: string;
+  meals: PlannedMeal[];
+  cookingOrder: string[];
+  fruitSuggestion: string;
+  milkAndWaterNote: string;
+  parentNotes: string[];
+}
+
+export interface ChildMealPlan {
+  id?: string;
+  childId?: string;
+  childSummary: ChildSummary;
+  planType: ChildMealPlanType;
+  dateRange: { start: string; end: string };
+  days: MealPlanDay[];
+  weeklyBalanceSummary: {
+    proteinRotation: string[];
+    vegetableRotation: string[];
+    fruitRotation: string[];
+    stapleFoodRotation: string[];
+  };
+  warnings: string[];
+  notMedicalAdvice: string;
+  generatedReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ChildMealHistoryStats {
+  frequentIngredients30d: Array<{ name: string; count: number }>;
+  rejectedFoods: string[];
+  discomfortFoods: string[];
+  likedFoods: string[];
+  proteinRotation: string[];
+  vegetableRotation: string[];
+  fruitRotation: string[];
+}
+
+export interface ChildMealState {
+  profile: ChildProfile;
+  notes: ChildNote[];
+  records: ChildMealRecord[];
+  plans: ChildMealPlan[];
+  lastUpdatedAt: string | null;
+}
+
+export interface ChildMealOverview {
+  profile: ChildProfile;
+  childSummary: ChildSummary;
+  recentNotes: ChildNote[];
+  todayRecords: ChildMealRecord[];
+  recentRecords: ChildMealRecord[];
+  savedPlans: ChildMealPlan[];
+  historyStats: ChildMealHistoryStats;
+  warnings: string[];
+}
+
 export type ModelProviderId =
   | "modelscope"
   | "deepseek"
@@ -1205,6 +1338,7 @@ export interface AppState {
   imageToVideo?: ImageToVideoState;
   browserAutomation?: BrowserAutomationState;
   promptTemplates?: PromptTemplateState;
+  childMeal?: ChildMealState;
   summary: SummaryState;
   historyPush: HistoryPushState;
   historyXhs?: HistoryXhsState;
@@ -1247,6 +1381,7 @@ export interface DashboardData {
   };
   browserAutomation?: BrowserAutomationState;
   promptTemplates?: PromptTemplateState;
+  childMeal?: ChildMealState;
   summary: SummaryState & {
     dashboard: SummaryDashboard;
   };

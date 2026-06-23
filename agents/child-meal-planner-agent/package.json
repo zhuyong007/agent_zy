@@ -1,0 +1,10 @@
+{
+  "name": "@agent-zy/child-meal-planner-agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./prompts": "./src/prompts.ts",
+    "./schemas": "./src/schemas.ts"
+  }
+}

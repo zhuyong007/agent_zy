@@ -8302,7 +8302,8 @@ body[data-theme="day"] .cinematic-project-controls input {
 .photo-renamer-shell,
 .file-organizer-shell,
 .browser-automation-shell,
-.prompt-template-shell {
+.prompt-template-shell,
+.child-meal-shell {
   display: grid;
   box-sizing: border-box;
   width: 100%;
@@ -8327,9 +8328,119 @@ body[data-theme="day"] .cinematic-project-controls input {
 .tools-workspace > .photo-renamer-shell,
 .tools-workspace > .file-organizer-shell,
 .tools-workspace > .browser-automation-shell,
-.tools-workspace > .prompt-template-shell {
+.tools-workspace > .prompt-template-shell,
+.tools-workspace > .child-meal-shell {
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+.child-meal-summary,
+.child-meal-columns,
+.child-meal-fields,
+.child-meal-stats {
+  display: grid;
+  gap: 12px;
+}
+
+.child-meal-summary {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.child-meal-summary > div,
+.child-meal-panel,
+.child-meal-day,
+.child-meal-meal,
+.child-meal-list article,
+.child-meal-stats > div {
+  border: 1px solid var(--manage-line);
+  border-radius: 14px;
+  background: var(--manage-surface);
+  color: var(--manage-text);
+  padding: 16px;
+}
+
+.child-meal-summary > div,
+.child-meal-list article,
+.child-meal-meal {
+  display: grid;
+  gap: 6px;
+}
+
+.child-meal-summary span,
+.child-meal-list span,
+.child-meal-meal span,
+.child-meal-panel p {
+  color: var(--manage-muted);
+}
+
+.child-meal-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.child-meal-panel h2,
+.child-meal-panel h3,
+.child-meal-panel p {
+  margin: 0;
+}
+
+.child-meal-panel__title,
+.child-meal-panel__title > div:last-child,
+.child-meal-panel form,
+.child-meal-generator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.child-meal-fields {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.child-meal-fields label {
+  display: grid;
+  gap: 6px;
+}
+
+.child-meal-panel input,
+.child-meal-panel select,
+.child-meal-panel button {
+  border: 1px solid var(--manage-line);
+  border-radius: 8px;
+  background: var(--manage-control);
+  color: var(--manage-text);
+  padding: 9px 11px;
+}
+
+.child-meal-columns {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.child-meal-list,
+.child-meal-plan {
+  display: grid;
+  gap: 10px;
+}
+
+.child-meal-day {
+  display: grid;
+  gap: 12px;
+}
+
+.child-meal-meal {
+  background: var(--manage-control-soft);
+}
+
+.child-meal-stats {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.child-meal-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tools-page-header {

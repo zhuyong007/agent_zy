@@ -1,5 +1,11 @@
 import type {
   ChatResponse,
+  ChildMealOverview,
+  ChildMealPlan,
+  ChildMealPlanType,
+  ChildMealRecord,
+  ChildNote,
+  ChildProfile,
   BrowserAutomationRun,
   BrowserAutomationState,
   BrowserAutomationTriggerRule,
@@ -73,6 +79,30 @@ export function resolveApiBase(
 }
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
+
+async function childMealRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}/api/tools/child-meal${path}`, {
+    method,
+    ...(body === undefined ? {} : {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  });
+  if (!response.ok) throw new Error(await readApiError(response, "孩子食谱操作失败"));
+  return response.json();
+}
+
+export const fetchChildMealOverview = () => childMealRequest<ChildMealOverview>("/overview");
+export const saveChildMealProfile = (input: Partial<ChildProfile>) => childMealRequest<ChildMealOverview>("/profile", "POST", input);
+export const createChildMealNote = (input: Partial<ChildNote>) => childMealRequest<ChildNote>("/notes", "POST", input);
+export const updateChildMealNote = (id: string, input: Partial<ChildNote>) => childMealRequest<ChildNote>(`/notes/${id}`, "PUT", input);
+export const deleteChildMealNote = (id: string) => childMealRequest<{ ok: true }>(`/notes/${id}`, "DELETE");
+export const createChildMealRecord = (input: Partial<ChildMealRecord>) => childMealRequest<ChildMealRecord>("/records", "POST", input);
+export const updateChildMealRecord = (id: string, input: Partial<ChildMealRecord>) => childMealRequest<ChildMealRecord>(`/records/${id}`, "PUT", input);
+export const deleteChildMealRecord = (id: string) => childMealRequest<{ ok: true }>(`/records/${id}`, "DELETE");
+export const generateChildMealPlan = (input: { planType: ChildMealPlanType; userExtraRequest?: string }) => childMealRequest<ChildMealPlan>("/generate-plan", "POST", input);
+export const saveChildMealPlan = (input: ChildMealPlan) => childMealRequest<ChildMealPlan>("/save-plan", "POST", input);
+export const convertChildMealPlanMeal = (input: { date: string; meal: ChildMealPlan["days"][number]["meals"][number] }) => childMealRequest<ChildMealRecord>("/records/from-plan", "POST", input);
 
 export function resolveImageToVideoAssetUrl(url: string) {
   return url.startsWith("/api/") ? `${API_BASE}${url}` : url;

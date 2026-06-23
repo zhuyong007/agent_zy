@@ -12,6 +12,7 @@ import type {
   CinematicDashboardSummary,
   CinematicProject,
   CinematicState,
+  ChildMealState,
   DashboardData,
   HomeModuleId,
   HomeModulePreference,
@@ -230,6 +231,7 @@ function createInitialState(): AppState {
     imageToVideo: createEmptyImageToVideoState(),
     browserAutomation: createEmptyBrowserAutomationState(),
     promptTemplates: createEmptyPromptTemplateState(),
+    childMeal: createEmptyChildMealState(),
     summary: createEmptySummaryState(),
     historyXhs: createEmptyHistoryXhsState(),
     historyPush: {
@@ -397,6 +399,50 @@ function createEmptyPromptTemplateState(): PromptTemplateState {
   return {
     items: [],
     lastUpdatedAt: null
+  };
+}
+
+function createEmptyChildMealState(): ChildMealState {
+  const now = nowIso();
+  return {
+    profile: {
+      id: "default-child",
+      name: "",
+      birthDate: "2025-01-22",
+      height: "",
+      weight: "",
+      region: "中国北方",
+      premature: false,
+      chewingAbility: "",
+      allergies: [],
+      dislikedFoods: [],
+      favoriteFoods: [],
+      milkNote: "",
+      sleepNote: "",
+      wakeTime: "",
+      bedtime: "",
+      napNote: "",
+      householdIngredients: [],
+      householdRestrictions: [],
+      cookingEquipment: [],
+      createdAt: now,
+      updatedAt: now
+    },
+    notes: [],
+    records: [],
+    plans: [],
+    lastUpdatedAt: null
+  };
+}
+
+function normalizeChildMealState(value: Partial<ChildMealState> | undefined): ChildMealState {
+  const empty = createEmptyChildMealState();
+  return {
+    profile: { ...empty.profile, ...(value?.profile ?? {}), id: value?.profile?.id || empty.profile.id },
+    notes: Array.isArray(value?.notes) ? value.notes : [],
+    records: Array.isArray(value?.records) ? value.records : [],
+    plans: Array.isArray(value?.plans) ? value.plans : [],
+    lastUpdatedAt: value?.lastUpdatedAt ?? null
   };
 }
 
@@ -1633,6 +1679,7 @@ function normalizeAppState(state: AppState): AppState {
     imageToVideo: normalizeImageToVideoState(state.imageToVideo),
     browserAutomation: normalizeBrowserAutomationState(state.browserAutomation),
     promptTemplates: normalizePromptTemplateState(state.promptTemplates),
+    childMeal: normalizeChildMealState(state.childMeal),
     summary: normalizeSummaryState(state.summary),
     historyXhs: normalizeHistoryXhsState(state.historyXhs),
     historyPush: normalizeHistoryPushState(state.historyPush),
@@ -1663,6 +1710,7 @@ export interface ControlPlaneStore {
   setImageToVideoState(imageToVideo: ImageToVideoState): ImageToVideoState;
   setBrowserAutomationState(browserAutomation: BrowserAutomationState): BrowserAutomationState;
   setPromptTemplateState(promptTemplates: PromptTemplateState): PromptTemplateState;
+  setChildMealState(childMeal: ChildMealState): ChildMealState;
   setSummaryState(summary: SummaryState): SummaryState;
   setHistoryXhsState(historyXhs: HistoryXhsState): HistoryXhsState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
@@ -1844,6 +1892,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.promptTemplates);
+    },
+    setChildMealState(childMeal) {
+      state.childMeal = normalizeChildMealState(childMeal);
+      persist();
+
+      return structuredClone(state.childMeal);
     },
     setSummaryState(summary) {
       state.summary = normalizeSummaryState(summary);
@@ -2060,6 +2114,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         },
         browserAutomation: state.browserAutomation,
         promptTemplates: state.promptTemplates,
+        childMeal: state.childMeal,
         summary: {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)

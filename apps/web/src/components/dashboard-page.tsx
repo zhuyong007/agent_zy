@@ -126,11 +126,9 @@ export type RailSection =
   | "history"
   | "cinematic"
   | "classicShots"
-  | "imageToVideo"
   | "ledger"
   | "todo"
   | "summary"
-  | "browserAutomation"
   | "tools"
   | "logs";
 type NewsFilter = "all" | NewsCategory;
@@ -149,19 +147,11 @@ const railItems: Array<{
   { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
   { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
   { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
-  { key: "imageToVideo", label: "图转视频", stamp: "07", to: "/image-to-video", moduleId: "imageToVideo" },
-  { key: "ledger", label: "记账", stamp: "08", to: "/ledger", moduleId: "ledger" },
-  { key: "todo", label: "待办", stamp: "09", to: "/todo", moduleId: "todo" },
-  { key: "summary", label: "总结", stamp: "10", to: "/summaries", moduleId: "summary" },
-  {
-    key: "browserAutomation",
-    label: "浏览器自动化",
-    stamp: "11",
-    to: "/tools/browser-automation",
-    moduleId: "browserAutomation"
-  },
-  { key: "tools", label: "工具", stamp: "12", to: "/tools" },
-  { key: "logs", label: "日志", stamp: "13", to: "/logs" }
+  { key: "ledger", label: "记账", stamp: "07", to: "/ledger", moduleId: "ledger" },
+  { key: "todo", label: "待办", stamp: "08", to: "/todo", moduleId: "todo" },
+  { key: "summary", label: "总结", stamp: "09", to: "/summaries", moduleId: "summary" },
+  { key: "tools", label: "工具", stamp: "10", to: "/tools" },
+  { key: "logs", label: "日志", stamp: "11", to: "/logs" }
 ];
 
 const weekdayMap = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -346,10 +336,6 @@ function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
 
   if (id === "classicShots") {
     return `${formatShortCount(dashboard.classicShots.dashboard.projectCount)} 个复刻镜头`;
-  }
-
-  if (id === "imageToVideo") {
-    return `${formatShortCount(dashboard.imageToVideo?.dashboard.projectCount ?? 0)} 个策划项目`;
   }
 
   if (id === "summary") {
@@ -1377,42 +1363,6 @@ export function ClassicShotPanel({
   );
 }
 
-export function ImageToVideoPanel({ dashboard }: { dashboard: DashboardData; size: HomeModuleSize }) {
-  const summary = dashboard.imageToVideo?.dashboard ?? {
-    projectCount: 0,
-    latestProject: null,
-    waitingKeyframeCount: 0
-  };
-  const latest = summary.latestProject;
-
-  return (
-    <section className="cinematic-panel">
-      <div className="cinematic-panel__header">
-        <div>
-          <p className="eyebrow">Image to Video Planner</p>
-          <h2>图片转视频策划</h2>
-        </div>
-        <Link to="/image-to-video" className="panel-link">策划台</Link>
-      </div>
-      <div className="cinematic-panel__inspiration">
-        <span>待补关键帧</span>
-        <strong>{summary.waitingKeyframeCount} 帧</strong>
-      </div>
-      {latest ? (
-        <article className="cinematic-panel__latest">
-          <span>{latest.stage}</span>
-          <h3>{latest.title}</h3>
-          <p>{latest.videoPlan?.coreConcept ?? latest.imageAnalysis?.motionPotential ?? "等待图片分析"}</p>
-          <div className="cinematic-panel__meta">
-            <b>{latest.keyframes.length} 关键帧</b>
-            <b>{latest.videoPlan ? `${latest.videoPlan.videoDuration}s` : "待设计"}</b>
-          </div>
-        </article>
-      ) : <div className="edge-empty">还没有图片转视频策划项目。</div>}
-    </section>
-  );
-}
-
 function SummaryPanel({
   dashboard,
   size
@@ -2078,10 +2028,6 @@ function renderHomeModuleContent({
     return <ClassicShotPanel dashboard={dashboard} size={size} />;
   }
 
-  if (id === "imageToVideo") {
-    return <ImageToVideoPanel dashboard={dashboard} size={size} />;
-  }
-
   if (id === "summary") {
     return <SummaryPanel dashboard={dashboard} size={size} />;
   }
@@ -2209,7 +2155,6 @@ const MODULE_AGENT_IDS: Record<string, string> = {
   history: "history-agent",
   cinematic: "cinematic-agent",
   classicShots: "classic-shot-agent",
-  imageToVideo: "image-to-video-planner-agent",
   summary: "summary-agent"
 };
 

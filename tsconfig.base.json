@@ -45,6 +45,9 @@
       "@agent-zy/image-to-video-planner-agent/manifest": [
         "agents/image-to-video-planner-agent/src/manifest.ts"
       ],
+      "@agent-zy/child-meal-planner-agent": [
+        "agents/child-meal-planner-agent/src/index.ts"
+      ],
       "@agent-zy/browser-automation-agent/manifest": [
         "agents/browser-automation-agent/src/manifest.ts"
       ],

@@ -46,6 +46,12 @@ export function ToolsCatalog() {
           <p>递归扫描本机文件夹，按时间或类型预览并移动文件。</p>
           <strong>打开工具</strong>
         </Link>
+        <Link className="tools-card" to="/tools/child-meal">
+          <span className="tools-card__index">05</span>
+          <h2>孩子食谱</h2>
+          <p>记录孩子每日饮食，结合月龄、季节食材和长期历史规划未来食谱。</p>
+          <strong>打开工具</strong>
+        </Link>
       </div>
     </section>
   );
