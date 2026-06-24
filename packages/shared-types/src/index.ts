@@ -348,23 +348,45 @@ export interface MhxyTradeRecord extends Omit<MhxyTradeInput, "feeRmb"> {
   updatedAt: string;
 }
 
-export interface MhxyPriceSnapshotInput {
+interface MhxyPriceSnapshotBase {
   itemName: string;
-  currency: MhxyTradeCurrency;
-  rmbUnitPrice?: number;
-  gameCoinUnitPriceWan?: number;
-  rmbPerGameCoinWan?: number;
   capturedAt: string;
   serverName?: string;
   note?: string;
 }
 
-export interface MhxyPriceSnapshot extends MhxyPriceSnapshotInput {
+export type MhxyPriceSnapshotInput = MhxyPriceSnapshotBase & (
+  | {
+      currency: "rmb";
+      rmbUnitPrice: number;
+      gameCoinUnitPriceWan?: never;
+      rmbPerGameCoinWan?: never;
+    }
+  | {
+      currency: "gameCoin";
+      rmbUnitPrice?: never;
+      gameCoinUnitPriceWan: number;
+      rmbPerGameCoinWan: number;
+    }
+);
+
+export type MhxyPriceSnapshot = MhxyPriceSnapshotBase & {
   id: string;
   rmbUnitPrice: number;
   createdAt: string;
   updatedAt: string;
-}
+} & (
+    | {
+        currency: "rmb";
+        gameCoinUnitPriceWan?: never;
+        rmbPerGameCoinWan?: never;
+      }
+    | {
+        currency: "gameCoin";
+        gameCoinUnitPriceWan: number;
+        rmbPerGameCoinWan: number;
+      }
+  );
 
 export interface MhxyInventoryTransferInput {
   itemName: string;
@@ -482,6 +504,23 @@ export interface MhxyDashboardSummary {
   pendingValuationCount: number;
 }
 
+export interface MhxyCombinedSummary {
+  holdingCostRmb: number;
+  realizedProfitRmb: number;
+  gameCoinBalanceCostRmb: number;
+  mainLedgerMarketValueRmb: number;
+  mainLedgerUnrealizedProfitRmb: number;
+}
+
+export interface MhxyDataSet {
+  trades: MhxyTradeRecord[];
+  priceSnapshots: MhxyPriceSnapshot[];
+  inventoryTransfers: MhxyInventoryTransferRecord[];
+  inventoryTargets: MhxyInventoryTarget[];
+  assetFlips: MhxyAssetFlipRecord[];
+  gameCoinPurchases: MhxyGameCoinPurchaseRecord[];
+}
+
 export interface MhxyDashboard {
   trades: MhxyTradeRecord[];
   tradeResults: MhxyTradeResult[];
@@ -497,6 +536,7 @@ export interface MhxyDashboard {
     gameCoinAmount: number;
     rmbCost: number;
   };
+  combinedSummary: MhxyCombinedSummary;
 }
 
 export type ScheduleUrgency = "low" | "medium" | "high";

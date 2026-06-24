@@ -835,6 +835,7 @@ function MhxyPanel() {
     queryFn: fetchMhxyDashboard
   });
   const summary = query.data?.summary;
+  const combined = query.data?.combinedSummary;
   const format = (value: number | undefined) =>
     `¥${(value ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
 
@@ -848,9 +849,9 @@ function MhxyPanel() {
         <Link to="/mhxy" className="panel-link">打开账本</Link>
       </div>
       <div className="mhxy-panel__metrics">
-        <span>库存成本<strong>{format(summary?.inventoryCostRmb)}</strong></span>
-        <span>已实现收益<strong>{format(summary?.realizedProfitRmb)}</strong></span>
-        <span>未实现浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
+        <span>持有总成本<strong>{format(combined?.holdingCostRmb ?? summary?.inventoryCostRmb)}</strong></span>
+        <span>已实现总收益<strong>{format(combined?.realizedProfitRmb ?? summary?.realizedProfitRmb)}</strong></span>
+        <span>主账本浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
       </div>
       <p>{summary?.pendingValuationCount ? `${summary.pendingValuationCount} 项库存待补价格快照` : "全部库存已按人民币口径估值"}</p>
     </section>

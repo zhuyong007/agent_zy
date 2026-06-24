@@ -1338,6 +1338,8 @@ export const createMhxyAssetFlip = (input: MhxyAssetFlipInput) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>("/api/mhxy/asset-flips", "POST", input);
 export const updateMhxyAssetFlip = (id: string, input: Partial<MhxyAssetFlipInput>) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>(`/api/mhxy/asset-flips/${id}`, "PATCH", input);
+export const deleteMhxyAssetFlip = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/asset-flips/${id}`, "DELETE");
 export const createMhxyGameCoinPurchase = (input: MhxyGameCoinPurchaseInput) =>
   mhxyJsonRequest<MhxyGameCoinPurchaseRecord>("/api/mhxy/game-coin-purchases", "POST", input);
 export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCoinPurchaseInput>) =>
@@ -1346,16 +1348,24 @@ export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCo
     "PATCH",
     input
   );
+export const deleteMhxyGameCoinPurchase = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-purchases/${id}`, "DELETE");
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>
   mhxyJsonRequest<MhxyTradeRecord>(`/api/mhxy/trades/${id}`, "PATCH", input);
+export const deleteMhxyTrade = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/trades/${id}`, "DELETE");
 export const createMhxyPriceSnapshot = (input: MhxyPriceSnapshotInput) =>
   mhxyJsonRequest<MhxyPriceSnapshot>("/api/mhxy/price-snapshots", "POST", input);
+export const deleteMhxyPriceSnapshot = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/price-snapshots/${id}`, "DELETE");
 export const createMhxyInventoryTransfer = (input: MhxyInventoryTransferInput) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>("/api/mhxy/inventory-transfers", "POST", input);
 export const updateMhxyInventoryTransfer = (id: string, input: Partial<MhxyInventoryTransferInput>) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>(`/api/mhxy/inventory-transfers/${id}`, "PATCH", input);
+export const deleteMhxyInventoryTransfer = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/inventory-transfers/${id}`, "DELETE");
 export const setMhxyInventoryTarget = (input: Omit<MhxyInventoryTarget, "updatedAt">) =>
   mhxyJsonRequest<MhxyInventoryTarget>("/api/mhxy/inventory-targets", "PUT", input);
 

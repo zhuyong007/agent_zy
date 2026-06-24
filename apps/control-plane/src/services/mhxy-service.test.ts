@@ -74,6 +74,32 @@ describe("mhxy service", () => {
     ]);
   });
 
+  it("conserves the full inventory cost when selling the entire position", () => {
+    const service = createService();
+    service.createTrade({
+      type: "buy",
+      itemName: "尾差测试",
+      quantity: 3,
+      unitPrice: 0.33,
+      feeRmb: 0.01,
+      currency: "rmb",
+      occurredAt: "2026-06-01T10:00:00.000Z"
+    });
+    service.createTrade({
+      type: "sell",
+      itemName: "尾差测试",
+      quantity: 3,
+      unitPrice: 0,
+      currency: "rmb",
+      occurredAt: "2026-06-02T10:00:00.000Z"
+    });
+
+    expect(service.getDashboard().tradeResults[0]).toMatchObject({
+      costBasisRmb: 1,
+      realizedProfitRmb: -1
+    });
+  });
+
   it("freezes game coin conversion and charges five percent only on game coin sells", () => {
     const service = createService();
 
@@ -161,6 +187,31 @@ describe("mhxy service", () => {
       unrealizedProfitRmb: 100,
       expectedSellServerName: "紫禁城"
     });
+  });
+
+  it("requires the historical exchange rate for game coin price snapshots", () => {
+    const service = createService();
+
+    expect(() =>
+      service.createPriceSnapshot({
+        itemName: "高级魔兽要诀",
+        currency: "gameCoin",
+        gameCoinUnitPriceWan: 1500,
+        capturedAt: "2026-06-02T10:00:00.000Z",
+        serverName: "长安城"
+      } as never)
+    ).toThrow("必须填写大于 0 的当时兑换比例");
+
+    expect(() =>
+      service.createPriceSnapshot({
+        itemName: "高级魔兽要诀",
+        currency: "gameCoin",
+        gameCoinUnitPriceWan: 1500,
+        rmbPerGameCoinWan: 0,
+        capturedAt: "2026-06-02T10:00:00.000Z",
+        serverName: "长安城"
+      })
+    ).toThrow("必须填写大于 0 的当时兑换比例");
   });
 
   it("moves weighted inventory cost and mandatory transfer cost across servers", () => {
@@ -275,6 +326,10 @@ describe("mhxy service", () => {
       realizedRevenueRmb: 2800,
       realizedProfitRmb: -200
     });
+    expect(dashboard.combinedSummary).toMatchObject({
+      holdingCostRmb: 1200,
+      realizedProfitRmb: -200
+    });
   });
 
   it("updates a holding asset flip to sold and validates sell fields", () => {
@@ -289,6 +344,10 @@ describe("mhxy service", () => {
     expect(() => service.updateAssetFlip(record.id, { sellPriceRmb: 950 })).toThrow(
       "卖出时间和卖出价格必须同时填写"
     );
+    expect(() => service.updateAssetFlip(record.id, {
+      sellAt: "2026-05-01T10:00:00.000Z",
+      sellPriceRmb: 950
+    })).toThrow("卖出时间不能早于买入时间");
 
     const sold = service.updateAssetFlip(record.id, {
       sellAt: "2026-06-05T10:00:00.000Z",
@@ -387,5 +446,114 @@ describe("mhxy service", () => {
       })
     ).toThrow("游戏币余额不足");
     expect(service.getDashboard().assetFlips).toHaveLength(1);
+  });
+
+  it("conserves all game coin batch RMB cents across many rounded allocations", () => {
+    const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 30_000_000,
+      rmbCost: 230
+    });
+    for (let index = 0; index < 45; index += 1) {
+      service.createAssetFlip({
+        category: "equipment",
+        name: `批次物品 ${index}`,
+        buyAt: new Date(Date.UTC(2026, 5, 2, 10, 0, index)).toISOString(),
+        purchaseCurrency: "gameCoin",
+        gameCoinCost: 666_666
+      });
+    }
+
+    const dashboard = service.getDashboard();
+    const allocated = dashboard.assetFlips.reduce((sum, item) => sum + item.buyPriceRmb, 0);
+    expect(Math.round((allocated + dashboard.gameCoinBalance.rmbCost) * 100)).toBe(23_000);
+  });
+
+  it("keeps historical game coin batch IDs when an earlier batch is added later", () => {
+    const service = createService();
+    const originalBatch = service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 10
+    });
+    const asset = service.createAssetFlip({
+      category: "summon",
+      name: "冻结批次资产",
+      buyAt: "2026-06-03T10:00:00.000Z",
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 100,
+      sellAt: "2026-06-04T10:00:00.000Z",
+      sellPriceRmb: 30
+    });
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-05-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 20
+    });
+
+    const persisted = service.getDashboard().assetFlips.find((item) => item.id === asset.id);
+    expect(persisted).toMatchObject({
+      buyPriceRmb: 10,
+      profitRmb: 20,
+      gameCoinAllocations: [expect.objectContaining({ gameCoinPurchaseId: originalBatch.id })]
+    });
+  });
+
+  it("keeps the original game coin allocation when editing non-cost asset fields", () => {
+    const service = createService();
+    const originalBatch = service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 10
+    });
+    const asset = service.createAssetFlip({
+      category: "summon",
+      name: "编辑后仍冻结成本",
+      buyAt: "2026-06-03T10:00:00.000Z",
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 100
+    });
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-05-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 20
+    });
+
+    const updated = service.updateAssetFlip(asset.id, { note: "只修改备注" });
+
+    expect(updated).toMatchObject({
+      buyPriceRmb: 10,
+      note: "只修改备注",
+      gameCoinAllocations: [expect.objectContaining({ gameCoinPurchaseId: originalBatch.id })]
+    });
+  });
+
+  it("rejects invalid runtime enums and protects referenced game coin batches from deletion", () => {
+    const service = createService();
+    expect(() => service.createTrade({
+      type: "buy",
+      itemName: "异常币种",
+      quantity: 1,
+      unitPrice: 100,
+      currency: "usd",
+      occurredAt: "2026-06-01T10:00:00.000Z"
+    } as never)).toThrow("交易币种必须是人民币或游戏币");
+
+    const purchase = service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 10
+    });
+    const asset = service.createAssetFlip({
+      category: "equipment",
+      name: "引用批次",
+      buyAt: "2026-06-02T10:00:00.000Z",
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 100
+    });
+    expect(() => service.deleteGameCoinPurchase(purchase.id)).toThrow("游戏币批次不存在");
+    service.deleteAssetFlip(asset.id);
+    expect(service.deleteGameCoinPurchase(purchase.id)).toEqual({ id: purchase.id });
   });
 });

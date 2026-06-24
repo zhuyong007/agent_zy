@@ -105,4 +105,29 @@ describe("local data sync adapters", () => {
     );
     expect(repository.readTrades()).toHaveLength(1);
   });
+
+  it("rejects semantically invalid mhxy snapshots before replacing local data", () => {
+    const { dataDir, adapters } = fixture();
+    const repository = createMhxyRepository(dataDir);
+    repository.writeTrades([{ id: "trade-1", type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 10, currency: "rmb", occurredAt: "2026-01-01", rmbAmount: 10, feeRmb: 0, createdAt: "2026-01-01", updatedAt: "2026-01-01" }]);
+    const records = adapters.mhxy.read();
+    records.set("trade:trade-2", {
+      id: "trade-2",
+      type: "sell",
+      itemName: "不存在的库存",
+      quantity: 1,
+      unitPrice: 10,
+      currency: "rmb",
+      occurredAt: "2026-01-02",
+      rmbAmount: 999,
+      feeRmb: 0,
+      createdAt: "2026-01-02",
+      updatedAt: "2026-01-02"
+    });
+
+    expect(() => adapters.mhxy.write(records)).toThrow("库存不足");
+    expect(repository.readTrades()).toEqual([
+      expect.objectContaining({ id: "trade-1", rmbAmount: 10 })
+    ]);
+  });
 });

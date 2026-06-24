@@ -25,6 +25,19 @@ import { createPromptTemplateService } from "./services/prompt-template-service"
 import { createChildMealService } from "./services/child-meal-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createMhxyService } from "./services/mhxy-service";
+import {
+  mhxyAssetFlipInputSchema,
+  mhxyAssetFlipPatchSchema,
+  mhxyGameCoinPurchaseInputSchema,
+  mhxyGameCoinPurchasePatchSchema,
+  mhxyInventoryTargetSchema,
+  mhxyInventoryTransferInputSchema,
+  mhxyInventoryTransferPatchSchema,
+  mhxyPriceSnapshotInputSchema,
+  mhxyTradeInputSchema,
+  mhxyTradePatchSchema,
+  parseMhxyInput
+} from "./services/mhxy-validation";
 import { createGitDataSyncTransport } from "./services/data-sync/git-transport";
 import { createLocalDataSyncAdapters } from "./services/data-sync/local-adapters";
 import { createDataSyncService, type DataSyncService } from "./services/data-sync/service";
@@ -1386,57 +1399,105 @@ export function createControlPlaneApp(options?: {
   app.get("/api/mhxy", async () => mhxyService.getDashboard());
 
   app.post("/api/mhxy/trades", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createTrade((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createTrade(parseMhxyInput(mhxyTradeInputSchema, request.body ?? {}))
+    )
   );
 
   app.patch("/api/mhxy/trades/:id", async (request, reply) =>
     mhxyAction(reply, () =>
-      mhxyService.updateTrade((request.params as { id: string }).id, (request.body ?? {}) as any)
+      mhxyService.updateTrade(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyTradePatchSchema, request.body ?? {})
+      )
     )
   );
 
+  app.delete("/api/mhxy/trades/:id", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.deleteTrade((request.params as { id: string }).id))
+  );
+
   app.post("/api/mhxy/asset-flips", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createAssetFlip((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createAssetFlip(parseMhxyInput(mhxyAssetFlipInputSchema, request.body ?? {}))
+    )
   );
 
   app.patch("/api/mhxy/asset-flips/:id", async (request, reply) =>
     mhxyAction(reply, () =>
-      mhxyService.updateAssetFlip((request.params as { id: string }).id, (request.body ?? {}) as any)
+      mhxyService.updateAssetFlip(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyAssetFlipPatchSchema, request.body ?? {})
+      )
     )
   );
 
+  app.delete("/api/mhxy/asset-flips/:id", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.deleteAssetFlip((request.params as { id: string }).id))
+  );
+
   app.post("/api/mhxy/game-coin-purchases", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createGameCoinPurchase((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createGameCoinPurchase(
+        parseMhxyInput(mhxyGameCoinPurchaseInputSchema, request.body ?? {})
+      )
+    )
   );
 
   app.patch("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
     mhxyAction(reply, () =>
       mhxyService.updateGameCoinPurchase(
         (request.params as { id: string }).id,
-        (request.body ?? {}) as any
+        parseMhxyInput(mhxyGameCoinPurchasePatchSchema, request.body ?? {})
       )
     )
   );
 
+  app.delete("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.deleteGameCoinPurchase((request.params as { id: string }).id)
+    )
+  );
+
   app.post("/api/mhxy/price-snapshots", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createPriceSnapshot((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createPriceSnapshot(
+        parseMhxyInput(mhxyPriceSnapshotInputSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.delete("/api/mhxy/price-snapshots/:id", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.deletePriceSnapshot((request.params as { id: string }).id))
   );
 
   app.post("/api/mhxy/inventory-transfers", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createInventoryTransfer((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createInventoryTransfer(
+        parseMhxyInput(mhxyInventoryTransferInputSchema, request.body ?? {})
+      )
+    )
   );
 
   app.patch("/api/mhxy/inventory-transfers/:id", async (request, reply) =>
     mhxyAction(reply, () =>
       mhxyService.updateInventoryTransfer(
         (request.params as { id: string }).id,
-        (request.body ?? {}) as any
+        parseMhxyInput(mhxyInventoryTransferPatchSchema, request.body ?? {})
       )
     )
   );
 
+  app.delete("/api/mhxy/inventory-transfers/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.deleteInventoryTransfer((request.params as { id: string }).id)
+    )
+  );
+
   app.put("/api/mhxy/inventory-targets", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.setInventoryTarget((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.setInventoryTarget(parseMhxyInput(mhxyInventoryTargetSchema, request.body ?? {}))
+    )
   );
 
   app.get("/api/stream", async (_request, reply) => {

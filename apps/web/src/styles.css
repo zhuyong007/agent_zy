@@ -2478,6 +2478,13 @@ textarea {
   background: var(--panel-strong);
 }
 
+.mhxy-accounting-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
 .mhxy-error {
   padding: 12px 16px;
   border-radius: 12px;
@@ -2530,6 +2537,24 @@ textarea {
 .mhxy-history p {
   margin: 0;
   color: var(--muted);
+}
+
+.mhxy-row-actions,
+.mhxy-confirm-delete {
+  display: flex !important;
+  gap: 6px !important;
+  align-items: center;
+}
+
+.mhxy-delete-button,
+.mhxy-confirm-delete button:last-child {
+  border: 1px solid color-mix(in srgb, #dc2626 42%, var(--line)) !important;
+  background: transparent !important;
+  color: #dc2626 !important;
+}
+
+.mhxy-confirm-delete button:first-child {
+  background: #dc2626 !important;
 }
 
 .mhxy-panel {

@@ -15,6 +15,7 @@ import type {
 } from "@agent-zy/shared-types";
 
 import { createMhxyRepository } from "../mhxy-repository";
+import { createMhxyService } from "../mhxy-service";
 import type { ControlPlaneStore } from "../store";
 import { canonicalJson, type SyncRecord, type SyncRecordMap } from "./merge";
 
@@ -194,6 +195,7 @@ function createBrowserAdapter(store: ControlPlaneStore): LocalDataSyncAdapter {
 
 function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
   const repository = createMhxyRepository(dataDir);
+  const service = createMhxyService(dataDir);
   return {
     read() {
       const records: SyncRecordMap = new Map();
@@ -229,14 +231,6 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         }
       }
 
-      const current = {
-        trades: repository.readTrades(),
-        snapshots: repository.readPriceSnapshots(),
-        transfers: repository.readInventoryTransfers(),
-        targets: repository.readInventoryTargets(),
-        assetFlips: repository.readAssetFlips(),
-        gameCoinPurchases: repository.readGameCoinPurchases()
-      };
       const next = {
         trades: recordsWithPrefix(records, "trade:") as unknown as MhxyTradeRecord[],
         snapshots: recordsWithPrefix(records, "price-snapshot:") as unknown as MhxyPriceSnapshot[],
@@ -245,22 +239,14 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         assetFlips: recordsWithPrefix(records, "asset-flip:") as unknown as MhxyAssetFlipRecord[],
         gameCoinPurchases: recordsWithPrefix(records, "game-coin-purchase:") as unknown as MhxyGameCoinPurchaseRecord[]
       };
-      try {
-        repository.writeTrades(next.trades);
-        repository.writePriceSnapshots(next.snapshots);
-        repository.writeInventoryTransfers(next.transfers);
-        repository.writeInventoryTargets(next.targets);
-        repository.writeAssetFlips(next.assetFlips);
-        repository.writeGameCoinPurchases(next.gameCoinPurchases);
-      } catch (error) {
-        repository.writeTrades(current.trades);
-        repository.writePriceSnapshots(current.snapshots);
-        repository.writeInventoryTransfers(current.transfers);
-        repository.writeInventoryTargets(current.targets);
-        repository.writeAssetFlips(current.assetFlips);
-        repository.writeGameCoinPurchases(current.gameCoinPurchases);
-        throw error;
-      }
+      service.replaceAllData({
+        trades: next.trades,
+        priceSnapshots: next.snapshots,
+        inventoryTransfers: next.transfers,
+        inventoryTargets: next.targets,
+        assetFlips: next.assetFlips,
+        gameCoinPurchases: next.gameCoinPurchases
+      });
     }
   };
 }
