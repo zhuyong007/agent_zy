@@ -26,10 +26,13 @@ interface AihotItem {
   title: string;
   title_en?: string | null;
   url: string;
+  permalink?: string | null;
   source: string;
   publishedAt?: string | null;
   summary?: string | null;
   category?: string | null;
+  score?: number | null;
+  selected?: boolean | null;
 }
 
 function emptyFeed(): NewsFeedResponse {
@@ -77,6 +80,14 @@ function parseTake(value: unknown, fallback = 50): number {
   return Math.min(Math.max(Math.trunc(value), 1), 100);
 }
 
+function parseScore(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.min(Math.max(Math.trunc(value), 0), 100);
+}
+
 function baseUrl() {
   return process.env.AIHOT_BASE_URL ?? AIHOT_BASE_URL;
 }
@@ -88,7 +99,7 @@ function buildItemsUrl(meta: AgentExecutionRequest["meta"]): string {
   const since = asString(meta?.since)?.trim();
   const cursor = asString(meta?.cursor)?.trim();
 
-  url.searchParams.set("mode", "all");
+  url.searchParams.set("mode", meta?.view === "all" ? "all" : "selected");
 
   if (category && CATEGORY_VALUES.has(category as NewsCategory)) {
     url.searchParams.set("category", category);
@@ -176,10 +187,13 @@ function parseFeedItem(value: unknown): NewsFeedItem | null {
     title,
     titleEn: asString(item?.title_en),
     url,
+    permalink: asString(item?.permalink)?.trim() || null,
     source,
     publishedAt: asString(item?.publishedAt) ?? new Date(0).toISOString(),
     summary: asString(item?.summary)?.trim() || "AI HOT 暂无摘要，建议打开原文查看细节。",
-    category: parseCategory(asString(item?.category))
+    category: parseCategory(asString(item?.category)),
+    score: parseScore(item?.score),
+    selected: typeof item?.selected === "boolean" ? item.selected : null
   };
 }
 

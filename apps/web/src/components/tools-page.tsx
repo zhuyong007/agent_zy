@@ -52,6 +52,12 @@ export function ToolsCatalog() {
           <p>记录孩子每日饮食，结合月龄、季节食材和长期历史规划未来食谱。</p>
           <strong>打开工具</strong>
         </Link>
+        <Link className="tools-card" to="/tools/screen-monitor">
+          <span className="tools-card__index">06</span>
+          <h2>屏幕监控</h2>
+          <p>定时理解当前屏幕内容，提取结果，并在变化时用系统语音播报。</p>
+          <strong>打开工具</strong>
+        </Link>
       </div>
     </section>
   );

@@ -9117,7 +9117,8 @@ body[data-theme="day"] .cinematic-project-controls input {
 .file-organizer-shell,
 .browser-automation-shell,
 .prompt-template-shell,
-.child-meal-shell {
+.child-meal-shell,
+.screen-monitor-shell {
   display: grid;
   box-sizing: border-box;
   width: 100%;
@@ -9143,7 +9144,8 @@ body[data-theme="day"] .cinematic-project-controls input {
 .tools-workspace > .file-organizer-shell,
 .tools-workspace > .browser-automation-shell,
 .tools-workspace > .prompt-template-shell,
-.tools-workspace > .child-meal-shell {
+.tools-workspace > .child-meal-shell,
+.tools-workspace > .screen-monitor-shell {
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -9327,6 +9329,155 @@ body[data-theme="day"] .cinematic-project-controls input {
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.screen-monitor-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 14px;
+  min-width: 0;
+}
+
+.screen-monitor-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--manage-line);
+  border-radius: 14px;
+  background: var(--manage-surface);
+  color: var(--manage-text);
+  padding: 18px;
+  min-width: 0;
+}
+
+.screen-monitor-panel__title {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.screen-monitor-panel__title h2 {
+  margin: 4px 0 0;
+}
+
+.screen-monitor-panel__title span,
+.screen-monitor-history__item time,
+.screen-monitor-history__item > span,
+.screen-monitor-result dt {
+  color: var(--manage-muted);
+  font-size: 12px;
+}
+
+.screen-monitor-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--manage-muted);
+  font-size: 13px;
+}
+
+.screen-monitor-form textarea,
+.screen-monitor-form input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--manage-line);
+  border-radius: 10px;
+  background: var(--manage-control);
+  color: var(--manage-text);
+  padding: 11px 12px;
+  font: inherit;
+}
+
+.screen-monitor-form textarea {
+  resize: vertical;
+  min-height: 130px;
+}
+
+.screen-monitor-checkbox {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px !important;
+  color: var(--manage-text) !important;
+}
+
+.screen-monitor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.screen-monitor-actions button {
+  border: 1px solid var(--manage-line);
+  border-radius: 8px;
+  background: var(--manage-control);
+  color: var(--manage-text);
+  padding: 10px 13px;
+}
+
+.screen-monitor-actions button:first-child {
+  background: var(--manage-text);
+  border-color: var(--manage-text);
+  color: var(--manage-surface);
+}
+
+.screen-monitor-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.screen-monitor-result__body {
+  display: grid;
+  gap: 12px;
+}
+
+.screen-monitor-result__body > strong {
+  font-size: clamp(24px, 4vw, 42px);
+  line-height: 1.05;
+}
+
+.screen-monitor-result__body p,
+.screen-monitor-history__item p,
+.screen-monitor-empty {
+  color: var(--manage-muted);
+}
+
+.screen-monitor-result dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.screen-monitor-result dl > div {
+  border: 1px solid var(--manage-line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.screen-monitor-result dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+
+.screen-monitor-history__list {
+  display: grid;
+  gap: 10px;
+}
+
+.screen-monitor-history__item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  border-top: 1px solid var(--manage-line);
+  padding-top: 10px;
+}
+
+.screen-monitor-history__item strong,
+.screen-monitor-history__item p {
+  display: block;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .photo-renamer-form,
@@ -10563,6 +10714,16 @@ body[data-theme="day"] .cinematic-project-controls input {
   .browser-automation-fields,
   .browser-automation-fields--step {
     grid-template-columns: 1fr;
+  }
+
+  .screen-monitor-layout,
+  .screen-monitor-result dl,
+  .screen-monitor-history__item {
+    grid-template-columns: 1fr;
+  }
+
+  .screen-monitor-actions {
+    flex-direction: column;
   }
 }
 

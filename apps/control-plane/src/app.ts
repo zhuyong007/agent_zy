@@ -57,6 +57,13 @@ import {
   type BrowserAutomationExecutor
 } from "./services/browser-automation-service";
 import {
+  createPyAutoGuiScreenCapture,
+  createScreenMonitorService,
+  createSystemSpeechNotifier,
+  type ScreenMonitorNotifier,
+  type ScreenMonitorScreenCapture
+} from "./services/screen-monitor-service";
+import {
   cleanupClassicShotVideoWorkDir,
   createClassicShotVideoProcessor,
   type ClassicShotVideoProcessor
@@ -75,6 +82,8 @@ export function createControlPlaneApp(options?: {
   historyXhsService?: HistoryXhsService;
   classicShotVideoProcessor?: ClassicShotVideoProcessor;
   browserAutomationExecutor?: BrowserAutomationExecutor;
+  screenMonitorCapture?: ScreenMonitorScreenCapture;
+  screenMonitorNotifier?: ScreenMonitorNotifier;
   modelRuntime?: ModelRuntime;
   dataSyncService?: DataSyncService;
 }) {
@@ -114,6 +123,12 @@ export function createControlPlaneApp(options?: {
   const browserAutomation = createBrowserAutomationService({
     store,
     executor: browserAutomationExecutor
+  });
+  const screenMonitor = createScreenMonitorService({
+    store,
+    modelRuntime,
+    capture: options?.screenMonitorCapture ?? createPyAutoGuiScreenCapture(),
+    notifier: options?.screenMonitorNotifier ?? createSystemSpeechNotifier()
   });
   if ((store.getState().browserAutomation?.workflows ?? []).length === 0) {
     browserAutomation.createWorkflow(createBrowserAutomationExampleWorkflow(new Date().toISOString()));
@@ -261,6 +276,17 @@ export function createControlPlaneApp(options?: {
 
     reply.code(403).send({
       message: "file organizer is only available from a local browser"
+    });
+    return true;
+  }
+
+  function rejectRemoteScreenMonitorRequest(request: { headers: Record<string, unknown> }, reply: any) {
+    if (isLocalBrowserRequest(request.headers.origin)) {
+      return false;
+    }
+
+    reply.code(403).send({
+      message: "screen monitor is only available from a local browser"
     });
     return true;
   }
@@ -475,6 +501,60 @@ export function createControlPlaneApp(options?: {
       });
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "failed to undo file organization"
+      });
+    }
+  });
+
+  app.get("/api/tools/screen-monitor", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    return screenMonitor.getState();
+  });
+
+  app.post("/api/tools/screen-monitor/sessions", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    try {
+      return await screenMonitor.startSession(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to start screen monitor session"
+      });
+    }
+  });
+
+  app.post("/api/tools/screen-monitor/sessions/:id/check", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    const params = request.params as { id: string };
+
+    try {
+      return await screenMonitor.checkSession(params.id, "manual");
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "screen monitor session not found"
+      });
+    }
+  });
+
+  app.post("/api/tools/screen-monitor/sessions/:id/stop", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    const params = request.params as { id: string };
+
+    try {
+      return screenMonitor.stopSession(params.id);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "screen monitor session not found"
       });
     }
   });

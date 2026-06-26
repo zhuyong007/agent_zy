@@ -27,10 +27,13 @@ const sampleItems: NewsFeedItem[] = [
     title: "OpenAI 发布新模型",
     titleEn: null,
     url: "https://example.com/news-1",
+    permalink: "https://aihot.virxact.com/items/news-1",
     source: "AI HOT",
     publishedAt: "2026-05-14T08:00:00.000Z",
     summary: "测试摘要",
-    category: "ai-models"
+    category: "ai-models",
+    score: 91,
+    selected: true
   }
 ];
 
@@ -270,7 +273,7 @@ describe("NewsPanel", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          url: "https://example.com/news-1"
+          url: "https://aihot.virxact.com/items/news-1"
         })
       })
     );

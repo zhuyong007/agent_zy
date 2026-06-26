@@ -60,6 +60,9 @@ import type {
   PhotoRenameMediaScope,
   PhotoRenamePreviewResult,
   PhotoRenameUndoResult,
+  ScreenMonitorObservation,
+  ScreenMonitorSession,
+  ScreenMonitorState,
   SummaryEntry,
   SummaryType,
   TopicState
@@ -294,6 +297,68 @@ export async function undoFileOrganization(undoToken: string): Promise<FileOrgan
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to undo file organization"));
+  }
+
+  return response.json();
+}
+
+export async function fetchScreenMonitor(): Promise<ScreenMonitorState> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor`);
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to fetch screen monitor state"));
+  }
+
+  return response.json();
+}
+
+export async function startScreenMonitorSession(input: {
+  prompt: string;
+  intervalMs?: number;
+  muted?: boolean;
+}): Promise<ScreenMonitorSession> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to start screen monitor session"));
+  }
+
+  return response.json();
+}
+
+export async function checkScreenMonitorSession(id: string): Promise<ScreenMonitorObservation> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor/sessions/${id}/check`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to check screen monitor session"));
+  }
+
+  return response.json();
+}
+
+export async function stopScreenMonitorSession(id: string): Promise<ScreenMonitorSession> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor/sessions/${id}/stop`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to stop screen monitor session"));
   }
 
   return response.json();

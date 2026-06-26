@@ -576,10 +576,13 @@ export interface NewsFeedItem {
   title: string;
   titleEn: string | null;
   url: string;
+  permalink?: string | null;
   source: string;
   publishedAt: string;
   summary: string;
   category: NewsCategory;
+  score?: number | null;
+  selected?: boolean | null;
 }
 
 export interface NewsFeedResponse {
@@ -1270,6 +1273,48 @@ export interface BrowserAutomationState {
   lastUpdatedAt: string | null;
 }
 
+export type ScreenMonitorSessionStatus = "running" | "stopped";
+export type ScreenMonitorObservationStatus = "completed" | "failed";
+export type ScreenMonitorObservationTrigger = "initial" | "interval" | "manual";
+
+export interface ScreenMonitorObservation {
+  id: string;
+  sessionId: string;
+  checkedAt: string;
+  status: ScreenMonitorObservationStatus;
+  trigger: ScreenMonitorObservationTrigger;
+  resultText: string;
+  confidence: number | null;
+  done: boolean;
+  announcement: string;
+  reason: string;
+  announced: boolean;
+  error: string | null;
+}
+
+export interface ScreenMonitorSession {
+  id: string;
+  prompt: string;
+  intervalMs: number;
+  muted: boolean;
+  status: ScreenMonitorSessionStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string;
+  stoppedAt: string | null;
+  lastObservationId: string | null;
+  lastResultText: string | null;
+  lastAnnouncement: string | null;
+  lastError: string | null;
+  observations: ScreenMonitorObservation[];
+}
+
+export interface ScreenMonitorState {
+  sessions: ScreenMonitorSession[];
+  activeSessionId: string | null;
+  lastUpdatedAt: string | null;
+}
+
 export type DataSyncModule = "history" | "mhxy" | "browser-automation";
 export type DataSyncActivityStatus = "idle" | "syncing" | "synced" | "conflict" | "failed";
 export type DataSyncResolutionChoice = "local" | "remote";
@@ -1609,6 +1654,7 @@ export interface AppState {
   classicShots: ClassicShotState;
   imageToVideo?: ImageToVideoState;
   browserAutomation?: BrowserAutomationState;
+  screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
   summary: SummaryState;
@@ -1652,6 +1698,7 @@ export interface DashboardData {
     dashboard: ImageToVideoDashboardSummary;
   };
   browserAutomation?: BrowserAutomationState;
+  screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
   summary: SummaryState & {
