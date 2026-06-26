@@ -1539,6 +1539,115 @@ export interface ChildMealOverview {
   warnings: string[];
 }
 
+export type InterviewSkillCategory = "基础高频" | "全栈模块" | "AI 模块" | "实战模块";
+export type InterviewQuestionType = "short-answer" | "code";
+export type InterviewQuestionDifficulty = "basic" | "middle" | "advanced";
+export type InterviewSessionStatus = "active" | "completed";
+export type InterviewMastery = "未掌握" | "基本掌握" | "掌握";
+
+export interface InterviewSkillModule {
+  id: string;
+  label: string;
+  category: InterviewSkillCategory;
+  description: string;
+  targetSkills: string[];
+  defaultWeight: number;
+  weaknessBoost: number;
+}
+
+export interface InterviewQuestion {
+  id: string;
+  sessionId: string;
+  date: string;
+  moduleId: string;
+  type: InterviewQuestionType;
+  difficulty: InterviewQuestionDifficulty;
+  prompt: string;
+  targetSkill: string;
+  expectedPoints: string[];
+  referenceAnswer: string;
+  rubric: string[];
+  createdAt: string;
+}
+
+export interface InterviewAnswer {
+  id: string;
+  questionId: string;
+  sessionId: string;
+  date: string;
+  answerText: string;
+  aiScore: number | null;
+  manualScore: number | null;
+  finalScore: number | null;
+  feedback: string;
+  strengths: string[];
+  gaps: string[];
+  mistakeTags: string[];
+  referenceAnswer: string;
+  mastery: InterviewMastery;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InterviewModuleScore {
+  moduleId: string;
+  label: string;
+  completedCount: number;
+  averageScore: number | null;
+}
+
+export interface InterviewDailyReport {
+  id: string;
+  date: string;
+  sessionId: string;
+  completedCount: number;
+  totalCount: number;
+  averageScore: number | null;
+  moduleScores: InterviewModuleScore[];
+  weakPoints: string[];
+  summary: string;
+  nextSuggestions: string[];
+  updatedAt: string;
+}
+
+export interface InterviewDailySession {
+  id: string;
+  date: string;
+  moduleIds: string[];
+  questions: InterviewQuestion[];
+  answers: InterviewAnswer[];
+  report: InterviewDailyReport;
+  status: InterviewSessionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InterviewWeakModule {
+  id: string;
+  label: string;
+  category: InterviewSkillCategory;
+  score: number | null;
+  reason: string;
+}
+
+export interface InterviewState {
+  skillModules: InterviewSkillModule[];
+  sessions: InterviewDailySession[];
+  lastUpdatedAt: string | null;
+}
+
+export interface InterviewOverview {
+  skillModules: InterviewSkillModule[];
+  weakModules: InterviewWeakModule[];
+  todaySession: InterviewDailySession | null;
+  recentReports: InterviewDailyReport[];
+  wrongAnswers: InterviewAnswer[];
+  todayReport: InterviewDailyReport | null;
+  streakDays: number;
+  estimatedMinutes: number;
+}
+
 export type ModelProviderId =
   | "modelscope"
   | "deepseek"
@@ -1657,6 +1766,7 @@ export interface AppState {
   screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
+  interview?: InterviewState;
   summary: SummaryState;
   historyPush: HistoryPushState;
   historyXhs?: HistoryXhsState;
@@ -1701,6 +1811,7 @@ export interface DashboardData {
   screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
+  interview?: InterviewState;
   summary: SummaryState & {
     dashboard: SummaryDashboard;
   };

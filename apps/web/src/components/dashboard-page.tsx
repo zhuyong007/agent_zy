@@ -137,6 +137,7 @@ export type RailSection =
   | "cinematic"
   | "classicShots"
   | "imageToVideo"
+  | "interview"
   | "ledger"
   | "mhxy"
   | "todo"
@@ -161,19 +162,20 @@ const railItems: Array<{
     { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
     { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
     { key: "imageToVideo", label: "图转视频", stamp: "07", to: "/image-to-video", moduleId: "imageToVideo" },
-    { key: "ledger", label: "记账", stamp: "08", to: "/ledger", moduleId: "ledger" },
-    { key: "mhxy", label: "梦幻西游", stamp: "09", to: "/mhxy", moduleId: "mhxy" },
-    { key: "todo", label: "待办", stamp: "10", to: "/todo", moduleId: "todo" },
-    { key: "summary", label: "总结", stamp: "11", to: "/summaries", moduleId: "summary" },
+    { key: "interview", label: "面试训练", stamp: "08", to: "/interview", moduleId: "interview" },
+    { key: "ledger", label: "记账", stamp: "09", to: "/ledger", moduleId: "ledger" },
+    { key: "mhxy", label: "梦幻西游", stamp: "10", to: "/mhxy", moduleId: "mhxy" },
+    { key: "todo", label: "待办", stamp: "11", to: "/todo", moduleId: "todo" },
+    { key: "summary", label: "总结", stamp: "12", to: "/summaries", moduleId: "summary" },
     {
       key: "browserAutomation",
       label: "浏览器自动化",
-      stamp: "12",
+      stamp: "13",
       to: "/tools/browser-automation",
       moduleId: "browserAutomation"
     },
-    { key: "tools", label: "工具", stamp: "13", to: "/tools" },
-    { key: "logs", label: "日志", stamp: "14", to: "/logs" }
+    { key: "tools", label: "工具", stamp: "14", to: "/tools" },
+    { key: "logs", label: "日志", stamp: "15", to: "/logs" }
   ];
 
 const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
@@ -1382,6 +1384,53 @@ function SummaryPanel({
   );
 }
 
+function InterviewPanel({
+  dashboard,
+  size
+}: {
+  dashboard: DashboardData;
+  size: HomeModuleSize;
+}) {
+  const interview = dashboard.interview;
+  const today = new Date().toISOString().slice(0, 10);
+  const session = interview?.sessions.find((item) => item.date === today) ?? interview?.sessions[0] ?? null;
+  const report = session?.report ?? null;
+  const compact = size === "small" || size === "smaller";
+  const weakLabels = report?.weakPoints.length
+    ? report.weakPoints
+    : ["Python 基础", "RAG", "Agent 工作流"];
+
+  return (
+    <section className={`interview-panel interview-panel--${size}`}>
+      <div className="interview-panel__header">
+        <div>
+          <p className="eyebrow">Interview Drill</p>
+          <h2>面试训练</h2>
+        </div>
+        <Link to="/interview" className="panel-link">进入训练</Link>
+      </div>
+      <div className="interview-panel__metrics">
+        <div>
+          <span>今日</span>
+          <strong>{report ? `${report.completedCount}/${report.totalCount}` : "待生成"}</strong>
+        </div>
+        <div>
+          <span>平均分</span>
+          <strong>{report?.averageScore ?? "-"}</strong>
+        </div>
+      </div>
+      {!compact ? (
+        <p className="interview-panel__summary">
+          {report?.summary ?? "按 AI 全栈开发能力图谱轮换模块，每个模块至少 3 题。"}
+        </p>
+      ) : null}
+      <div className="interview-panel__chips">
+        {weakLabels.slice(0, compact ? 2 : 4).map((label) => <span key={label}>{label}</span>)}
+      </div>
+    </section>
+  );
+}
+
 function buildFallbackProgress(dashboard: DashboardData): ChatProgressStep[] {
   const latestTask = dashboard.recentTasks[0];
 
@@ -1988,6 +2037,10 @@ function renderHomeModuleContent({
 
   if (id === "summary") {
     return <SummaryPanel dashboard={dashboard} size={size} />;
+  }
+
+  if (id === "interview") {
+    return <InterviewPanel dashboard={dashboard} size={size} />;
   }
 
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;

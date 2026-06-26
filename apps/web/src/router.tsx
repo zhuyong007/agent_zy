@@ -24,6 +24,7 @@ import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ScreenMonitorPage } from "./components/screen-monitor-page";
 import { ToolsPage } from "./components/tools-page";
 import { ImageToVideoPage } from "./components/image-to-video-page";
+import { InterviewPage } from "./components/interview-page";
 import { ChildMealPage } from "./components/child-meal-page";
 import { MhxyPage } from "./components/mhxy-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
@@ -80,6 +81,12 @@ const imageToVideoRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/image-to-video",
   component: ImageToVideoPage
+});
+
+const interviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/interview",
+  component: InterviewPage
 });
 
 const manageRoute = createRoute({
@@ -169,6 +176,7 @@ const routeTree = rootRoute.addChildren([
   cinematicRoute,
   classicShotRoute,
   imageToVideoRoute,
+  interviewRoute,
   ledgerRoute,
   mhxyRoute,
   todoRoute,

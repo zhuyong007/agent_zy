@@ -50,6 +50,7 @@ describe("home-layout", () => {
       "news",
       "chat",
       "mhxy",
+      "interview",
       "todo",
       "ledger",
       "topics",
@@ -63,6 +64,7 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.size)).toEqual([
       "large",
       "max",
+      "smaller",
       "smaller",
       "max",
       "small",
@@ -81,6 +83,7 @@ describe("home-layout", () => {
       true,
       true,
       true,
+      true,
       false,
       true,
       true,
@@ -91,6 +94,7 @@ describe("home-layout", () => {
     expect(DEFAULT_HOME_LAYOUT.map((item) => item.showInNavigation)).toEqual([
       true,
       false,
+      true,
       true,
       true,
       true,
@@ -347,6 +351,7 @@ describe("home-layout", () => {
       "news",
       "chat",
       "mhxy",
+      "interview",
       "todo",
       "ledger",
       "history",
@@ -356,7 +361,7 @@ describe("home-layout", () => {
       "summary",
       "browserAutomation"
     ]);
-    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(moved.map((item) => item.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 
   test("resets stored layout back to the default homepage layout", () => {

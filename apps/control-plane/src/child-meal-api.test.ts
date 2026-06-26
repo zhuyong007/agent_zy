@@ -6,6 +6,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneApp } from "./app";
 
+function localDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 describe("child meal API", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-child-meal-api-"));
   const modelRuntime = { chat: vi.fn() } as any;
@@ -18,6 +25,9 @@ describe("child meal API", () => {
   });
 
   it("supports the profile, note, record, plan and overview workflow", async () => {
+    const today = localDate();
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const monthEnd = `${today.slice(0, 7)}-31`;
     const initial = await app.inject({ method: "GET", url: "/api/tools/child-meal/overview" });
     expect(initial.statusCode).toBe(200);
     expect(initial.json().childSummary).toMatchObject({ birthDate: "2025-01-22" });
@@ -42,7 +52,7 @@ describe("child meal API", () => {
     });
     const filteredNotes = await app.inject({
       method: "GET",
-      url: "/api/tools/child-meal/notes?start=2026-06-01&end=2026-06-30"
+      url: `/api/tools/child-meal/notes?start=${monthStart}&end=${monthEnd}`
     });
     expect(filteredNotes.json().map((item: { content: string }) => item.content)).toEqual(["最近喜欢吃鸡蛋羹"]);
     const emptyNotes = await app.inject({
@@ -55,7 +65,7 @@ describe("child meal API", () => {
       method: "POST",
       url: "/api/tools/child-meal/records",
       payload: {
-        date: "2026-06-11",
+        date: today,
         mealType: "lunch",
         foodName: "番茄牛肉软饭",
         ingredients: ["番茄", "牛肉", "米饭"],
@@ -71,7 +81,7 @@ describe("child meal API", () => {
       payload: {
         childSummary: initial.json().childSummary,
         planType: "today",
-        dateRange: { start: "2026-06-11", end: "2026-06-11" },
+        dateRange: { start: today, end: today },
         days: [],
         weeklyBalanceSummary: { proteinRotation: [], vegetableRotation: [], fruitRotation: [], stapleFoodRotation: [] },
         warnings: [],
@@ -84,7 +94,7 @@ describe("child meal API", () => {
       method: "POST",
       url: "/api/tools/child-meal/records/from-plan",
       payload: {
-        date: "2026-06-11",
+        date: today,
         meal: {
           mealType: "dinner",
           mealName: "南瓜猪肉粥",
