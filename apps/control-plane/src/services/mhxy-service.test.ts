@@ -332,6 +332,49 @@ describe("mhxy service", () => {
     });
   });
 
+  it("imports role asset flips and reports generic asset errors", () => {
+    const service = createService();
+    const timestamp = "2026-06-01T10:00:00.000Z";
+
+    service.replaceAllData({
+      trades: [],
+      priceSnapshots: [],
+      inventoryTransfers: [],
+      inventoryTargets: [],
+      gameCoinPurchases: [],
+      assetFlips: [
+        {
+          id: "role-1",
+          category: "role",
+          name: "175 龙宫",
+          buyAt: timestamp,
+          purchaseCurrency: "rmb",
+          buyPriceRmb: 4200,
+          status: "holding",
+          profitRmb: null,
+          serverName: "长安城",
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+      ]
+    });
+
+    const dashboard = service.getDashboard();
+    expect(dashboard.assetFlips).toEqual([
+      expect.objectContaining({
+        category: "role",
+        name: "175 龙宫",
+        buyPriceRmb: 4200
+      })
+    ]);
+    expect(dashboard.assetFlipSummary).toMatchObject({
+      holdingCount: 1,
+      holdingCostRmb: 4200
+    });
+    expect(() => service.updateAssetFlip("missing", {})).toThrow("资产记录不存在");
+    expect(() => service.deleteAssetFlip("missing")).toThrow("资产记录不存在");
+  });
+
   it("updates a holding asset flip to sold and validates sell fields", () => {
     const service = createService();
     const record = service.createAssetFlip({
