@@ -9,6 +9,7 @@
 .agent-zy-test-data/
 .tmp-*/
 .superpowers/
+.worktrees/
 
 # Build output
 apps/web/dist/
