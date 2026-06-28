@@ -22,6 +22,7 @@ node_modules/
 .npm/
 .npm-cache/
 .cache/
+.playwright-cli/
 
 # OS metadata
 .DS_Store
