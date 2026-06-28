@@ -111,7 +111,9 @@ function normalizeAssetFlip(
     status,
     profitRmb: sellPriceRmb === undefined ? null : roundRmb(sellPriceRmb - buyPriceRmb),
     ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
-    ...(normalizeLabel(input.characterName) ? { characterName: normalizeLabel(input.characterName) } : {}),
+    ...(input.category !== "role" && normalizeLabel(input.characterName)
+      ? { characterName: normalizeLabel(input.characterName) }
+      : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
