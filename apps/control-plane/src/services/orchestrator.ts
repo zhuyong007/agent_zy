@@ -84,7 +84,7 @@ export interface ControlPlaneOrchestrator {
   generateClassicShotProject(input?: Record<string, unknown>): Promise<ClassicShotState>;
   generateClassicShotProjectFromVideo(input: Record<string, unknown>): Promise<ClassicShotState>;
   generateHistory(meta?: Record<string, unknown>): Promise<DashboardData>;
-  syncHistoryXhs(): Promise<HistoryXhsState>;
+  importHistoryXhsWorkbook(input: { buffer: Buffer; fileName?: string | null }): Promise<HistoryXhsState>;
   listSummaries(query?: SummaryListQuery): { entries: SummaryEntry[] };
   getSummary(id: string): SummaryEntry | null;
   createSummary(input: unknown): SummaryEntry;
@@ -873,8 +873,8 @@ export function createControlPlaneOrchestrator(options: {
 
       return this.getDashboard();
     },
-    async syncHistoryXhs() {
-      const synced = await options.historyXhsService.sync();
+    async importHistoryXhsWorkbook(input) {
+      const synced = await options.historyXhsService.importWorkbook(input);
       const next = options.store.setHistoryXhsState(synced);
 
       options.eventBus.emit("dashboard.updated", options.store.getState());

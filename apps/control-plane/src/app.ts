@@ -46,7 +46,7 @@ import {
   type ClassicShotVideoProcessor
 } from "./services/classic-shot-video-service";
 import { restartProjectWithScript, type ProjectRestarter } from "./services/system-restart";
-import { isLocalBrowserRequest, parseFallbackMultipartImage, parseFallbackMultipartUpload } from "./app-helpers";
+import { isLocalBrowserRequest, parseFallbackMultipartFile, parseFallbackMultipartImage, parseFallbackMultipartUpload } from "./app-helpers";
 
 const CLASSIC_SHOT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const CLASSIC_SHOT_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
@@ -1274,7 +1274,20 @@ export function createControlPlaneApp(options?: {
     return orchestrator.generateHistory(body);
   });
 
-  app.post("/api/history/xhs/sync", async () => orchestrator.syncHistoryXhs());
+  app.post("/api/history/xhs/import", async (request, reply) => {
+    try {
+      const file = parseFallbackMultipartFile(request.headers["content-type"], request.body, "file");
+
+      return await orchestrator.importHistoryXhsWorkbook({
+        buffer: file.buffer,
+        fileName: file.filename
+      });
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "小红书数据文件导入失败"
+      });
+    }
+  });
 
   app.post("/api/news/refresh", async (request) => {
     const body = (request.body ?? {}) as Record<string, unknown>;

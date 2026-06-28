@@ -178,6 +178,23 @@ function createMultipartVideoPayload(input: {
   return Buffer.concat(chunks);
 }
 
+function createMultipartFilePayload(input: {
+  boundary: string;
+  fieldName: string;
+  filename: string;
+  mimeType: string;
+  content: Buffer | string;
+}) {
+  return Buffer.concat([
+    Buffer.from(`--${input.boundary}\r\n`),
+    Buffer.from(
+      `Content-Disposition: form-data; name="${input.fieldName}"; filename="${input.filename}"\r\nContent-Type: ${input.mimeType}\r\n\r\n`
+    ),
+    typeof input.content === "string" ? Buffer.from(input.content) : input.content,
+    Buffer.from(`\r\n--${input.boundary}--\r\n`)
+  ]);
+}
+
 describe("control-plane app", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-test-"));
   const app = createControlPlaneApp({
@@ -1206,42 +1223,47 @@ describe("control-plane app", () => {
     }
   });
 
-  it("syncs history xiaohongshu analytics", async () => {
+  it("imports history xiaohongshu analytics from a workbook upload", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-xhs-test-"));
+    const workbookFilename = "\u7b14\u8bb0\u5217\u8868\u660e\u7ec6\u8868.xlsx";
+    const noteTitle = "\u5f20\u9a9e\u51fa\u4f7f\u897f\u57df";
+    const importWorkbook = vi.fn(async (input: { buffer: Buffer; fileName?: string | null }) => {
+      expect(Buffer.isBuffer(input.buffer)).toBe(true);
+
+      return {
+        posts: [
+          {
+            id: "note-1",
+            title: noteTitle,
+            publishedAt: "2026-05-20T08:00:00.000Z",
+            url: "https://www.xiaohongshu.com/explore/note-1",
+            views: 1200,
+            likes: 88,
+            collects: 19,
+            comments: 7,
+            shares: 3
+          }
+        ],
+        overview: {
+          postCount: 1,
+          totalViews: 1200,
+          totalLikes: 88,
+          totalCollects: 19,
+          totalComments: 7,
+          totalShares: 3,
+          engagementRate: 117 / 1200
+        },
+        lastSyncedAt: "2026-05-24T08:00:00.000Z",
+        status: "idle" as const,
+        lastError: null,
+        sourceUrl: input.fileName ?? "uploaded-file"
+      };
+    });
     const isolatedApp = createControlPlaneApp({
       dataDir: isolatedDataDir,
       startSchedulers: false,
       historyXhsService: {
-        async sync() {
-          return {
-            posts: [
-              {
-                id: "note-1",
-                title: "张骞出使西域",
-                publishedAt: "2026-05-20T08:00:00.000Z",
-                url: "https://www.xiaohongshu.com/explore/note-1",
-                views: 1200,
-                likes: 88,
-                collects: 19,
-                comments: 7,
-                shares: 3
-              }
-            ],
-            overview: {
-              postCount: 1,
-              totalViews: 1200,
-              totalLikes: 88,
-              totalCollects: 19,
-              totalComments: 7,
-              totalShares: 3,
-              engagementRate: 117 / 1200
-            },
-            lastSyncedAt: "2026-05-24T08:00:00.000Z",
-            status: "idle",
-            lastError: null,
-            sourceUrl: "https://creator.xiaohongshu.com/statistics/data-analysis"
-          };
-        }
+        importWorkbook
       }
     });
 
@@ -1250,7 +1272,17 @@ describe("control-plane app", () => {
     try {
       const response = await isolatedApp.inject({
         method: "POST",
-        url: "/api/history/xhs/sync"
+        url: "/api/history/xhs/import",
+        headers: {
+          "content-type": "multipart/form-data; boundary=xhs-boundary"
+        },
+        payload: createMultipartFilePayload({
+          boundary: "xhs-boundary",
+          fieldName: "file",
+          filename: workbookFilename,
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          content: "fake workbook"
+        })
       });
 
       expect(response.statusCode).toBe(200);
@@ -1259,12 +1291,19 @@ describe("control-plane app", () => {
           totalViews: 1200,
           totalLikes: 88
         },
+        sourceUrl: workbookFilename,
         posts: [
           expect.objectContaining({
-            title: "张骞出使西域"
+            title: noteTitle
           })
         ]
       });
+      expect(importWorkbook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileName: workbookFilename,
+          buffer: expect.any(Buffer)
+        })
+      );
 
       const dashboard = await isolatedApp.inject({
         method: "GET",

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { HistoryDynastyPayload, HistoryPostPayload } from "@agent-zy/shared-types";
 
-import { cancelNotification, fetchDashboard, generateHistory, openDashboardStream, reportClientEvent, syncHistoryXhsAnalytics } from "../api";
+import { cancelNotification, fetchDashboard, generateHistory, importHistoryXhsAnalytics, openDashboardStream, reportClientEvent } from "../api";
 import {
   getHistoryNotifications,
   getHistoryPayloadSummary,
@@ -51,6 +51,7 @@ export function HistoryPage() {
   const [generationMode, setGenerationMode] = useState<"topic" | "dynasty">("topic");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedPromptKeys, setCopiedPromptKeys] = useState<Set<string>>(() => new Set());
+  const xhsFileInputRef = useRef<HTMLInputElement | null>(null);
   const { layout } = useHomeLayoutPreferences();
 
   const dashboardQuery = useQuery({
@@ -103,14 +104,14 @@ export function HistoryPage() {
       );
     }
   });
-  const historyXhsSyncMutation = useMutation({
-    mutationFn: () => {
+  const historyXhsImportMutation = useMutation({
+    mutationFn: (file: File) => {
       void reportClientEvent({
-        action: "history.xhs.sync.clicked",
-        message: "获取小红书数据",
+        action: "history.xhs.import.clicked",
+        message: "导入小红书数据",
         agentId: "history-agent"
       }).catch(() => undefined);
-      return syncHistoryXhsAnalytics();
+      return importHistoryXhsAnalytics(file);
     },
     onSuccess: (nextDashboard) => {
       queryClient.setQueryData(["home-layout"], nextDashboard.homeLayout);
@@ -148,6 +149,7 @@ export function HistoryPage() {
 
   const dashboard = dashboardQuery.data;
   const historyXhs = dashboard?.historyXhs;
+  const historyXhsSourceIsUrl = /^https?:\/\//.test(historyXhs?.sourceUrl ?? "");
   const historyNotifications = useMemo(
     () => getHistoryNotifications(dashboard?.notifications ?? []),
     [dashboard?.notifications]
@@ -288,11 +290,24 @@ export function HistoryPage() {
               <button
                 type="button"
                 className="history-copy-button"
-                disabled={historyXhsSyncMutation.isPending}
-                onClick={() => historyXhsSyncMutation.mutate()}
+                disabled={historyXhsImportMutation.isPending}
+                onClick={() => xhsFileInputRef.current?.click()}
               >
-                {historyXhsSyncMutation.isPending ? "获取中..." : "获取小红书数据"}
+                {historyXhsImportMutation.isPending ? "导入中..." : "导入 Excel"}
               </button>
+              <input
+                ref={xhsFileInputRef}
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) {
+                    historyXhsImportMutation.mutate(file);
+                  }
+                }}
+              />
             </div>
             <div className="history-xhs-panel__metrics">
               <div>
@@ -322,9 +337,13 @@ export function HistoryPage() {
             </div>
             <div className="history-xhs-panel__footer">
               <span>最近同步 {formatDateTime(historyXhs?.lastSyncedAt)}</span>
-              <a href={historyXhs?.sourceUrl ?? "https://creator.xiaohongshu.com/statistics/data-analysis"} target="_blank" rel="noreferrer">
-                打开数据分析页
-              </a>
+              {historyXhsSourceIsUrl ? (
+                <a href={historyXhs?.sourceUrl} target="_blank" rel="noreferrer">
+                  打开数据来源
+                </a>
+              ) : (
+                <span>{historyXhs?.sourceUrl ?? "等待导入 Excel"}</span>
+              )}
             </div>
             {historyXhs?.posts?.length ? (
               <div className="history-xhs-panel__posts">
@@ -339,12 +358,12 @@ export function HistoryPage() {
                 ))}
               </div>
             ) : null}
-            {historyXhs?.lastError || historyXhsSyncMutation.isError ? (
+            {historyXhs?.lastError || historyXhsImportMutation.isError ? (
               <div className="news-error">
                 {historyXhs?.lastError ??
-                  (historyXhsSyncMutation.error instanceof Error
-                    ? historyXhsSyncMutation.error.message
-                    : "获取小红书数据失败")}
+                  (historyXhsImportMutation.error instanceof Error
+                    ? historyXhsImportMutation.error.message
+                    : "导入小红书数据失败")}
               </div>
             ) : null}
           </section>

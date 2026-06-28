@@ -22,7 +22,7 @@ import {
   executePhotoRenames,
   applyPromptTemplate,
   deletePromptTemplate,
-  syncHistoryXhsAnalytics,
+  importHistoryXhsAnalytics,
   testModelProfile,
   runBrowserAutomationWorkflow,
   stopBrowserAutomationRun,
@@ -428,12 +428,12 @@ describe("testModelProfile", () => {
   });
 });
 
-describe("syncHistoryXhsAnalytics", () => {
+describe("importHistoryXhsAnalytics", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("posts to the history xiaohongshu sync endpoint and refreshes dashboard", async () => {
+  it("uploads a history xiaohongshu workbook and refreshes dashboard", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -462,12 +462,13 @@ describe("syncHistoryXhsAnalytics", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    const dashboard = await syncHistoryXhsAnalytics();
+    const dashboard = await importHistoryXhsAnalytics(new File(["xlsx"], "笔记列表明细表.xlsx"));
 
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/history/xhs/sync");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/history/xhs/import");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: "POST"
     });
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/dashboard");
     expect(dashboard.historyXhs?.overview.totalViews).toBe(1200);
   });

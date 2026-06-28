@@ -164,13 +164,13 @@ vi.mock("../api", () => ({
   saveHomeLayout: vi.fn(async (layout) => layout),
   generateHistory: vi.fn(async () => dashboard),
   reportClientEvent: vi.fn(async () => ({ ok: true })),
-  syncHistoryXhsAnalytics: vi.fn(async () => dashboard),
+  importHistoryXhsAnalytics: vi.fn(async () => dashboard),
   cancelNotification: vi.fn(async () => dashboardAfterDelete),
   openDashboardStream: vi.fn(() => () => undefined),
   restartProject: vi.fn(async () => ({ ok: true }))
 }));
 
-import { cancelNotification, fetchDashboard, syncHistoryXhsAnalytics } from "../api";
+import { cancelNotification, fetchDashboard, importHistoryXhsAnalytics } from "../api";
 import { HistoryPage } from "./history-page";
 
 describe("HistoryPage", () => {
@@ -320,7 +320,7 @@ describe("HistoryPage", () => {
     expect(cancelNotification).toHaveBeenCalledWith("history-1");
   });
 
-  it("shows xiaohongshu analytics and syncs them on demand", async () => {
+  it("shows xiaohongshu analytics and imports them from an Excel file", async () => {
     await renderHistoryPage();
 
     expect(container.textContent).toContain("小红书数据总览");
@@ -328,16 +328,22 @@ describe("HistoryPage", () => {
     expect(container.textContent).toContain("1,200");
 
     const syncButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("获取小红书数据")
+      button.textContent?.includes("导入 Excel")
     ) as HTMLButtonElement | undefined;
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
 
     expect(syncButton).toBeTruthy();
+    expect(fileInput).toBeTruthy();
 
     await act(async () => {
-      syncButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      Object.defineProperty(fileInput, "files", {
+        value: [new File(["xlsx"], "笔记列表明细表.xlsx")],
+        configurable: true
+      });
+      fileInput?.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    expect(syncHistoryXhsAnalytics).toHaveBeenCalledTimes(1);
+    expect(importHistoryXhsAnalytics).toHaveBeenCalledTimes(1);
   });
 
   it("renders and copies dynasty four-module payloads", async () => {

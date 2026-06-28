@@ -1091,13 +1091,17 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
   return dashboard;
 }
 
-export async function syncHistoryXhsAnalytics(): Promise<DashboardData> {
-  const response = await fetch(`${API_BASE}/api/history/xhs/sync`, {
-    method: "POST"
+export async function importHistoryXhsAnalytics(file: File): Promise<DashboardData> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/api/history/xhs/import`, {
+    method: "POST",
+    body: formData
   });
 
   if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to sync history xiaohongshu analytics"));
+    throw new Error(await readApiError(response, "Failed to import history xiaohongshu analytics"));
   }
 
   const historyXhs = (await response.json()) as HistoryXhsState;

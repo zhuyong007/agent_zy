@@ -9,5 +9,5 @@ export const manifest = defineAgentManifest({
   triggers: ["user", "schedule", "system"],
   modulePath: "agents/browser-automation-agent/src/index.ts",
   manifestPath: "agents/browser-automation-agent/src/manifest.ts",
-  tags: ["浏览器", "自动化", "Chrome", "网页", "流程", "Playwright"]
+  tags: ["浏览器", "自动化", "Chrome", "网页", "流程"]
 });
