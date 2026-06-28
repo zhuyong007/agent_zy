@@ -56,8 +56,8 @@ function normalizeAssetFlip(
   input: MhxyAssetFlipInput,
   existing?: MhxyAssetFlipRecord
 ): MhxyAssetFlipRecord {
-  if (input.category !== "summon" && input.category !== "equipment") {
-    throw new Error("资产类型必须是召唤兽或装备");
+  if (input.category !== "role" && input.category !== "summon" && input.category !== "equipment") {
+    throw new Error("资产类型必须是角色、召唤兽或装备");
   }
   const name = input.name.trim();
   if (!name) throw new Error("名称不能为空");

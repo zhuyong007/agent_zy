@@ -60,7 +60,7 @@ export const mhxyInventoryTransferInputSchema = z.object(transferShape).strict()
 export const mhxyInventoryTransferPatchSchema = z.object(transferShape).partial().strict();
 
 const assetFlipShape = {
-  category: z.enum(["summon", "equipment"]),
+  category: z.enum(["role", "summon", "equipment"]),
   name: z.string(),
   buyAt: dateTime,
   purchaseCurrency: z.enum(["rmb", "gameCoin"]).optional(),
