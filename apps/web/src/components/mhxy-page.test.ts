@@ -101,6 +101,7 @@ vi.mock("../api", () => ({
         status: "holding",
         profitRmb: null,
         serverName: "长安城",
+        characterName: "旧归属",
         createdAt: "2026-06-05T10:00:00.000Z",
         updatedAt: "2026-06-05T10:00:00.000Z"
       }
@@ -173,7 +174,8 @@ import {
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
-  fetchMhxyDashboard
+  fetchMhxyDashboard,
+  updateMhxyAssetFlip
 } from "../api";
 import { MhxyPage } from "./mhxy-page";
 
@@ -444,7 +446,7 @@ describe("MhxyPage", () => {
     expect(container.textContent).toContain("还没有已售出的资产记录。");
   });
 
-  it("submits role assets as RMB-only trades", async () => {
+  it("submits asset trades as RMB-only trades", async () => {
     const container = await renderPage();
     await switchTab(container, "资产交易记录");
 
@@ -506,6 +508,35 @@ describe("MhxyPage", () => {
         characterName: undefined,
         purchaseCurrency: "rmb",
         buyPriceRmb: 5000
+      })
+    );
+  });
+
+  it("clears stale owner character when saving an existing role asset", async () => {
+    const container = await renderPage();
+    await switchTab(container, "资产交易记录");
+    const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
+      .find((item) => item.textContent?.includes("175 大唐官府")) as HTMLElement;
+
+    await act(async () => {
+      Array.from(row.querySelectorAll("button"))
+        .find((button) => button.textContent === "编辑")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    expect(form.querySelector('[name="characterName"]')).toBeNull();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(updateMhxyAssetFlip).toHaveBeenCalledWith(
+      "asset-3",
+      expect.objectContaining({
+        category: "role",
+        name: "175 大唐官府",
+        characterName: undefined
       })
     );
   });

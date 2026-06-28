@@ -103,10 +103,10 @@ export function MhxyPage() {
     }
   });
   const assetFlipMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: MhxyAssetFlipInput) =>
       editingAssetFlipId
-        ? updateMhxyAssetFlip(editingAssetFlipId, assetFlip)
-        : createMhxyAssetFlip(assetFlip),
+        ? updateMhxyAssetFlip(editingAssetFlipId, input)
+        : createMhxyAssetFlip(input),
     onSuccess: () => {
       setAssetFlip(emptyAssetFlip());
       setEditingAssetFlipId(null);
@@ -184,7 +184,11 @@ export function MhxyPage() {
 
   function submitAssetFlip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    assetFlipMutation.mutate();
+    assetFlipMutation.mutate(
+      assetFlip.category === "role"
+        ? { ...assetFlip, characterName: undefined }
+        : assetFlip
+    );
   }
 
   return (
