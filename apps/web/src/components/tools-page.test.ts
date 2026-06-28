@@ -55,4 +55,20 @@ describe("ToolsCatalog", () => {
     expect(link?.getAttribute("href")).toBe("/tools/file-organizer");
     expect(link?.textContent).toContain("按时间或类型");
   });
+
+  it("shows the screen monitor tool entry", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(React.createElement(ToolsCatalog));
+    });
+
+    const link = Array.from(container.querySelectorAll("a"))
+      .find((item) => item.textContent?.includes("屏幕监控"));
+
+    expect(link?.getAttribute("href")).toBe("/tools/screen-monitor");
+    expect(link?.textContent).toContain("定时理解当前屏幕");
+  });
 });

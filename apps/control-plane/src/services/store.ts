@@ -36,6 +36,9 @@ import type {
   PromptTemplateRecord,
   PromptTemplateState,
   PromptTemplateVariable,
+  ScreenMonitorObservation,
+  ScreenMonitorSession,
+  ScreenMonitorState,
   SummaryDashboard,
   SummaryEntry,
   SummaryState,
@@ -243,6 +246,7 @@ function createInitialState(): AppState {
     classicShots: createEmptyClassicShotState(),
     imageToVideo: createEmptyImageToVideoState(),
     browserAutomation: createEmptyBrowserAutomationState(),
+    screenMonitor: createEmptyScreenMonitorState(),
     promptTemplates: createEmptyPromptTemplateState(),
     childMeal: createEmptyChildMealState(),
     summary: createEmptySummaryState(),
@@ -408,6 +412,14 @@ function createEmptyBrowserAutomationState(): BrowserAutomationState {
   };
 }
 
+function createEmptyScreenMonitorState(): ScreenMonitorState {
+  return {
+    sessions: [],
+    activeSessionId: null,
+    lastUpdatedAt: null
+  };
+}
+
 function createEmptyPromptTemplateState(): PromptTemplateState {
   return {
     items: [],
@@ -467,6 +479,71 @@ function normalizeBrowserAutomationState(
     runs: Array.isArray(browserAutomation?.runs) ? browserAutomation.runs.slice(0, 50) : [],
     triggerRules: Array.isArray(browserAutomation?.triggerRules) ? browserAutomation.triggerRules : [],
     lastUpdatedAt: typeof browserAutomation?.lastUpdatedAt === "string" ? browserAutomation.lastUpdatedAt : null
+  };
+}
+
+function normalizeScreenMonitorObservation(value: Partial<ScreenMonitorObservation> | undefined): ScreenMonitorObservation | null {
+  if (!value || typeof value.id !== "string" || typeof value.sessionId !== "string") {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    sessionId: value.sessionId,
+    checkedAt: typeof value.checkedAt === "string" ? value.checkedAt : nowIso(),
+    status: value.status === "failed" ? "failed" : "completed",
+    trigger: value.trigger === "interval" || value.trigger === "manual" ? value.trigger : "initial",
+    resultText: typeof value.resultText === "string" ? value.resultText : "",
+    confidence: typeof value.confidence === "number" && Number.isFinite(value.confidence) ? value.confidence : null,
+    done: value.done === true,
+    announcement: typeof value.announcement === "string" ? value.announcement : "",
+    reason: typeof value.reason === "string" ? value.reason : "",
+    announced: value.announced === true,
+    error: typeof value.error === "string" ? value.error : null
+  };
+}
+
+function normalizeScreenMonitorSession(value: Partial<ScreenMonitorSession> | undefined): ScreenMonitorSession | null {
+  if (!value || typeof value.id !== "string") {
+    return null;
+  }
+  const observations = Array.isArray(value.observations)
+    ? value.observations.map((item) => normalizeScreenMonitorObservation(item)).filter((item): item is ScreenMonitorObservation => Boolean(item))
+    : [];
+  const now = nowIso();
+
+  return {
+    id: value.id,
+    prompt: typeof value.prompt === "string" ? value.prompt : "",
+    intervalMs: typeof value.intervalMs === "number" && Number.isFinite(value.intervalMs) ? value.intervalMs : 180000,
+    muted: value.muted === true,
+    status: value.status === "running" ? "running" : "stopped",
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : now,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : now,
+    startedAt: typeof value.startedAt === "string" ? value.startedAt : now,
+    stoppedAt: typeof value.stoppedAt === "string" ? value.stoppedAt : null,
+    lastObservationId: typeof value.lastObservationId === "string" ? value.lastObservationId : null,
+    lastResultText: typeof value.lastResultText === "string" ? value.lastResultText : null,
+    lastAnnouncement: typeof value.lastAnnouncement === "string" ? value.lastAnnouncement : null,
+    lastError: typeof value.lastError === "string" ? value.lastError : null,
+    observations: observations.slice(0, 50)
+  };
+}
+
+function normalizeScreenMonitorState(value: Partial<ScreenMonitorState> | undefined): ScreenMonitorState {
+  const sessions = Array.isArray(value?.sessions)
+    ? value.sessions.map((item) => normalizeScreenMonitorSession(item)).filter((item): item is ScreenMonitorSession => Boolean(item)).slice(0, 20)
+    : [];
+  const activeSessionId =
+    typeof value?.activeSessionId === "string" &&
+    sessions.some((session) => session.id === value.activeSessionId && session.status === "running")
+      ? value.activeSessionId
+      : sessions.find((session) => session.status === "running")?.id ?? null;
+
+  return {
+    sessions,
+    activeSessionId,
+    lastUpdatedAt: typeof value?.lastUpdatedAt === "string" ? value.lastUpdatedAt : null
   };
 }
 
@@ -1691,6 +1768,7 @@ function normalizeAppState(state: AppState): AppState {
     classicShots: normalizeClassicShotState(state.classicShots),
     imageToVideo: normalizeImageToVideoState(state.imageToVideo),
     browserAutomation: normalizeBrowserAutomationState(state.browserAutomation),
+    screenMonitor: normalizeScreenMonitorState(state.screenMonitor),
     promptTemplates: normalizePromptTemplateState(state.promptTemplates),
     childMeal: normalizeChildMealState(state.childMeal),
     summary: normalizeSummaryState(state.summary),
@@ -1722,6 +1800,7 @@ export interface ControlPlaneStore {
   setCinematicState(cinematic: CinematicState): CinematicState;
   setImageToVideoState(imageToVideo: ImageToVideoState): ImageToVideoState;
   setBrowserAutomationState(browserAutomation: BrowserAutomationState): BrowserAutomationState;
+  setScreenMonitorState(screenMonitor: ScreenMonitorState): ScreenMonitorState;
   setPromptTemplateState(promptTemplates: PromptTemplateState): PromptTemplateState;
   setChildMealState(childMeal: ChildMealState): ChildMealState;
   setSummaryState(summary: SummaryState): SummaryState;
@@ -1899,6 +1978,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.browserAutomation);
+    },
+    setScreenMonitorState(screenMonitor) {
+      state.screenMonitor = normalizeScreenMonitorState(screenMonitor);
+      persist();
+
+      return structuredClone(state.screenMonitor);
     },
     setPromptTemplateState(promptTemplates) {
       state.promptTemplates = normalizePromptTemplateState(promptTemplates);
@@ -2126,6 +2211,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           dashboard: buildImageToVideoDashboard(normalizeImageToVideoState(state.imageToVideo))
         },
         browserAutomation: state.browserAutomation,
+        screenMonitor: state.screenMonitor,
         promptTemplates: state.promptTemplates,
         childMeal: state.childMeal,
         summary: {

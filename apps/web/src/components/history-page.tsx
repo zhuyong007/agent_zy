@@ -13,6 +13,7 @@ import {
   isHistoryPostPayload
 } from "../history-view";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
+import { DataSyncControl } from "./data-sync-control";
 
 function formatDateTime(timestamp?: string | null) {
   if (!timestamp) {
@@ -221,6 +222,10 @@ export function HistoryPage() {
               </p>
             </div>
             <div className="history-stage__meta">
+              <DataSyncControl
+                module="history"
+                onSynced={() => queryClient.invalidateQueries({ queryKey: ["dashboard"] })}
+              />
               <span>{formatDateTime(selectedUpdatedAt)}</span>
               <strong>
                 {selectedPostPayload

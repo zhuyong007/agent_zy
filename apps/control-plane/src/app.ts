@@ -25,6 +25,22 @@ import { createPromptTemplateService } from "./services/prompt-template-service"
 import { createChildMealService } from "./services/child-meal-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createMhxyService } from "./services/mhxy-service";
+import {
+  mhxyAssetFlipInputSchema,
+  mhxyAssetFlipPatchSchema,
+  mhxyGameCoinPurchaseInputSchema,
+  mhxyGameCoinPurchasePatchSchema,
+  mhxyInventoryTargetSchema,
+  mhxyInventoryTransferInputSchema,
+  mhxyInventoryTransferPatchSchema,
+  mhxyPriceSnapshotInputSchema,
+  mhxyTradeInputSchema,
+  mhxyTradePatchSchema,
+  parseMhxyInput
+} from "./services/mhxy-validation";
+import { createGitDataSyncTransport } from "./services/data-sync/git-transport";
+import { createLocalDataSyncAdapters } from "./services/data-sync/local-adapters";
+import { createDataSyncService, type DataSyncService } from "./services/data-sync/service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -40,6 +56,13 @@ import {
   createBrowserAutomationService,
   type BrowserAutomationExecutor
 } from "./services/browser-automation-service";
+import {
+  createPyAutoGuiScreenCapture,
+  createScreenMonitorService,
+  createSystemSpeechNotifier,
+  type ScreenMonitorNotifier,
+  type ScreenMonitorScreenCapture
+} from "./services/screen-monitor-service";
 import {
   cleanupClassicShotVideoWorkDir,
   createClassicShotVideoProcessor,
@@ -59,7 +82,10 @@ export function createControlPlaneApp(options?: {
   historyXhsService?: HistoryXhsService;
   classicShotVideoProcessor?: ClassicShotVideoProcessor;
   browserAutomationExecutor?: BrowserAutomationExecutor;
+  screenMonitorCapture?: ScreenMonitorScreenCapture;
+  screenMonitorNotifier?: ScreenMonitorNotifier;
   modelRuntime?: ModelRuntime;
+  dataSyncService?: DataSyncService;
 }) {
   const app = Fastify();
   const startedAt = new Date().toISOString();
@@ -69,6 +95,19 @@ export function createControlPlaneApp(options?: {
 
   const dataDir = options?.dataDir ?? ".agent-zy-data";
   const store = createControlPlaneStore(dataDir);
+  const dataSyncService = options?.dataSyncService ?? createDataSyncService({
+    dataDir,
+    enabled: process.env.AGENT_ZY_DATA_SYNC_ENABLED === "true",
+    adapters: createLocalDataSyncAdapters({
+      dataDir,
+      projectDir: process.cwd(),
+      store
+    }),
+    transport: createGitDataSyncTransport({
+      projectDir: process.cwd(),
+      dataDir
+    })
+  });
   const eventLog = createEventLogService(dataDir);
   const photoRenamer = createPhotoRenamerService();
   const fileOrganizer = createFileOrganizerService();
@@ -84,6 +123,12 @@ export function createControlPlaneApp(options?: {
   const browserAutomation = createBrowserAutomationService({
     store,
     executor: browserAutomationExecutor
+  });
+  const screenMonitor = createScreenMonitorService({
+    store,
+    modelRuntime,
+    capture: options?.screenMonitorCapture ?? createPyAutoGuiScreenCapture(),
+    notifier: options?.screenMonitorNotifier ?? createSystemSpeechNotifier()
   });
   if ((store.getState().browserAutomation?.workflows ?? []).length === 0) {
     browserAutomation.createWorkflow(createBrowserAutomationExampleWorkflow(new Date().toISOString()));
@@ -113,7 +158,12 @@ export function createControlPlaneApp(options?: {
   const workerPool = createAgentWorkerPool({
     eventBus,
     modelRuntime,
-    eventLog
+    eventLog,
+    workerEnv: {
+      AGENT_ZY_DATA_DIR: dataDir,
+      HISTORY_TOPIC_ARCHIVE_PATH:
+        process.env.HISTORY_TOPIC_ARCHIVE_PATH ?? join(dataDir, "history", "topic-archive.json")
+    }
   });
   const orchestrator = createControlPlaneOrchestrator({
     store,
@@ -226,6 +276,17 @@ export function createControlPlaneApp(options?: {
 
     reply.code(403).send({
       message: "file organizer is only available from a local browser"
+    });
+    return true;
+  }
+
+  function rejectRemoteScreenMonitorRequest(request: { headers: Record<string, unknown> }, reply: any) {
+    if (isLocalBrowserRequest(request.headers.origin)) {
+      return false;
+    }
+
+    reply.code(403).send({
+      message: "screen monitor is only available from a local browser"
     });
     return true;
   }
@@ -440,6 +501,60 @@ export function createControlPlaneApp(options?: {
       });
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "failed to undo file organization"
+      });
+    }
+  });
+
+  app.get("/api/tools/screen-monitor", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    return screenMonitor.getState();
+  });
+
+  app.post("/api/tools/screen-monitor/sessions", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    try {
+      return await screenMonitor.startSession(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "failed to start screen monitor session"
+      });
+    }
+  });
+
+  app.post("/api/tools/screen-monitor/sessions/:id/check", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    const params = request.params as { id: string };
+
+    try {
+      return await screenMonitor.checkSession(params.id, "manual");
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "screen monitor session not found"
+      });
+    }
+  });
+
+  app.post("/api/tools/screen-monitor/sessions/:id/stop", async (request, reply) => {
+    if (rejectRemoteScreenMonitorRequest(request, reply)) {
+      return reply;
+    }
+
+    const params = request.params as { id: string };
+
+    try {
+      return screenMonitor.stopSession(params.id);
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : "screen monitor session not found"
       });
     }
   });
@@ -880,6 +995,38 @@ export function createControlPlaneApp(options?: {
   });
 
   app.get("/api/home-layout", async () => orchestrator.getHomeLayout());
+
+  app.get("/api/data-sync/status", async () => dataSyncService.getStatus());
+
+  app.post("/api/data-sync/:module", async (request, reply) => {
+    const module = (request.params as { module?: unknown }).module;
+    if (module !== "history" && module !== "mhxy" && module !== "browser-automation") {
+      return reply.code(400).send({ message: "不支持的数据同步模块" });
+    }
+    const body = (request.body ?? {}) as {
+      conflictToken?: unknown;
+      resolutions?: unknown;
+    };
+    const resolutions = Array.isArray(body.resolutions)
+      ? body.resolutions.filter(
+          (item): item is { key: string; choice: "local" | "remote" } =>
+            Boolean(
+              item &&
+                typeof item === "object" &&
+                typeof (item as { key?: unknown }).key === "string" &&
+                ((item as { choice?: unknown }).choice === "local" ||
+                  (item as { choice?: unknown }).choice === "remote")
+            )
+        )
+      : [];
+    if (Array.isArray(body.resolutions) && resolutions.length !== body.resolutions.length) {
+      return reply.code(400).send({ message: "数据同步冲突选择无效" });
+    }
+    return dataSyncService.sync(module, {
+      ...(typeof body.conflictToken === "string" ? { conflictToken: body.conflictToken } : {}),
+      resolutions
+    });
+  });
 
   app.put("/api/home-layout", async (request) => {
     const body = (request.body ?? {}) as {
@@ -1345,44 +1492,105 @@ export function createControlPlaneApp(options?: {
   app.get("/api/mhxy", async () => mhxyService.getDashboard());
 
   app.post("/api/mhxy/trades", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createTrade((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createTrade(parseMhxyInput(mhxyTradeInputSchema, request.body ?? {}))
+    )
   );
 
   app.patch("/api/mhxy/trades/:id", async (request, reply) =>
     mhxyAction(reply, () =>
-      mhxyService.updateTrade((request.params as { id: string }).id, (request.body ?? {}) as any)
+      mhxyService.updateTrade(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyTradePatchSchema, request.body ?? {})
+      )
     )
   );
 
+  app.delete("/api/mhxy/trades/:id", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.deleteTrade((request.params as { id: string }).id))
+  );
+
   app.post("/api/mhxy/asset-flips", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createAssetFlip((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createAssetFlip(parseMhxyInput(mhxyAssetFlipInputSchema, request.body ?? {}))
+    )
   );
 
   app.patch("/api/mhxy/asset-flips/:id", async (request, reply) =>
     mhxyAction(reply, () =>
-      mhxyService.updateAssetFlip((request.params as { id: string }).id, (request.body ?? {}) as any)
+      mhxyService.updateAssetFlip(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyAssetFlipPatchSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.delete("/api/mhxy/asset-flips/:id", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.deleteAssetFlip((request.params as { id: string }).id))
+  );
+
+  app.post("/api/mhxy/game-coin-purchases", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.createGameCoinPurchase(
+        parseMhxyInput(mhxyGameCoinPurchaseInputSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.patch("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updateGameCoinPurchase(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyGameCoinPurchasePatchSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.delete("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.deleteGameCoinPurchase((request.params as { id: string }).id)
     )
   );
 
   app.post("/api/mhxy/price-snapshots", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createPriceSnapshot((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createPriceSnapshot(
+        parseMhxyInput(mhxyPriceSnapshotInputSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.delete("/api/mhxy/price-snapshots/:id", async (request, reply) =>
+    mhxyAction(reply, () => mhxyService.deletePriceSnapshot((request.params as { id: string }).id))
   );
 
   app.post("/api/mhxy/inventory-transfers", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.createInventoryTransfer((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.createInventoryTransfer(
+        parseMhxyInput(mhxyInventoryTransferInputSchema, request.body ?? {})
+      )
+    )
   );
 
   app.patch("/api/mhxy/inventory-transfers/:id", async (request, reply) =>
     mhxyAction(reply, () =>
       mhxyService.updateInventoryTransfer(
         (request.params as { id: string }).id,
-        (request.body ?? {}) as any
+        parseMhxyInput(mhxyInventoryTransferPatchSchema, request.body ?? {})
       )
     )
   );
 
+  app.delete("/api/mhxy/inventory-transfers/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.deleteInventoryTransfer((request.params as { id: string }).id)
+    )
+  );
+
   app.put("/api/mhxy/inventory-targets", async (request, reply) =>
-    mhxyAction(reply, () => mhxyService.setInventoryTarget((request.body ?? {}) as any))
+    mhxyAction(reply, () =>
+      mhxyService.setInventoryTarget(parseMhxyInput(mhxyInventoryTargetSchema, request.body ?? {}))
+    )
   );
 
   app.get("/api/stream", async (_request, reply) => {

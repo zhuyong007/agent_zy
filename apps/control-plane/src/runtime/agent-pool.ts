@@ -32,6 +32,7 @@ export function createAgentWorkerPool(options: {
   modelRuntime?: ModelRuntime;
   idleMs?: number;
   eventLog?: EventLogService;
+  workerEnv?: NodeJS.ProcessEnv;
 }): AgentWorkerPool {
   const workerEntry = resolve("apps/control-plane/src/runtime/agent-worker.ts");
   const idleMs = options.idleMs ?? 30_000;
@@ -59,6 +60,7 @@ export function createAgentWorkerPool(options: {
       cwd: process.cwd(),
       env: {
         ...process.env,
+        ...options.workerEnv,
         AGENT_ZY_WORKER: "1"
       },
       stdio: ["ignore", "pipe", "pipe", "ipc"],

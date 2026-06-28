@@ -21,6 +21,7 @@ import { PhotoRenamerPage } from "./components/photo-renamer-page";
 import { FileOrganizerPage } from "./components/file-organizer-page";
 import { BrowserAutomationPage } from "./components/browser-automation-page";
 import { PromptTemplatePage } from "./components/prompt-template-page";
+import { ScreenMonitorPage } from "./components/screen-monitor-page";
 import { ToolsPage } from "./components/tools-page";
 import { ImageToVideoPage } from "./components/image-to-video-page";
 import { ChildMealPage } from "./components/child-meal-page";
@@ -141,6 +142,12 @@ const browserAutomationRoute = createRoute({
   component: BrowserAutomationPage
 });
 
+const screenMonitorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools/screen-monitor",
+  component: ScreenMonitorPage
+});
+
 const promptTemplateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools/prompt-templates",
@@ -170,6 +177,7 @@ const routeTree = rootRoute.addChildren([
   photoRenamerRoute,
   fileOrganizerRoute,
   browserAutomationRoute,
+  screenMonitorRoute,
   promptTemplateRoute,
   childMealRoute,
   logsRoute

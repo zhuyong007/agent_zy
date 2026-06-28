@@ -15,6 +15,10 @@ import type {
   ClassicShotState,
   ClassicShotTargetPlatform,
   DashboardData,
+  DataSyncModule,
+  DataSyncResolution,
+  DataSyncResult,
+  DataSyncStatusResponse,
   EventLogInput,
   EventLogQuery,
   EventLogQueryResult,
@@ -39,6 +43,8 @@ import type {
   MhxyAssetFlipInput,
   MhxyAssetFlipRecord,
   MhxyDashboard,
+  MhxyGameCoinPurchaseInput,
+  MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
@@ -54,10 +60,36 @@ import type {
   PhotoRenameMediaScope,
   PhotoRenamePreviewResult,
   PhotoRenameUndoResult,
+  ScreenMonitorObservation,
+  ScreenMonitorSession,
+  ScreenMonitorState,
   SummaryEntry,
   SummaryType,
   TopicState
 } from "@agent-zy/shared-types";
+
+export async function fetchDataSyncStatus(): Promise<DataSyncStatusResponse> {
+  const response = await fetch(`${API_BASE}/api/data-sync/status`);
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "读取数据同步状态失败"));
+  }
+  return response.json();
+}
+
+export async function syncModuleData(
+  module: DataSyncModule,
+  request: { conflictToken?: string; resolutions?: DataSyncResolution[] } = {}
+): Promise<DataSyncResult> {
+  const response = await fetch(`${API_BASE}/api/data-sync/${module}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request)
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "同步模块数据失败"));
+  }
+  return response.json();
+}
 
 export function resolveApiBase(
   configuredBase?: string | null,
@@ -265,6 +297,68 @@ export async function undoFileOrganization(undoToken: string): Promise<FileOrgan
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to undo file organization"));
+  }
+
+  return response.json();
+}
+
+export async function fetchScreenMonitor(): Promise<ScreenMonitorState> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor`);
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to fetch screen monitor state"));
+  }
+
+  return response.json();
+}
+
+export async function startScreenMonitorSession(input: {
+  prompt: string;
+  intervalMs?: number;
+  muted?: boolean;
+}): Promise<ScreenMonitorSession> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to start screen monitor session"));
+  }
+
+  return response.json();
+}
+
+export async function checkScreenMonitorSession(id: string): Promise<ScreenMonitorObservation> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor/sessions/${id}/check`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to check screen monitor session"));
+  }
+
+  return response.json();
+}
+
+export async function stopScreenMonitorSession(id: string): Promise<ScreenMonitorSession> {
+  const response = await fetch(`${API_BASE}/api/tools/screen-monitor/sessions/${id}/stop`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to stop screen monitor session"));
   }
 
   return response.json();
@@ -1313,16 +1407,34 @@ export const createMhxyAssetFlip = (input: MhxyAssetFlipInput) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>("/api/mhxy/asset-flips", "POST", input);
 export const updateMhxyAssetFlip = (id: string, input: Partial<MhxyAssetFlipInput>) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>(`/api/mhxy/asset-flips/${id}`, "PATCH", input);
+export const deleteMhxyAssetFlip = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/asset-flips/${id}`, "DELETE");
+export const createMhxyGameCoinPurchase = (input: MhxyGameCoinPurchaseInput) =>
+  mhxyJsonRequest<MhxyGameCoinPurchaseRecord>("/api/mhxy/game-coin-purchases", "POST", input);
+export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCoinPurchaseInput>) =>
+  mhxyJsonRequest<MhxyGameCoinPurchaseRecord>(
+    `/api/mhxy/game-coin-purchases/${id}`,
+    "PATCH",
+    input
+  );
+export const deleteMhxyGameCoinPurchase = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-purchases/${id}`, "DELETE");
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>
   mhxyJsonRequest<MhxyTradeRecord>(`/api/mhxy/trades/${id}`, "PATCH", input);
+export const deleteMhxyTrade = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/trades/${id}`, "DELETE");
 export const createMhxyPriceSnapshot = (input: MhxyPriceSnapshotInput) =>
   mhxyJsonRequest<MhxyPriceSnapshot>("/api/mhxy/price-snapshots", "POST", input);
+export const deleteMhxyPriceSnapshot = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/price-snapshots/${id}`, "DELETE");
 export const createMhxyInventoryTransfer = (input: MhxyInventoryTransferInput) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>("/api/mhxy/inventory-transfers", "POST", input);
 export const updateMhxyInventoryTransfer = (id: string, input: Partial<MhxyInventoryTransferInput>) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>(`/api/mhxy/inventory-transfers/${id}`, "PATCH", input);
+export const deleteMhxyInventoryTransfer = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/inventory-transfers/${id}`, "DELETE");
 export const setMhxyInventoryTarget = (input: Omit<MhxyInventoryTarget, "updatedAt">) =>
   mhxyJsonRequest<MhxyInventoryTarget>("/api/mhxy/inventory-targets", "PUT", input);
 

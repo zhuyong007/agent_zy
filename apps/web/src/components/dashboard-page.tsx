@@ -679,37 +679,43 @@ export function NewsPanel({
         {timelineItems.length > 0 ? (
           <div className={`news-mini-timeline news-mini-timeline--${size}`}>
             {showDate ? <div className="news-mini-timeline__date">{dateLabel}</div> : null}
-            {timelineItems.map((item) => (
-              <a
-                key={item.id}
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="news-mini-timeline__item"
-                onClick={(event) => {
-                  event.preventDefault();
-                  void openExternalUrl(item.url).catch(() => {
-                    window.open(item.url, "_blank", "noopener,noreferrer");
-                  });
-                }}
-              >
-                <time>{formatTime(item.publishedAt)}</time>
-                <span className="news-mini-timeline__dot" aria-hidden="true" />
-                <div className="news-mini-timeline__card">
-                  <div className="intel-item__head">
-                    <span className="intel-source">{item.source}</span>
-                    <span className="intel-time">{formatTime(item.publishedAt)}</span>
-                  </div>
-                  <h3>{item.title}</h3>
-                  {showSummary ? <p>{item.summary}</p> : null}
-                  {showTags ? (
-                    <div className="news-mini-timeline__tags">
-                      <span>{newsCategoryFilters.find(([value]) => value === item.category)?.[1] ?? item.category}</span>
+            {timelineItems.map((item) => {
+              const itemUrl = item.permalink || item.url;
+
+              return (
+                <a
+                  key={item.id}
+                  href={itemUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="news-mini-timeline__item"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void openExternalUrl(itemUrl).catch(() => {
+                      window.open(itemUrl, "_blank", "noopener,noreferrer");
+                    });
+                  }}
+                >
+                  <time>{formatTime(item.publishedAt)}</time>
+                  <span className="news-mini-timeline__dot" aria-hidden="true" />
+                  <div className="news-mini-timeline__card">
+                    <div className="intel-item__head">
+                      <span className="intel-source">{item.source}</span>
+                      <span className="intel-time">{formatTime(item.publishedAt)}</span>
                     </div>
-                  ) : null}
-                </div>
-              </a>
-            ))}
+                    <h3>{item.title}</h3>
+                    {showSummary ? <p>{item.summary}</p> : null}
+                    {showTags ? (
+                      <div className="news-mini-timeline__tags">
+                        <span>{newsCategoryFilters.find(([value]) => value === item.category)?.[1] ?? item.category}</span>
+                        {item.selected ? <span>精选</span> : null}
+                        {typeof item.score === "number" ? <span>{item.score} 分</span> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </a>
+              );
+            })}
           </div>
         ) : (
           <div className="edge-empty">当前筛选下没有热点摘要。</div>
@@ -835,6 +841,7 @@ function MhxyPanel() {
     queryFn: fetchMhxyDashboard
   });
   const summary = query.data?.summary;
+  const combined = query.data?.combinedSummary;
   const format = (value: number | undefined) =>
     `¥${(value ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
 
@@ -848,9 +855,9 @@ function MhxyPanel() {
         <Link to="/mhxy" className="panel-link">打开账本</Link>
       </div>
       <div className="mhxy-panel__metrics">
-        <span>库存成本<strong>{format(summary?.inventoryCostRmb)}</strong></span>
-        <span>已实现收益<strong>{format(summary?.realizedProfitRmb)}</strong></span>
-        <span>未实现浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
+        <span>持有总成本<strong>{format(combined?.holdingCostRmb ?? summary?.inventoryCostRmb)}</strong></span>
+        <span>已实现总收益<strong>{format(combined?.realizedProfitRmb ?? summary?.realizedProfitRmb)}</strong></span>
+        <span>主账本浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
       </div>
       <p>{summary?.pendingValuationCount ? `${summary.pendingValuationCount} 项库存待补价格快照` : "全部库存已按人民币口径估值"}</p>
     </section>

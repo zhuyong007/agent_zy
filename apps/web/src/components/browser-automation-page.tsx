@@ -20,6 +20,7 @@ import {
 } from "../api";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 import { ToolsBackLink } from "./tools-page";
+import { DataSyncControl } from "./data-sync-control";
 
 type BrowserAutomationWorkspaceProps = {
   fetchAction?: () => Promise<BrowserAutomationState>;
@@ -31,6 +32,7 @@ type BrowserAutomationWorkspaceProps = {
   openPermissionSettingsAction?: (
     kind: "accessibility" | "screen-recording"
   ) => Promise<{ opened: boolean; message: string }>;
+  dataSyncEnabled?: boolean;
 };
 
 type WorkflowDraft = {
@@ -237,7 +239,8 @@ export function BrowserAutomationWorkspace({
   runAction = runBrowserAutomationWorkflow,
   stopAction = stopBrowserAutomationRun,
   createRuleAction = createBrowserAutomationTriggerRule,
-  openPermissionSettingsAction = openBrowserAutomationPermissionSettings
+  openPermissionSettingsAction = openBrowserAutomationPermissionSettings,
+  dataSyncEnabled = false
 }: BrowserAutomationWorkspaceProps) {
   const [state, setState] = useState<BrowserAutomationState>({
     workflows: [],
@@ -713,6 +716,9 @@ export function BrowserAutomationWorkspace({
           <p>使用当前桌面浏览器执行流程；本地图片匹配优先，找不到时再调用视觉模型。</p>
         </div>
         <div className="tools-page-header__actions">
+          {dataSyncEnabled ? (
+            <DataSyncControl module="browser-automation" onSynced={refresh} />
+          ) : null}
           <ToolsBackLink />
           <button type="button" onClick={refresh} disabled={status === "loading"}>
             刷新
@@ -1104,7 +1110,7 @@ export function BrowserAutomationPage() {
         navigationLayout={layout}
         rightMeta={[]}
       />
-      <BrowserAutomationWorkspace />
+      <BrowserAutomationWorkspace dataSyncEnabled />
     </main>
   );
 }

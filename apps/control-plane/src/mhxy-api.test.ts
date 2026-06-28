@@ -28,7 +28,7 @@ describe("mhxy API", () => {
       expect(missingRate.statusCode).toBe(400);
       expect(missingRate.json().message).toContain("兑换比例");
 
-      const buy = await app.inject({
+      const forged = await app.inject({
         method: "POST",
         url: "/api/mhxy/trades",
         payload: {
@@ -39,7 +39,37 @@ describe("mhxy API", () => {
           currency: "gameCoin",
           rmbPerGameCoinWan: 0.08,
           rmbAmount: 1,
-          feeRmb: 999,
+          occurredAt: "2026-06-01T10:00:00.000Z",
+          serverName: "长安城",
+          characterName: "商人甲"
+        }
+      });
+      expect(forged.statusCode).toBe(400);
+
+      const invalidCurrency = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/trades",
+        payload: {
+          type: "buy",
+          itemName: "金刚石",
+          quantity: 1,
+          unitPrice: 100,
+          currency: "usd",
+          occurredAt: "2026-06-01T10:00:00.000Z"
+        }
+      });
+      expect(invalidCurrency.statusCode).toBe(400);
+
+      const buy = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/trades",
+        payload: {
+          type: "buy",
+          itemName: "金刚石",
+          quantity: 2,
+          unitPrice: 1000,
+          currency: "gameCoin",
+          rmbPerGameCoinWan: 0.08,
           occurredAt: "2026-06-01T10:00:00.000Z",
           serverName: "长安城",
           characterName: "商人甲"
@@ -120,6 +150,20 @@ describe("mhxy API", () => {
         }
       });
       expect(transfer.statusCode).toBe(200);
+
+      const snapshotWithoutRate = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-snapshots",
+        payload: {
+          itemName: "金刚石",
+          currency: "gameCoin",
+          gameCoinUnitPriceWan: 1500,
+          capturedAt: "2026-06-03T09:00:00.000Z",
+          serverName: "紫禁城"
+        }
+      });
+      expect(snapshotWithoutRate.statusCode).toBe(400);
+      expect(snapshotWithoutRate.json().message).toContain("当时兑换比例");
 
       const snapshot = await app.inject({
         method: "POST",
@@ -227,6 +271,78 @@ describe("mhxy API", () => {
         holdingCostRmb: 0,
         realizedProfitRmb: 299.76
       });
+      const deleted = await app.inject({
+        method: "DELETE",
+        url: `/api/mhxy/asset-flips/${created.json().id}`
+      });
+      expect(deleted.statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: "/api/mhxy" })).json().assetFlips).toEqual([]);
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("derives asset RMB cost from historical game coin purchase batches", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const purchase = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/game-coin-purchases",
+        payload: {
+          acquiredAt: "2026-06-01T10:00:00.000Z",
+          gameCoinAmount: 30_000_000,
+          rmbCost: 230
+        }
+      });
+      expect(purchase.statusCode).toBe(200);
+
+      const asset = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "equipment",
+          name: "批次成本装备",
+          buyAt: "2026-06-02T10:00:00.000Z",
+          purchaseCurrency: "gameCoin",
+          gameCoinCost: 666_666,
+          buyPriceRmb: 999
+        }
+      });
+      expect(asset.statusCode).toBe(200);
+      expect(asset.json()).toMatchObject({
+        buyPriceRmb: 5.11,
+        purchaseCurrency: "gameCoin",
+        gameCoinCost: 666_666
+      });
+
+      const insufficient = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "summon",
+          name: "余额不足召唤兽",
+          buyAt: "2026-06-02T11:00:00.000Z",
+          purchaseCurrency: "gameCoin",
+          gameCoinCost: 30_000_000
+        }
+      });
+      expect(insufficient.statusCode).toBe(400);
+      expect(insufficient.json().message).toContain("游戏币余额不足");
+
+      const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      expect(dashboard.gameCoinBalance).toEqual({
+        gameCoinAmount: 29_333_334,
+        rmbCost: 224.89
+      });
+      const blockedDelete = await app.inject({
+        method: "DELETE",
+        url: `/api/mhxy/game-coin-purchases/${purchase.json().id}`
+      });
+      expect(blockedDelete.statusCode).toBe(400);
     } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });

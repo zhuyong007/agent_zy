@@ -348,23 +348,45 @@ export interface MhxyTradeRecord extends Omit<MhxyTradeInput, "feeRmb"> {
   updatedAt: string;
 }
 
-export interface MhxyPriceSnapshotInput {
+interface MhxyPriceSnapshotBase {
   itemName: string;
-  currency: MhxyTradeCurrency;
-  rmbUnitPrice?: number;
-  gameCoinUnitPriceWan?: number;
-  rmbPerGameCoinWan?: number;
   capturedAt: string;
   serverName?: string;
   note?: string;
 }
 
-export interface MhxyPriceSnapshot extends MhxyPriceSnapshotInput {
+export type MhxyPriceSnapshotInput = MhxyPriceSnapshotBase & (
+  | {
+      currency: "rmb";
+      rmbUnitPrice: number;
+      gameCoinUnitPriceWan?: never;
+      rmbPerGameCoinWan?: never;
+    }
+  | {
+      currency: "gameCoin";
+      rmbUnitPrice?: never;
+      gameCoinUnitPriceWan: number;
+      rmbPerGameCoinWan: number;
+    }
+);
+
+export type MhxyPriceSnapshot = MhxyPriceSnapshotBase & {
   id: string;
   rmbUnitPrice: number;
   createdAt: string;
   updatedAt: string;
-}
+} & (
+    | {
+        currency: "rmb";
+        gameCoinUnitPriceWan?: never;
+        rmbPerGameCoinWan?: never;
+      }
+    | {
+        currency: "gameCoin";
+        gameCoinUnitPriceWan: number;
+        rmbPerGameCoinWan: number;
+      }
+  );
 
 export interface MhxyInventoryTransferInput {
   itemName: string;
@@ -414,12 +436,39 @@ export interface MhxyInventoryPosition {
 
 export type MhxyAssetFlipCategory = "summon" | "equipment";
 export type MhxyAssetFlipStatus = "holding" | "sold";
+export type MhxyAssetPurchaseCurrency = "rmb" | "gameCoin";
+
+export interface MhxyGameCoinPurchaseInput {
+  acquiredAt: string;
+  gameCoinAmount: number;
+  rmbCost: number;
+  note?: string;
+}
+
+export interface MhxyGameCoinPurchaseRecord extends MhxyGameCoinPurchaseInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyGameCoinPurchasePosition extends MhxyGameCoinPurchaseRecord {
+  remainingGameCoinAmount: number;
+  remainingRmbCost: number;
+}
+
+export interface MhxyAssetGameCoinAllocation {
+  gameCoinPurchaseId: string;
+  gameCoinAmount: number;
+  rmbCost: number;
+}
 
 export interface MhxyAssetFlipInput {
   category: MhxyAssetFlipCategory;
   name: string;
   buyAt: string;
-  buyPriceRmb: number;
+  purchaseCurrency?: MhxyAssetPurchaseCurrency;
+  buyPriceRmb?: number;
+  gameCoinCost?: number;
   sellAt?: string;
   sellPriceRmb?: number;
   serverName?: string;
@@ -427,9 +476,11 @@ export interface MhxyAssetFlipInput {
   note?: string;
 }
 
-export interface MhxyAssetFlipRecord extends MhxyAssetFlipInput {
+export interface MhxyAssetFlipRecord extends Omit<MhxyAssetFlipInput, "buyPriceRmb"> {
   id: string;
   buyPriceRmb: number;
+  purchaseCurrency: MhxyAssetPurchaseCurrency;
+  gameCoinAllocations?: MhxyAssetGameCoinAllocation[];
   sellPriceRmb?: number;
   status: MhxyAssetFlipStatus;
   profitRmb: number | null;
@@ -453,6 +504,23 @@ export interface MhxyDashboardSummary {
   pendingValuationCount: number;
 }
 
+export interface MhxyCombinedSummary {
+  holdingCostRmb: number;
+  realizedProfitRmb: number;
+  gameCoinBalanceCostRmb: number;
+  mainLedgerMarketValueRmb: number;
+  mainLedgerUnrealizedProfitRmb: number;
+}
+
+export interface MhxyDataSet {
+  trades: MhxyTradeRecord[];
+  priceSnapshots: MhxyPriceSnapshot[];
+  inventoryTransfers: MhxyInventoryTransferRecord[];
+  inventoryTargets: MhxyInventoryTarget[];
+  assetFlips: MhxyAssetFlipRecord[];
+  gameCoinPurchases: MhxyGameCoinPurchaseRecord[];
+}
+
 export interface MhxyDashboard {
   trades: MhxyTradeRecord[];
   tradeResults: MhxyTradeResult[];
@@ -463,6 +531,12 @@ export interface MhxyDashboard {
   summary: MhxyDashboardSummary;
   assetFlips: MhxyAssetFlipRecord[];
   assetFlipSummary: MhxyAssetFlipSummary;
+  gameCoinPurchases: MhxyGameCoinPurchasePosition[];
+  gameCoinBalance: {
+    gameCoinAmount: number;
+    rmbCost: number;
+  };
+  combinedSummary: MhxyCombinedSummary;
 }
 
 export type ScheduleUrgency = "low" | "medium" | "high";
@@ -502,10 +576,13 @@ export interface NewsFeedItem {
   title: string;
   titleEn: string | null;
   url: string;
+  permalink?: string | null;
   source: string;
   publishedAt: string;
   summary: string;
   category: NewsCategory;
+  score?: number | null;
+  selected?: boolean | null;
 }
 
 export interface NewsFeedResponse {
@@ -1196,6 +1273,103 @@ export interface BrowserAutomationState {
   lastUpdatedAt: string | null;
 }
 
+export type ScreenMonitorSessionStatus = "running" | "stopped";
+export type ScreenMonitorObservationStatus = "completed" | "failed";
+export type ScreenMonitorObservationTrigger = "initial" | "interval" | "manual";
+
+export interface ScreenMonitorObservation {
+  id: string;
+  sessionId: string;
+  checkedAt: string;
+  status: ScreenMonitorObservationStatus;
+  trigger: ScreenMonitorObservationTrigger;
+  resultText: string;
+  confidence: number | null;
+  done: boolean;
+  announcement: string;
+  reason: string;
+  announced: boolean;
+  error: string | null;
+}
+
+export interface ScreenMonitorSession {
+  id: string;
+  prompt: string;
+  intervalMs: number;
+  muted: boolean;
+  status: ScreenMonitorSessionStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string;
+  stoppedAt: string | null;
+  lastObservationId: string | null;
+  lastResultText: string | null;
+  lastAnnouncement: string | null;
+  lastError: string | null;
+  observations: ScreenMonitorObservation[];
+}
+
+export interface ScreenMonitorState {
+  sessions: ScreenMonitorSession[];
+  activeSessionId: string | null;
+  lastUpdatedAt: string | null;
+}
+
+export type DataSyncModule = "history" | "mhxy" | "browser-automation";
+export type DataSyncActivityStatus = "idle" | "syncing" | "synced" | "conflict" | "failed";
+export type DataSyncResolutionChoice = "local" | "remote";
+
+export interface DataSyncResolution {
+  key: string;
+  choice: DataSyncResolutionChoice;
+}
+
+export interface DataSyncConflict {
+  key: string;
+  recordType: string;
+  recordId: string;
+  baseline: Record<string, unknown> | null;
+  local: Record<string, unknown> | null;
+  remote: Record<string, unknown> | null;
+}
+
+export interface DataSyncModuleStatus {
+  module: DataSyncModule;
+  status: DataSyncActivityStatus;
+  lastSyncedAt: string | null;
+  lastCommit: string | null;
+  error: string | null;
+}
+
+export interface DataSyncStatusResponse {
+  enabled: boolean;
+  branch: string;
+  modules: Record<DataSyncModule, DataSyncModuleStatus>;
+}
+
+export type DataSyncResult =
+  | {
+      status: "synced";
+      module: DataSyncModule;
+      commitSha: string;
+      pulledCount: number;
+      pushedCount: number;
+      deletedCount: number;
+      lastSyncedAt: string;
+    }
+  | {
+      status: "conflict";
+      module: DataSyncModule;
+      conflictToken: string;
+      remoteCommitSha: string | null;
+      conflicts: DataSyncConflict[];
+    }
+  | {
+      status: "failed";
+      module: DataSyncModule;
+      error: string;
+    };
+
 export type PromptTemplateAnalysisStatus = "pending" | "completed" | "failed";
 
 export interface PromptTemplateVariable {
@@ -1480,6 +1654,7 @@ export interface AppState {
   classicShots: ClassicShotState;
   imageToVideo?: ImageToVideoState;
   browserAutomation?: BrowserAutomationState;
+  screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
   summary: SummaryState;
@@ -1523,6 +1698,7 @@ export interface DashboardData {
     dashboard: ImageToVideoDashboardSummary;
   };
   browserAutomation?: BrowserAutomationState;
+  screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
   summary: SummaryState & {

@@ -138,10 +138,13 @@ describe("news agent", () => {
             title: "Claude v2.1.133 版本更新",
             title_en: "v2.1.133",
             url: "https://github.com/anthropics/claude-code/releases/tag/v2.1.133",
+            permalink: "https://aihot.virxact.com/items/cmow6i2aq036jslcxxneym5zm",
             source: "Claude Code：GitHub Releases（RSS）",
             publishedAt: "2026-05-07T23:49:04.000Z",
             summary: "Claude 发布 v2.1.133 版本，新增多项配置与优化。",
-            category: "ai-products"
+            category: "ai-products",
+            score: 86,
+            selected: true
           }
         ]
       }
@@ -180,13 +183,36 @@ describe("news agent", () => {
             title: "Claude v2.1.133 版本更新",
             source: "Claude Code：GitHub Releases（RSS）",
             url: "https://github.com/anthropics/claude-code/releases/tag/v2.1.133",
-            category: "ai-products"
+            permalink: "https://aihot.virxact.com/items/cmow6i2aq036jslcxxneym5zm",
+            category: "ai-products",
+            score: 86,
+            selected: true
           }
         ]
       },
       lastError: null,
       status: "idle"
     });
+  });
+
+  it("uses selected AI HOT items by default to avoid low-value noise", async () => {
+    const fetchMock = mockAihotFetch({
+      "https://aihot.virxact.com/api/public/items?mode=selected&take=50": {
+        count: 0,
+        hasNext: false,
+        nextCursor: null,
+        items: []
+      }
+    });
+
+    await agent.execute(
+      createRequest(createState(), {
+        action: "refresh"
+      })
+    );
+
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls[0][0]).toBe("https://aihot.virxact.com/api/public/items?mode=selected&take=50");
   });
 
   it("refreshes the latest daily report and archive", async () => {

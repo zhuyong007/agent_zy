@@ -90,30 +90,36 @@ function FeedTimeline({ items }: { items: NewsFeedItem[] }) {
         <section key={group.date} className="news-timeline__group">
           <div className="news-timeline__date">{group.label}</div>
           <div className="news-timeline__items">
-            {group.items.map((item) => (
-              <article key={item.id} className="news-timeline-item">
-                <time className="news-timeline-item__time">{formatTime(item.publishedAt)}</time>
-                <span className="news-timeline-item__dot" aria-hidden="true" />
-                <a
-                  className="news-timeline-card"
-                  href={item.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(event) => handleExternalLinkClick(event, item.url)}
-                >
-                  <div className="news-timeline-card__meta">
-                    <span>{item.source}</span>
-                    <span>{categoryLabel(item.category)}</span>
-                  </div>
-                  <h2>{item.title}</h2>
-                  <p>{item.summary}</p>
-                  <div className="news-timeline-card__tags">
-                    <span>{categoryLabel(item.category)}</span>
-                    {item.titleEn ? <span>{item.titleEn}</span> : null}
-                  </div>
-                </a>
-              </article>
-            ))}
+            {group.items.map((item) => {
+              const itemUrl = item.permalink || item.url;
+
+              return (
+                <article key={item.id} className="news-timeline-item">
+                  <time className="news-timeline-item__time">{formatTime(item.publishedAt)}</time>
+                  <span className="news-timeline-item__dot" aria-hidden="true" />
+                  <a
+                    className="news-timeline-card"
+                    href={itemUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => handleExternalLinkClick(event, itemUrl)}
+                  >
+                    <div className="news-timeline-card__meta">
+                      <span>{item.source}</span>
+                      <span>{categoryLabel(item.category)}</span>
+                    </div>
+                    <h2>{item.title}</h2>
+                    <p>{item.summary}</p>
+                    <div className="news-timeline-card__tags">
+                      <span>{categoryLabel(item.category)}</span>
+                      {item.selected ? <span>精选</span> : null}
+                      {typeof item.score === "number" ? <span>{item.score} 分</span> : null}
+                      {item.titleEn ? <span>{item.titleEn}</span> : null}
+                    </div>
+                  </a>
+                </article>
+              );
+            })}
           </div>
         </section>
       ))}
