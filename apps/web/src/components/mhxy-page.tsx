@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
+  MhxyAssetFlipCategory,
   MhxyAssetFlipInput,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
@@ -45,6 +46,12 @@ const toLocalDateTimeInput = (value: string) => {
 };
 const money = (value: number | null) =>
   value === null ? "待估值" : `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const assetFlipCategoryLabels: Record<MhxyAssetFlipCategory, string> = {
+  role: "角色",
+  summon: "召唤兽",
+  equipment: "装备"
+};
 
 const emptyTrade = (): MhxyTradeInput => ({
   type: "buy",
@@ -167,6 +174,14 @@ export function MhxyPage() {
     setAssetFlip((current) => ({ ...current, [name]: value }));
   }
 
+  function setAssetCategory(category: MhxyAssetFlipCategory) {
+    setAssetFlip((current) => ({
+      ...current,
+      category,
+      characterName: category === "role" ? undefined : current.characterName
+    }));
+  }
+
   function submitAssetFlip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     assetFlipMutation.mutate();
@@ -217,7 +232,7 @@ export function MhxyPage() {
             className={workspace === "roleAssets" ? "is-active" : ""}
             onClick={() => setWorkspace("roleAssets")}
           >
-            角色召唤兽及装备交易记录
+            资产交易记录
           </button>
           <button
             type="button"
@@ -300,7 +315,7 @@ export function MhxyPage() {
             <div className="mhxy-assets__lead">
               <div>
                 <p className="eyebrow">ASSET FLIP DESK</p>
-                <h2>召唤兽 / 装备人民币盈亏</h2>
+                <h2>角色 / 召唤兽 / 装备人民币盈亏</h2>
                 <p>一条记录对应一个具体资产，只看买入价、卖出价和单件赚亏。</p>
               </div>
               <div className="mhxy-asset-metrics">
@@ -312,8 +327,8 @@ export function MhxyPage() {
             </div>
 
             <div className="mhxy-assets__board">
-              <section className="mhxy-asset-list" aria-label="角色资产记录">
-                <section aria-label="角色当前库存">
+              <section className="mhxy-asset-list" aria-label="资产记录">
+                <section aria-label="资产当前库存">
                   <div className="mhxy-asset-toolbar">
                     <div>
                       <h3>当前库存</h3>
@@ -326,7 +341,7 @@ export function MhxyPage() {
                     </div>
                     {holdingAssetFlips.map((item) => (
                       <article className="mhxy-asset-row" key={item.id}>
-                        <span><strong>{item.name}</strong><small>{item.category === "summon" ? "召唤兽" : "装备"} · {item.serverName || "未填区服"} · {item.characterName || "未填角色"}</small></span>
+                        <span><strong>{item.name}</strong><small>{assetFlipCategoryLabels[item.category]} · {item.serverName || "未填区服"}{item.category === "role" ? null : <> · {item.characterName || "未填归属角色"}</>}</small></span>
                         <span>{money(item.buyPriceRmb)}<small>{item.buyAt.slice(0, 10)}</small></span>
                         <span>持有中<small>计入库存价值</small></span>
                         <span className="is-muted">不计算浮盈</span>
@@ -336,11 +351,11 @@ export function MhxyPage() {
                         </span>
                       </article>
                     ))}
-                    {holdingAssetFlips.length === 0 ? <p className="mhxy-empty">当前没有持有中的召唤兽或装备。</p> : null}
+                    {holdingAssetFlips.length === 0 ? <p className="mhxy-empty">当前没有持有中的资产。</p> : null}
                   </div>
                 </section>
 
-                <section aria-label="角色交易历史">
+                <section aria-label="资产交易历史">
                   <div className="mhxy-asset-toolbar">
                     <div>
                       <h3>交易历史</h3>
@@ -353,7 +368,7 @@ export function MhxyPage() {
                     </div>
                     {soldAssetFlips.map((item) => (
                       <article className="mhxy-asset-row" key={item.id}>
-                        <span><strong>{item.name}</strong><small>{item.category === "summon" ? "召唤兽" : "装备"} · {item.serverName || "未填区服"} · {item.characterName || "未填角色"}</small></span>
+                        <span><strong>{item.name}</strong><small>{assetFlipCategoryLabels[item.category]} · {item.serverName || "未填区服"}{item.category === "role" ? null : <> · {item.characterName || "未填归属角色"}</>}</small></span>
                         <span>{money(item.buyPriceRmb)}<small>{item.buyAt.slice(0, 10)}</small></span>
                         <span>{money(item.sellPriceRmb ?? 0)}<small>{item.sellAt?.slice(0, 10)}</small></span>
                         <span className={(item.profitRmb ?? 0) >= 0 ? "is-profit" : "is-loss"}>{money(item.profitRmb ?? 0)}</span>
@@ -363,7 +378,7 @@ export function MhxyPage() {
                         </span>
                       </article>
                     ))}
-                    {soldAssetFlips.length === 0 ? <p className="mhxy-empty">还没有已售出的召唤兽或装备记录。</p> : null}
+                    {soldAssetFlips.length === 0 ? <p className="mhxy-empty">还没有已售出的资产记录。</p> : null}
                   </div>
                 </section>
               </section>
@@ -373,7 +388,7 @@ export function MhxyPage() {
                   <p className="eyebrow">{editingAssetFlipId ? "EDIT ASSET" : "NEW ASSET"}</p>
                   <h3>{editingAssetFlipId ? "编辑记录" : "记录买入"}</h3>
                 </div>
-                <label>类型<select name="category" value={assetFlip.category} onChange={(e) => assetField("category", e.target.value)}><option value="summon">召唤兽</option><option value="equipment">装备</option></select></label>
+                <label>类型<select name="category" value={assetFlip.category} onChange={(e) => setAssetCategory(e.target.value as MhxyAssetFlipCategory)}><option value="role">角色</option><option value="summon">召唤兽</option><option value="equipment">装备</option></select></label>
                 <label>名称<input name="name" required value={assetFlip.name} onChange={(e) => assetField("name", e.target.value)} placeholder="例如：须弥画魂 / 160 项链" /></label>
                 <label>买入时间<input name="buyAt" type="datetime-local" required value={toLocalDateTimeInput(assetFlip.buyAt)} onChange={(e) => assetField("buyAt", e.target.value)} /></label>
                 <label>人民币买入价格<input name="buyPriceRmb" type="number" min="0" step="any" required value={assetFlip.buyPriceRmb ?? 0} onChange={(e) => assetField("buyPriceRmb", Number(e.target.value))} /></label>
@@ -382,7 +397,7 @@ export function MhxyPage() {
                   <label>卖出价格<input name="sellPriceRmb" type="number" min="0" step="any" value={assetFlip.sellPriceRmb ?? ""} onChange={(e) => assetField("sellPriceRmb", e.target.value === "" ? undefined : Number(e.target.value))} /></label>
                 </div>
                 <label>区服<input name="serverName" value={assetFlip.serverName ?? ""} onChange={(e) => assetField("serverName", e.target.value)} /></label>
-                <label>角色<input name="characterName" value={assetFlip.characterName ?? ""} onChange={(e) => assetField("characterName", e.target.value)} /></label>
+                {assetFlip.category === "role" ? null : <label>归属角色<input name="characterName" value={assetFlip.characterName ?? ""} onChange={(e) => assetField("characterName", e.target.value)} /></label>}
                 <label>备注<input name="note" value={assetFlip.note ?? ""} onChange={(e) => assetField("note", e.target.value)} /></label>
                 <div className="mhxy-asset-preview">
                   <span>{previewAssetProfit === null ? "当前状态：持有中" : `预计盈亏：${money(previewAssetProfit)}`}</span>
