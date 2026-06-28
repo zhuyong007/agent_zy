@@ -674,18 +674,18 @@ export function createMhxyService(dataDir: string) {
         const expectedSellServerName = targets.get(key) ?? position.serverName;
         const inventoryCostRmb = fromRmbCents(position.inventoryCostCents);
         const averageUnitCostRmb = roundRmb(inventoryCostRmb / position.quantity);
-        const latest = priceSnapshots
-          .filter(
-            (snapshot) =>
-              snapshot.itemName === position.itemName &&
-              normalizeLabel(snapshot.serverName) === expectedSellServerName
-          )
+        const itemSnapshots = priceSnapshots
+          .filter((snapshot) => snapshot.itemName === position.itemName)
           .sort((left, right) => {
             const capturedAt = right.capturedAt.localeCompare(left.capturedAt);
             if (capturedAt !== 0) return capturedAt;
             const createdAt = right.createdAt.localeCompare(left.createdAt);
             return createdAt !== 0 ? createdAt : right.id.localeCompare(left.id);
-          })[0];
+          });
+        const latest =
+          itemSnapshots.find(
+            (snapshot) => normalizeLabel(snapshot.serverName) === expectedSellServerName
+          ) ?? itemSnapshots[0];
         return {
           itemName: position.itemName,
           serverName: position.serverName,
@@ -695,6 +695,7 @@ export function createMhxyService(dataDir: string) {
           averageUnitCostRmb,
           expectedSellServerName,
           latestRmbUnitPrice: latest?.rmbUnitPrice ?? null,
+          valuationSourceName: latest ? normalizeLabel(latest.serverName) || null : null,
           marketValueRmb: latest ? roundRmb(position.quantity * latest.rmbUnitPrice) : null,
           unrealizedProfitRmb: latest
             ? roundRmb(position.quantity * latest.rmbUnitPrice - inventoryCostRmb)

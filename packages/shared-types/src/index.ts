@@ -430,6 +430,7 @@ export interface MhxyInventoryPosition {
   averageUnitCostRmb: number;
   expectedSellServerName: string;
   latestRmbUnitPrice: number | null;
+  valuationSourceName: string | null;
   marketValueRmb: number | null;
   unrealizedProfitRmb: number | null;
 }

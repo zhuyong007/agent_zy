@@ -183,9 +183,54 @@ describe("mhxy service", () => {
 
     expect(service.getDashboard().inventory[0]).toMatchObject({
       latestRmbUnitPrice: 150,
+      valuationSourceName: "紫禁城",
       marketValueRmb: 300,
       unrealizedProfitRmb: 100,
       expectedSellServerName: "紫禁城"
+    });
+  });
+
+  it("falls back to the latest item snapshot when the target server has no dedicated price", () => {
+    const service = createService();
+
+    service.createTrade({
+      type: "buy",
+      itemName: "Advanced Combo",
+      quantity: 2,
+      unitPrice: 100,
+      currency: "rmb",
+      occurredAt: "2026-06-01T10:00:00.000Z",
+      serverName: "Current Server",
+      characterName: "Trader"
+    });
+    service.createPriceSnapshot({
+      itemName: "Advanced Combo",
+      currency: "rmb",
+      rmbUnitPrice: 160,
+      capturedAt: "2026-05-01T10:00:00.000Z",
+      serverName: "Catalog A"
+    });
+    service.createPriceSnapshot({
+      itemName: "Advanced Combo",
+      currency: "rmb",
+      rmbUnitPrice: 180,
+      capturedAt: "2026-06-02T10:00:00.000Z",
+      serverName: "Catalog B"
+    });
+    service.setInventoryTarget({
+      itemName: "Advanced Combo",
+      serverName: "Current Server",
+      characterName: "Trader",
+      expectedSellServerName: "Target Server"
+    });
+
+    expect(service.getDashboard().inventory[0]).toMatchObject({
+      serverName: "Current Server",
+      expectedSellServerName: "Target Server",
+      latestRmbUnitPrice: 180,
+      valuationSourceName: "Catalog B",
+      marketValueRmb: 360,
+      unrealizedProfitRmb: 160
     });
   });
 
