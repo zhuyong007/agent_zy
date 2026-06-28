@@ -9,7 +9,49 @@ vi.mock("../api", () => ({
   fetchMhxyDashboard: vi.fn(async () => ({
     trades: [],
     tradeResults: [],
-    priceSnapshots: [],
+    priceSnapshots: [
+      {
+        id: "snapshot-1",
+        itemName: "高级连击",
+        capturedAt: "2026-05-30T04:00:00.000Z",
+        serverName: "藏宝阁（兽决）",
+        currency: "rmb",
+        rmbUnitPrice: 340,
+        note: "根据用户提供的藏宝阁价格表图片整理",
+        createdAt: "2026-06-28T12:00:00.000Z",
+        updatedAt: "2026-06-28T12:00:00.000Z"
+      },
+      {
+        id: "snapshot-2",
+        itemName: "高级连击",
+        capturedAt: "2026-04-13T04:00:00.000Z",
+        serverName: "藏宝阁（兽决）",
+        currency: "rmb",
+        rmbUnitPrice: 349,
+        createdAt: "2026-06-28T12:00:00.000Z",
+        updatedAt: "2026-06-28T12:00:00.000Z"
+      },
+      {
+        id: "snapshot-3",
+        itemName: "高级连击",
+        capturedAt: "2026-01-31T04:00:00.000Z",
+        serverName: "藏宝阁（兽决）",
+        currency: "rmb",
+        rmbUnitPrice: 366,
+        createdAt: "2026-06-28T12:00:00.000Z",
+        updatedAt: "2026-06-28T12:00:00.000Z"
+      },
+      {
+        id: "snapshot-4",
+        itemName: "高级必杀",
+        capturedAt: "2026-05-30T04:00:00.000Z",
+        serverName: "藏宝阁（兽决）",
+        currency: "rmb",
+        rmbUnitPrice: 353,
+        createdAt: "2026-06-28T12:00:00.000Z",
+        updatedAt: "2026-06-28T12:00:00.000Z"
+      }
+    ],
     inventoryTransfers: [],
     inventoryTargets: [],
     inventory: [],
@@ -115,7 +157,6 @@ vi.mock("./data-sync-control", async () => {
 
 import {
   createMhxyAssetFlip,
-  createMhxyGameCoinPurchase,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
@@ -170,6 +211,38 @@ describe("MhxyPage", () => {
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  async function switchTab(container: HTMLElement, label: string) {
+    const button = Array.from(container.querySelectorAll(".mhxy-segment button"))
+      .find((item) => item.textContent === label);
+    expect(button).not.toBeUndefined();
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+  }
+
+  it("separates mhxy workflows into three tabs", async () => {
+    const container = await renderPage();
+    const labels = Array.from(container.querySelectorAll(".mhxy-segment button"))
+      .map((button) => button.textContent);
+
+    expect(labels).toEqual([
+      "跨服交易记录",
+      "角色召唤兽及装备交易记录",
+      "物价记录"
+    ]);
+    expect(container.querySelector('[data-form="trade"]')).not.toBeNull();
+    expect(container.querySelector('[data-form="price-snapshot"]')).toBeNull();
+    expect(container.querySelector('[data-form="asset-flip"]')).toBeNull();
+
+    await switchTab(container, "物价记录");
+    expect(container.querySelector('[data-form="price-snapshot"]')).not.toBeNull();
+    expect(container.querySelector('[data-form="trade"]')).toBeNull();
+
+    await switchTab(container, "角色召唤兽及装备交易记录");
+    expect(container.querySelector('[data-form="asset-flip"]')).not.toBeNull();
+    expect(container.querySelector('[data-form="price-snapshot"]')).toBeNull();
+  });
+
   it("switches to game coin fields, previews conversion, and submits raw inputs", async () => {
     const container = await renderPage();
     const form = container.querySelector('[data-form="trade"]') as HTMLFormElement;
@@ -216,6 +289,7 @@ describe("MhxyPage", () => {
 
   it("requires the historical exchange rate for game coin price snapshots", async () => {
     const container = await renderPage();
+    await switchTab(container, "物价记录");
     const form = container.querySelector('[data-form="price-snapshot"]') as HTMLFormElement;
 
     await act(async () => {
@@ -233,6 +307,7 @@ describe("MhxyPage", () => {
   it("keeps price snapshot inputs when the API rejects the submission", async () => {
     vi.mocked(createMhxyPriceSnapshot).mockRejectedValueOnce(new Error("保存失败"));
     const container = await renderPage();
+    await switchTab(container, "物价记录");
     const form = container.querySelector('[data-form="price-snapshot"]') as HTMLFormElement;
     const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
     const serverName = form.querySelector('[name="serverName"]') as HTMLInputElement;
@@ -250,23 +325,84 @@ describe("MhxyPage", () => {
     expect(price.value).toBe("100");
   });
 
-  it("switches to asset flips, shows RMB summary, and submits raw asset inputs", async () => {
+  it("shows the captured date for historical price snapshots", async () => {
     const container = await renderPage();
+    await switchTab(container, "物价记录");
+
+    expect(container.textContent).toContain("高级连击");
+    expect(container.textContent).toContain("藏宝阁（兽决）");
+    expect(container.textContent).toContain("2026-05-30");
+  });
+
+  it("focuses the price workspace on one item's trend and history", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+
+    const trend = container.querySelector("[data-price-trend]") as HTMLElement;
+    const history = container.querySelector("[data-price-history]") as HTMLElement;
+    expect(trend.textContent).toContain("高级连击");
+    expect(trend.querySelector("svg")).not.toBeNull();
+    expect(history.textContent).toContain("2026-01-31");
+    expect(history.textContent).toContain("2026-04-13");
+    expect(history.textContent).toContain("2026-05-30");
+    expect(history.textContent).not.toContain("¥353.00");
+  });
+
+  it("switches the trend and history when selecting another item", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const itemButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级必杀"));
+    expect(itemButton).not.toBeUndefined();
 
     await act(async () => {
-      Array.from(container.querySelectorAll(".mhxy-segment button"))
-        .find((button) => button.textContent === "召唤兽装备")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      itemButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
+    const trend = container.querySelector("[data-price-trend]") as HTMLElement;
+    const history = container.querySelector("[data-price-history]") as HTMLElement;
+    expect(trend.textContent).toContain("高级必杀");
+    expect(history.textContent).toContain("¥353.00");
+    expect(history.textContent).not.toContain("¥340.00");
+  });
+
+  it("keeps adding a snapshot behind a secondary collapsed action", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+
+    const addRecord = container.querySelector(".mhxy-price-add") as HTMLDetailsElement;
+    expect(addRecord).not.toBeNull();
+    expect(addRecord.open).toBe(false);
+    expect(addRecord.textContent).toContain("添加记录");
+    expect(addRecord.querySelector('[data-form="price-snapshot"]')).not.toBeNull();
+  });
+
+  it("shows separate role inventory and sold history with RMB totals", async () => {
+    const container = await renderPage();
+    await switchTab(container, "角色召唤兽及装备交易记录");
+
     expect(container.textContent).toContain("召唤兽 / 装备人民币盈亏");
-    expect(container.textContent).toContain("在手成本");
+    expect(container.textContent).toContain("库存价值");
+    expect(container.textContent).toContain("总盈亏");
     expect(container.textContent).toContain("¥1,200.00");
     expect(container.textContent).toContain("¥300.00");
-    expect(container.textContent).toContain("须弥画魂");
-    expect(container.textContent).toContain("持有中");
+
+    const inventory = container.querySelector('[aria-label="角色当前库存"]') as HTMLElement;
+    const history = container.querySelector('[aria-label="角色交易历史"]') as HTMLElement;
+    expect(inventory.textContent).toContain("须弥画魂");
+    expect(inventory.textContent).not.toContain("160 项链");
+    expect(history.textContent).toContain("160 项链");
+    expect(history.textContent).not.toContain("须弥画魂");
+  });
+
+  it("submits role assets as RMB-only trades", async () => {
+    const container = await renderPage();
+    await switchTab(container, "角色召唤兽及装备交易记录");
 
     const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    expect(form.querySelector('[name="purchaseCurrency"]')).toBeNull();
+    expect(form.querySelector('[name="gameCoinCost"]')).toBeNull();
+    expect(container.querySelector('[data-form="game-coin-purchase"]')).toBeNull();
     await act(async () => {
       change(form.querySelector('[name="category"]') as HTMLSelectElement, "equipment");
       change(form.querySelector('[name="name"]') as HTMLInputElement, "140 鞋子");
@@ -285,6 +421,7 @@ describe("MhxyPage", () => {
       expect.objectContaining({
         category: "equipment",
         name: "140 鞋子",
+        purchaseCurrency: "rmb",
         buyPriceRmb: 800,
         sellPriceRmb: 950,
         sellAt: "2026-06-08T10:00"
@@ -295,54 +432,10 @@ describe("MhxyPage", () => {
     );
   });
 
-  it("uses a historical game coin purchase batch to preview asset RMB cost", async () => {
-    const container = await renderPage();
-    await act(async () => {
-      Array.from(container.querySelectorAll(".mhxy-segment button"))
-        .find((button) => button.textContent === "召唤兽装备")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(container.textContent).toContain("30,000,000 游戏币");
-    expect(container.textContent).toContain("剩余成本");
-
-    const assetForm = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
-    await act(async () => {
-      change(assetForm.querySelector('[name="purchaseCurrency"]') as HTMLSelectElement, "gameCoin");
-      change(assetForm.querySelector('[name="name"]') as HTMLInputElement, "批次成本装备");
-      change(assetForm.querySelector('[name="gameCoinCost"]') as HTMLInputElement, "666666");
-    });
-    expect(container.textContent).toContain("按历史批次折合：¥5.11");
-
-    await act(async () => {
-      assetForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(createMhxyAssetFlip).toHaveBeenCalledWith(
-      expect.objectContaining({
-        purchaseCurrency: "gameCoin",
-        gameCoinCost: 666_666
-      })
-    );
-
-    const purchaseForm = container.querySelector('[data-form="game-coin-purchase"]') as HTMLFormElement;
-    await act(async () => {
-      change(purchaseForm.querySelector('[name="gameCoinAmount"]') as HTMLInputElement, "30000000");
-      change(purchaseForm.querySelector('[name="rmbCost"]') as HTMLInputElement, "240");
-      purchaseForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(createMhxyGameCoinPurchase).toHaveBeenCalledWith(
-      expect.objectContaining({ gameCoinAmount: 30_000_000, rmbCost: 240 })
-    );
-  });
-
   it("converts persisted UTC timestamps to local datetime inputs when editing", async () => {
     const timezone = vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-480);
     const container = await renderPage();
-    await act(async () => {
-      Array.from(container.querySelectorAll(".mhxy-segment button"))
-        .find((button) => button.textContent === "召唤兽装备")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await switchTab(container, "角色召唤兽及装备交易记录");
     const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
       .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
 
@@ -359,7 +452,7 @@ describe("MhxyPage", () => {
     timezone.mockRestore();
   });
 
-  it("previews the frozen batch cost when editing non-cost asset fields", async () => {
+  it("shows the frozen RMB cost when editing a legacy game coin asset", async () => {
     const dashboard = await fetchMhxyDashboard();
     vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
       ...dashboard,
@@ -398,11 +491,7 @@ describe("MhxyPage", () => {
       ]
     });
     const container = await renderPage();
-    await act(async () => {
-      Array.from(container.querySelectorAll(".mhxy-segment button"))
-        .find((button) => button.textContent === "召唤兽装备")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await switchTab(container, "角色召唤兽及装备交易记录");
     const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
       .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
 
@@ -412,16 +501,14 @@ describe("MhxyPage", () => {
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(container.textContent).toContain("按历史批次折合：¥10.00");
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    expect((form.querySelector('[name="buyPriceRmb"]') as HTMLInputElement).value).toBe("10");
+    expect(form.querySelector('[name="purchaseCurrency"]')).toBeNull();
   });
 
   it("requires a second click before deleting an asset record", async () => {
     const container = await renderPage();
-    await act(async () => {
-      Array.from(container.querySelectorAll(".mhxy-segment button"))
-        .find((button) => button.textContent === "召唤兽装备")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await switchTab(container, "角色召唤兽及装备交易记录");
     const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
       .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
     const deleteButton = Array.from(row.querySelectorAll("button"))
