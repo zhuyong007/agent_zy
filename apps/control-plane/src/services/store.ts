@@ -26,6 +26,7 @@ import type {
   HistoryXhsState,
   ImageToVideoDashboardSummary,
   ImageToVideoState,
+  InterviewState,
   LifeStageRecord,
   ModelProfile,
   ModelProviderId,
@@ -107,6 +108,11 @@ const CORE_HOME_MODULE_DEFINITIONS = [
     id: "mhxy",
     defaultSize: "smaller",
     defaultVisible: true
+  },
+  {
+    id: "interview",
+    defaultSize: "smaller",
+    defaultVisible: true
   }
 ] as const satisfies ReadonlyArray<{
   id: HomeModuleId;
@@ -130,6 +136,7 @@ const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "cinematic",
   "classicShots",
   "imageToVideo",
+  "interview",
   "summary",
   "browserAutomation"
 ]);
@@ -249,6 +256,7 @@ function createInitialState(): AppState {
     screenMonitor: createEmptyScreenMonitorState(),
     promptTemplates: createEmptyPromptTemplateState(),
     childMeal: createEmptyChildMealState(),
+    interview: createEmptyInterviewState(),
     summary: createEmptySummaryState(),
     historyXhs: createEmptyHistoryXhsState(),
     historyPush: {
@@ -460,6 +468,14 @@ function createEmptyChildMealState(): ChildMealState {
   };
 }
 
+function createEmptyInterviewState(): InterviewState {
+  return {
+    skillModules: [],
+    sessions: [],
+    lastUpdatedAt: null
+  };
+}
+
 function normalizeChildMealState(value: Partial<ChildMealState> | undefined): ChildMealState {
   const empty = createEmptyChildMealState();
   return {
@@ -467,6 +483,14 @@ function normalizeChildMealState(value: Partial<ChildMealState> | undefined): Ch
     notes: Array.isArray(value?.notes) ? value.notes : [],
     records: Array.isArray(value?.records) ? value.records : [],
     plans: Array.isArray(value?.plans) ? value.plans : [],
+    lastUpdatedAt: value?.lastUpdatedAt ?? null
+  };
+}
+
+function normalizeInterviewState(value: Partial<InterviewState> | undefined): InterviewState {
+  return {
+    skillModules: Array.isArray(value?.skillModules) ? value.skillModules : [],
+    sessions: Array.isArray(value?.sessions) ? value.sessions : [],
     lastUpdatedAt: value?.lastUpdatedAt ?? null
   };
 }
@@ -1771,6 +1795,7 @@ function normalizeAppState(state: AppState): AppState {
     screenMonitor: normalizeScreenMonitorState(state.screenMonitor),
     promptTemplates: normalizePromptTemplateState(state.promptTemplates),
     childMeal: normalizeChildMealState(state.childMeal),
+    interview: normalizeInterviewState(state.interview),
     summary: normalizeSummaryState(state.summary),
     historyXhs: normalizeHistoryXhsState(state.historyXhs),
     historyPush: normalizeHistoryPushState(state.historyPush),
@@ -1803,6 +1828,7 @@ export interface ControlPlaneStore {
   setScreenMonitorState(screenMonitor: ScreenMonitorState): ScreenMonitorState;
   setPromptTemplateState(promptTemplates: PromptTemplateState): PromptTemplateState;
   setChildMealState(childMeal: ChildMealState): ChildMealState;
+  setInterviewState(interview: InterviewState): InterviewState;
   setSummaryState(summary: SummaryState): SummaryState;
   setHistoryXhsState(historyXhs: HistoryXhsState): HistoryXhsState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
@@ -1996,6 +2022,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.childMeal);
+    },
+    setInterviewState(interview) {
+      state.interview = normalizeInterviewState(interview);
+      persist();
+
+      return structuredClone(state.interview);
     },
     setSummaryState(summary) {
       state.summary = normalizeSummaryState(summary);
@@ -2214,6 +2246,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         screenMonitor: state.screenMonitor,
         promptTemplates: state.promptTemplates,
         childMeal: state.childMeal,
+        interview: state.interview,
         summary: {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)

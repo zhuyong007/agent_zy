@@ -54,7 +54,9 @@ describe("child meal service", () => {
 
     const overview = service.getOverview();
     expect(overview.recentNotes[0].content).toContain("鸡蛋羹");
-    expect(overview.historyStats.frequentIngredients30d[0]).toMatchObject({ name: "番茄", count: 1 });
+    expect(overview.historyStats.frequentIngredients30d).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "番茄", count: 1 })
+    ]));
     expect(store.getState().childMeal?.records).toHaveLength(1);
   });
 

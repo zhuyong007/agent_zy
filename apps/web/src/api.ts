@@ -29,6 +29,10 @@ import type {
   HistoryXhsState,
   ImageToVideoProject,
   ImageToVideoState,
+  InterviewAnswer,
+  InterviewDailyReport,
+  InterviewDailySession,
+  InterviewOverview,
   HomeModulePreference,
   LedgerFactRecord,
   LedgerReportRecord,
@@ -145,6 +149,28 @@ export const deleteChildMealRecord = (id: string) => childMealRequest<{ ok: true
 export const generateChildMealPlan = (input: { planType: ChildMealPlanType; userExtraRequest?: string }) => childMealRequest<ChildMealPlan>("/generate-plan", "POST", input);
 export const saveChildMealPlan = (input: ChildMealPlan) => childMealRequest<ChildMealPlan>("/save-plan", "POST", input);
 export const convertChildMealPlanMeal = (input: { date: string; meal: ChildMealPlan["days"][number]["meals"][number] }) => childMealRequest<ChildMealRecord>("/records/from-plan", "POST", input);
+
+async function interviewRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}/api/interview${path}`, {
+    method,
+    ...(body === undefined ? {} : {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  });
+  if (!response.ok) throw new Error(await readApiError(response, "面试训练操作失败"));
+  return response.json();
+}
+
+export const fetchInterviewOverview = () => interviewRequest<InterviewOverview>("/overview");
+export const createInterviewDailySession = (input: { force?: boolean } = {}) =>
+  interviewRequest<InterviewDailySession>("/daily-session", "POST", input);
+export const submitInterviewAnswer = (input: { questionId: string; answerText: string }) =>
+  interviewRequest<InterviewAnswer>("/answers", "POST", input);
+export const updateInterviewAnswer = (id: string, input: Partial<Pick<InterviewAnswer, "manualScore" | "mastery" | "note">>) =>
+  interviewRequest<InterviewAnswer>(`/answers/${id}`, "PATCH", input);
+export const regenerateInterviewReport = (date: string) =>
+  interviewRequest<InterviewDailyReport>(`/reports/${date}/regenerate`, "POST");
 
 export function resolveImageToVideoAssetUrl(url: string) {
   return url.startsWith("/api/") ? `${API_BASE}${url}` : url;

@@ -23,6 +23,7 @@ import { createFileOrganizerService } from "./services/file-organizer-service";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
 import { createChildMealService } from "./services/child-meal-service";
+import { createInterviewService } from "./services/interview-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createMhxyService } from "./services/mhxy-service";
 import {
@@ -141,6 +142,10 @@ export function createControlPlaneApp(options?: {
     modelRuntime
   });
   const childMealService = createChildMealService({
+    store,
+    modelRuntime
+  });
+  const interviewService = createInterviewService({
     store,
     modelRuntime
   });
@@ -685,6 +690,39 @@ export function createControlPlaneApp(options?: {
   });
   app.post("/api/tools/child-meal/save-plan", async (request, reply) => {
     try { return childMealService.savePlan(request.body); } catch (error) { return childMealError(reply, error); }
+  });
+
+  const interviewError = (reply: any, error: unknown, statusCode = 400) =>
+    reply.status(statusCode).send({ message: error instanceof Error ? error.message : "面试训练操作失败" });
+
+  app.get("/api/interview/overview", async () => interviewService.getOverview());
+  app.post("/api/interview/daily-session", async (request, reply) => {
+    try {
+      return await interviewService.getOrCreateDailySession((request.body ?? {}) as { force?: boolean });
+    } catch (error) {
+      return interviewError(reply, error);
+    }
+  });
+  app.post("/api/interview/answers", async (request, reply) => {
+    try {
+      return await interviewService.submitAnswer(request.body as any);
+    } catch (error) {
+      return interviewError(reply, error);
+    }
+  });
+  app.patch("/api/interview/answers/:id", async (request, reply) => {
+    try {
+      return interviewService.updateAnswer((request.params as { id: string }).id, request.body as any);
+    } catch (error) {
+      return interviewError(reply, error, 404);
+    }
+  });
+  app.post("/api/interview/reports/:date/regenerate", async (request, reply) => {
+    try {
+      return interviewService.regenerateReport((request.params as { date: string }).date);
+    } catch (error) {
+      return interviewError(reply, error, 404);
+    }
   });
 
   app.get("/api/logs", async (request) => {
