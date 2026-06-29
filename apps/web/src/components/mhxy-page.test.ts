@@ -495,11 +495,49 @@ describe("MhxyPage", () => {
       capturedAt: "2026-06-29T09:30"
     });
     expect(quickAdd.open).toBe(true);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect((form.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => {
       resolveSave();
     });
     await vi.waitFor(() => expect(quickAdd.open).toBe(false));
+    expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+      .toContain("高级连击");
+    await setDetailsOpen(quickAdd, true);
+    expect((form.querySelector('[name="price"]') as HTMLInputElement).value).toBe("");
+    expect((form.querySelector('[name="currency"]') as HTMLSelectElement).value).toBe("rmb");
+  });
+
+  it("keeps an uncategorized source absent when quickly recording a price", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const snapshotWithoutServer = { ...dashboard.priceSnapshots[0] };
+    delete snapshotWithoutServer.serverName;
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...dashboard,
+      priceSnapshots: [snapshotWithoutServer]
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    await setDetailsOpen(quickAdd, true);
+    const form = quickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
+
+    expect(form.textContent).toContain("高级连击 · 未分类来源");
+    await act(async () => {
+      change(form.querySelector('[name="price"]') as HTMLInputElement, "338");
+      change(form.querySelector('[name="capturedAt"]') as HTMLInputElement, "2026-06-29T11:00");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyPriceSnapshot).toHaveBeenCalledWith({
+      itemName: "高级连击",
+      currency: "rmb",
+      rmbUnitPrice: 338,
+      capturedAt: "2026-06-29T11:00"
+    });
   });
 
   it("keeps only the full snapshot entry in the empty price state", async () => {

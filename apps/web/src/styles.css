@@ -3152,13 +3152,13 @@ textarea {
   opacity: 0.68;
 }
 
-.mhxy-price-trend__heading span,
-.mhxy-price-trend__heading small {
+.mhxy-price-trend__identity > div > span,
+.mhxy-price-trend__identity > div > small {
   color: var(--market-mist);
   font-size: 0.72rem;
 }
 
-.mhxy-price-trend__heading h3 {
+.mhxy-price-trend__identity > div > h3 {
   margin: 0;
   color: var(--market-paper);
   font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
@@ -3171,6 +3171,12 @@ textarea {
   display: grid;
   justify-items: end;
   gap: 2px;
+}
+
+.mhxy-price-trend__latest > span,
+.mhxy-price-trend__latest > small {
+  color: var(--market-mist);
+  font-size: 0.72rem;
 }
 
 .mhxy-price-trend__latest strong {
@@ -3340,22 +3346,11 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     max-height: 310px;
   }
-}
-
-@media (max-width: 640px) {
-  .mhxy-market {
-    padding: 15px;
-    border-radius: 20px;
-  }
-
-  .mhxy-market__header,
-  .mhxy-price-trend__heading {
-    align-items: flex-start;
-  }
 
   .mhxy-price-trend__heading,
   .mhxy-price-trend__identity {
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .mhxy-price-trend__identity,
@@ -3365,6 +3360,28 @@ textarea {
 
   .mhxy-price-trend__latest {
     justify-items: start;
+  }
+
+  .mhxy-price-form.mhxy-price-quick-form {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    width: 100%;
+    max-height: none;
+    margin-top: 10px;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  .mhxy-market {
+    padding: 15px;
+    border-radius: 20px;
+  }
+
+  .mhxy-market__header {
+    align-items: flex-start;
   }
 
   .mhxy-price-trend__metrics {

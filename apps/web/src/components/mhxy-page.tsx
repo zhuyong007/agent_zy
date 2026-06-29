@@ -441,6 +441,7 @@ export function MhxyPage() {
 interface PriceSeries {
   key: string;
   itemName: string;
+  serverName?: string;
   sourceName: string;
   records: MhxyPriceSnapshot[];
 }
@@ -470,11 +471,13 @@ function PriceTrendWorkspace({
   const [selectedKey, setSelectedKey] = useState("");
   const seriesMap = new Map<string, PriceSeries>();
   for (const snapshot of snapshots) {
-    const sourceName = snapshot.serverName || "未分类来源";
-    const key = `${sourceName}\u0000${snapshot.itemName}`;
+    const serverName = snapshot.serverName || undefined;
+    const sourceName = serverName ?? "未分类来源";
+    const key = JSON.stringify([serverName ?? null, snapshot.itemName]);
     const current = seriesMap.get(key) ?? {
       key,
       itemName: snapshot.itemName,
+      serverName,
       sourceName,
       records: []
     };
@@ -584,6 +587,7 @@ function PriceTrendWorkspace({
                 <QuickSnapshotEntry
                   key={activeSeries.key}
                   itemName={activeSeries.itemName}
+                  serverName={activeSeries.serverName}
                   sourceName={activeSeries.sourceName}
                   submit={submit}
                   pending={pending}
@@ -654,11 +658,13 @@ function PriceTrendWorkspace({
 
 function QuickSnapshotEntry({
   itemName,
+  serverName,
   sourceName,
   submit,
   pending
 }: {
   itemName: string;
+  serverName?: string;
   sourceName: string;
   submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>;
   pending: boolean;
@@ -674,6 +680,7 @@ function QuickSnapshotEntry({
       <summary>＋ 记录新价格</summary>
       <QuickSnapshotForm
         itemName={itemName}
+        serverName={serverName}
         sourceName={sourceName}
         submit={submit}
         pending={pending}
@@ -685,12 +692,14 @@ function QuickSnapshotEntry({
 
 function QuickSnapshotForm({
   itemName,
+  serverName,
   sourceName,
   submit,
   pending,
   onSaved
 }: {
   itemName: string;
+  serverName?: string;
   sourceName: string;
   submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>;
   pending: boolean;
@@ -707,7 +716,7 @@ function QuickSnapshotForm({
     if (currency === "rmb") {
       input = {
         itemName,
-        serverName: sourceName,
+        ...(serverName ? { serverName } : {}),
         currency: "rmb",
         rmbUnitPrice: Number(data.get("price")),
         capturedAt
@@ -715,7 +724,7 @@ function QuickSnapshotForm({
     } else {
       input = {
         itemName,
-        serverName: sourceName,
+        ...(serverName ? { serverName } : {}),
         currency: "gameCoin",
         gameCoinUnitPriceWan: Number(data.get("price")),
         rmbPerGameCoinWan: Number(data.get("rate")),
