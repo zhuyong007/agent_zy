@@ -3057,7 +3057,7 @@ textarea {
 
 .mhxy-price-trend {
   padding: clamp(16px, 2vw, 24px);
-  overflow: hidden;
+  overflow: visible;
   border-radius: 20px;
 }
 
@@ -3068,18 +3068,97 @@ textarea {
   gap: 20px;
 }
 
-.mhxy-price-trend__heading > div:first-child {
-  display: grid;
-  gap: 3px;
+.mhxy-price-trend__identity {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 14px;
+  min-width: 0;
 }
 
-.mhxy-price-trend__heading span,
-.mhxy-price-trend__heading small {
+.mhxy-price-trend__identity > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mhxy-price-quick-add {
+  position: relative;
+  flex: none;
+}
+
+.mhxy-price-quick-add summary {
+  display: inline-flex;
+  align-items: center;
+  list-style: none;
+  border: 1px solid rgba(66, 214, 176, 0.46);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: rgba(66, 214, 176, 0.09);
+  color: var(--market-jade);
+  font-size: 0.76rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.mhxy-price-quick-add summary::-webkit-details-marker {
+  display: none;
+}
+
+.mhxy-price-quick-add summary::marker {
+  content: "";
+}
+
+.mhxy-price-quick-add summary:hover,
+.mhxy-price-quick-add[open] summary {
+  border-color: var(--market-jade);
+  background: rgba(66, 214, 176, 0.16);
+  color: var(--market-paper);
+  transform: translateY(-1px);
+}
+
+.mhxy-price-quick-add summary:focus-visible {
+  border-color: var(--market-jade);
+  outline: 2px solid rgba(66, 214, 176, 0.35);
+  outline-offset: 3px;
+}
+
+.mhxy-price-form.mhxy-price-quick-form {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: auto;
+  left: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 52px));
+  box-sizing: border-box;
+  border-color: rgba(66, 214, 176, 0.38);
+  background: #101d2e;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52);
+}
+
+.mhxy-price-quick-form > div > p:last-child {
+  margin: 2px 0 0;
+  color: var(--market-mist);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.mhxy-price-quick-form button[type="submit"]:disabled {
+  background: #52736e;
+  color: rgba(237, 247, 244, 0.58);
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.mhxy-price-trend__identity > div > span,
+.mhxy-price-trend__identity > div > small {
   color: var(--market-mist);
   font-size: 0.72rem;
 }
 
-.mhxy-price-trend__heading h3 {
+.mhxy-price-trend__identity > div > h3 {
   margin: 0;
   color: var(--market-paper);
   font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
@@ -3092,6 +3171,12 @@ textarea {
   display: grid;
   justify-items: end;
   gap: 2px;
+}
+
+.mhxy-price-trend__latest > span,
+.mhxy-price-trend__latest > small {
+  color: var(--market-mist);
+  font-size: 0.72rem;
 }
 
 .mhxy-price-trend__latest strong {
@@ -3261,6 +3346,32 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     max-height: 310px;
   }
+
+  .mhxy-price-trend__heading,
+  .mhxy-price-trend__identity {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mhxy-price-trend__identity,
+  .mhxy-price-quick-add {
+    width: 100%;
+  }
+
+  .mhxy-price-trend__latest {
+    justify-items: start;
+  }
+
+  .mhxy-price-form.mhxy-price-quick-form {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    width: 100%;
+    max-height: none;
+    margin-top: 10px;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 640px) {
@@ -3269,13 +3380,8 @@ textarea {
     border-radius: 20px;
   }
 
-  .mhxy-market__header,
-  .mhxy-price-trend__heading {
+  .mhxy-market__header {
     align-items: flex-start;
-  }
-
-  .mhxy-price-trend__latest {
-    justify-items: start;
   }
 
   .mhxy-price-trend__metrics {
@@ -3305,12 +3411,24 @@ textarea {
     max-height: calc(100vh - 96px);
     overflow-y: auto;
   }
+
+  .mhxy-price-form.mhxy-price-quick-form {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    width: 100%;
+    max-height: none;
+    margin-top: 10px;
+    overflow: visible;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mhxy-price-chart__line,
   .mhxy-market-watchlist__items button,
-  .mhxy-price-add summary {
+  .mhxy-price-add summary,
+  .mhxy-price-quick-add summary {
     animation: none;
     transition: none;
   }
