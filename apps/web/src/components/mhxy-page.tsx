@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   MhxyAssetFlipCategory,
   MhxyAssetFlipInput,
+  MhxyAssetFlipRecord,
   MhxyGameCoinCashoutInput,
   MhxyGameCoinCashoutRecord,
   MhxyGameCoinPurchaseInput,
@@ -56,10 +57,23 @@ const toLocalDateTimeInput = (value: string) => {
 };
 const money = (value: number | null) =>
   value === null ? "待估值" : `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const rateMoney = (value: number) =>
+  `¥${value.toLocaleString("zh-CN", { maximumFractionDigits: 6 })}`;
 const gameCoinWan = (value: number) =>
   `${(value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 4 })} 万`;
 const walletValue = (wallet: MhxyGameCoinWalletPosition) =>
-  `${wallet.serverName}\u0000${wallet.characterName}`;
+  JSON.stringify([wallet.serverName, wallet.characterName]);
+const parseWalletValue = (value: FormDataEntryValue | null): [string, string] => {
+  try {
+    const parsed = JSON.parse(String(value ?? ""));
+    if (Array.isArray(parsed) && parsed.length === 2 && parsed.every((item) => typeof item === "string")) {
+      return [parsed[0], parsed[1]];
+    }
+  } catch {
+    // The required select prevents an empty value; keep a defensive server-side-friendly fallback.
+  }
+  return ["", ""];
+};
 
 const assetFlipCategoryLabels: Record<MhxyAssetFlipCategory, string> = {
   role: "角色",
@@ -106,6 +120,20 @@ const emptyAssetFlip = (): MhxyAssetFlipInput => ({
   serverName: "",
   characterName: "",
   note: ""
+});
+
+const editableAssetFlip = (record: MhxyAssetFlipRecord): MhxyAssetFlipInput => ({
+  category: record.category,
+  name: record.name,
+  buyAt: toLocalDateTimeInput(record.buyAt),
+  purchaseCurrency: "rmb",
+  buyPriceRmb: record.buyPriceRmb,
+  gameCoinCost: undefined,
+  sellAt: record.sellAt ? toLocalDateTimeInput(record.sellAt) : "",
+  sellPriceRmb: record.sellPriceRmb,
+  serverName: record.serverName ?? "",
+  characterName: record.characterName ?? "",
+  note: record.note ?? ""
 });
 
 export function MhxyPage() {
@@ -465,7 +493,7 @@ export function MhxyPage() {
                         <span>持有中<small>计入库存价值</small></span>
                         <span className="is-muted">不计算浮盈</span>
                         <span className="mhxy-row-actions">
-                          <button type="button" onClick={() => { setEditingAssetFlipId(item.id); setAssetFlip({ ...item, purchaseCurrency: "rmb", gameCoinCost: undefined, buyAt: toLocalDateTimeInput(item.buyAt), sellAt: item.sellAt ? toLocalDateTimeInput(item.sellAt) : "", sellPriceRmb: item.sellPriceRmb }); setAssetFormOpen(true); }}>编辑</button>
+                          <button type="button" onClick={() => { setEditingAssetFlipId(item.id); setAssetFlip(editableAssetFlip(item)); setAssetFormOpen(true); }}>编辑</button>
                           <ConfirmDeleteButton pending={deleteMutation.isPending} onConfirm={() => deleteMutation.mutate({ kind: "asset", id: item.id })} />
                         </span>
                       </article>
@@ -492,7 +520,7 @@ export function MhxyPage() {
                         <span>{money(item.sellPriceRmb ?? 0)}<small>{item.sellAt?.slice(0, 10)}</small></span>
                         <span className={(item.profitRmb ?? 0) >= 0 ? "is-profit" : "is-loss"}>{money(item.profitRmb ?? 0)}</span>
                         <span className="mhxy-row-actions">
-                          <button type="button" onClick={() => { setEditingAssetFlipId(item.id); setAssetFlip({ ...item, purchaseCurrency: "rmb", gameCoinCost: undefined, buyAt: toLocalDateTimeInput(item.buyAt), sellAt: item.sellAt ? toLocalDateTimeInput(item.sellAt) : "", sellPriceRmb: item.sellPriceRmb }); setAssetFormOpen(true); }}>编辑</button>
+                          <button type="button" onClick={() => { setEditingAssetFlipId(item.id); setAssetFlip(editableAssetFlip(item)); setAssetFormOpen(true); }}>编辑</button>
                           <ConfirmDeleteButton pending={deleteMutation.isPending} onConfirm={() => deleteMutation.mutate({ kind: "asset", id: item.id })} />
                         </span>
                       </article>
@@ -553,12 +581,12 @@ function GameCoinPurchaseForm({
     <div className="mhxy-form-grid">
       <label>区服<input name="serverName" required /></label>
       <label>角色<input name="characterName" required /></label>
-      <label>游戏币数量（万）<input name="gameCoinAmountWan" type="number" min="0.0001" step="any" required value={amountWan || ""} onChange={(event) => setAmountWan(Number(event.target.value))} /></label>
+      <label>游戏币数量（万）<input name="gameCoinAmountWan" type="number" min="0.0001" step="0.0001" required value={amountWan || ""} onChange={(event) => setAmountWan(Number(event.target.value))} /></label>
       <label>实际人民币总额<input name="rmbCost" type="number" min="0.01" step="any" required value={rmbCost || ""} onChange={(event) => setRmbCost(Number(event.target.value))} /></label>
       <label>购币时间<input name="acquiredAt" type="datetime-local" defaultValue={localDateTime()} required /></label>
       <label>备注<input name="note" placeholder="例如：藏宝阁购币" /></label>
     </div>
-    <div className="mhxy-coin-preview"><span>入账 {amountWan.toLocaleString("zh-CN")} 万游戏币</span><strong>1 万 = {money(rate)}</strong></div>
+    <div className="mhxy-coin-preview"><span>入账 {amountWan.toLocaleString("zh-CN")} 万游戏币</span><strong>1 万 = {rateMoney(rate)}</strong></div>
     <button type="submit" disabled={pending}>存入“用于买货”</button>
   </form>;
 }
@@ -579,7 +607,7 @@ function GameCoinCashoutForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const [serverName = "", characterName = ""] = String(data.get("wallet") ?? "").split("\u0000");
+    const [serverName, characterName] = parseWalletValue(data.get("wallet"));
     await submit({
       occurredAt: String(data.get("occurredAt")),
       serverName,
@@ -594,12 +622,12 @@ function GameCoinCashoutForm({
     <div><p className="eyebrow">LIQUIDATION WALLET</p><h3>游戏币变现</h3></div>
     <label>准备卖出的钱包<select name="wallet" required defaultValue=""><option value="" disabled>选择区服与角色</option>{wallets.map((wallet) => <option key={walletValue(wallet)} value={walletValue(wallet)}>{wallet.serverName} / {wallet.characterName} · {gameCoinWan(wallet.gameCoinAmount)}</option>)}</select></label>
     <div className="mhxy-form-grid">
-      <label>卖出数量（万）<input name="gameCoinAmountWan" type="number" min="0.0001" step="any" required value={amountWan || ""} onChange={(event) => setAmountWan(Number(event.target.value))} /></label>
+      <label>卖出数量（万）<input name="gameCoinAmountWan" type="number" min="0.0001" step="0.0001" required value={amountWan || ""} onChange={(event) => setAmountWan(Number(event.target.value))} /></label>
       <label>实际人民币回款<input name="rmbReceived" type="number" min="0.01" step="any" required value={rmbReceived || ""} onChange={(event) => setRmbReceived(Number(event.target.value))} /></label>
       <label>变现时间<input name="occurredAt" type="datetime-local" defaultValue={localDateTime()} required /></label>
       <label>备注<input name="note" placeholder="填写平台或订单" /></label>
     </div>
-    <div className="mhxy-coin-preview"><span>变现 {amountWan.toLocaleString("zh-CN")} 万游戏币</span><strong>实际比例 1 万 = {money(rate)}</strong></div>
+    <div className="mhxy-coin-preview"><span>变现 {amountWan.toLocaleString("zh-CN")} 万游戏币</span><strong>实际比例 1 万 = {rateMoney(rate)}</strong></div>
     <button type="submit" disabled={pending || wallets.length === 0}>确认回款并扣减</button>
   </form>;
 }
@@ -630,7 +658,7 @@ function GameCoinWallets({
         <div className="mhxy-coin-wallet-list">
           {wallets.filter((wallet) => wallet.purpose === group.purpose).map((wallet) => <div className="mhxy-coin-wallet" key={walletValue(wallet)}>
             <span><strong>{wallet.serverName} / {wallet.characterName}</strong><small>人民币成本 {money(wallet.rmbCostBasis)}</small></span>
-            <span><strong>{gameCoinWan(wallet.gameCoinAmount)}</strong><small>均价 {money(wallet.averageRmbPerGameCoinWan)} / 万</small></span>
+            <span><strong>{gameCoinWan(wallet.gameCoinAmount)}</strong><small>均价 {rateMoney(wallet.averageRmbPerGameCoinWan)} / 万</small></span>
           </div>)}
           {wallets.every((wallet) => wallet.purpose !== group.purpose) ? <p className="mhxy-ledger-empty">暂无{group.title}游戏币。</p> : null}
         </div>

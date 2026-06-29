@@ -35,9 +35,8 @@ describe("mhxy API", () => {
           type: "buy",
           itemName: "金刚石",
           quantity: 2,
-          unitPrice: 1000,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.08,
+          unitPrice: 80,
+          currency: "rmb",
           rmbAmount: 1,
           occurredAt: "2026-06-01T10:00:00.000Z",
           serverName: "长安城",
@@ -67,9 +66,8 @@ describe("mhxy API", () => {
           type: "buy",
           itemName: "金刚石",
           quantity: 2,
-          unitPrice: 1000,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.08,
+          unitPrice: 80,
+          currency: "rmb",
           occurredAt: "2026-06-01T10:00:00.000Z",
           serverName: "长安城",
           characterName: "商人甲"
@@ -85,10 +83,9 @@ describe("mhxy API", () => {
           type: "sell",
           itemName: "金刚石",
           quantity: 1,
-          unitPrice: 1200,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.1,
-          feeRmb: 0,
+          unitPrice: 120,
+          currency: "rmb",
+          feeRmb: 6,
           occurredAt: "2026-06-02T10:00:00.000Z",
           serverName: "长安城",
           characterName: "商人甲"
@@ -392,7 +389,9 @@ describe("mhxy API", () => {
         payload: {
           acquiredAt: "2026-06-01T10:00:00.000Z",
           gameCoinAmount: 30_000_000,
-          rmbCost: 230
+          rmbCost: 230,
+          serverName: "Legacy Server",
+          characterName: "Legacy Buyer"
         }
       });
       expect(purchase.statusCode).toBe(200);
@@ -555,6 +554,29 @@ describe("mhxy API", () => {
         purpose: "liquidation",
         gameCoinAmount: 12_000_000
       }));
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires a server and character when purchasing game coin through the API", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/game-coin-purchases",
+        payload: {
+          acquiredAt: "2026-06-01T10:00:00.000Z",
+          gameCoinAmount: 20_000_000,
+          rmbCost: 200
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
     } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });

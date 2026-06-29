@@ -442,6 +442,7 @@ describe("MhxyPage", () => {
     expect(wallets.textContent).toContain("紫禁城 / 销售号");
     expect(wallets.textContent).toContain("3,000 万");
     expect(wallets.textContent).toContain("1,200 万");
+    expect(wallets.textContent).toContain("¥0.076667");
     expect(container.querySelector('[data-form="game-coin-purchase"]')).not.toBeNull();
     expect(container.querySelector('[data-form="game-coin-cashout"]')).not.toBeNull();
   });
@@ -466,7 +467,10 @@ describe("MhxyPage", () => {
     }));
 
     await act(async () => {
-      change(cashoutForm.querySelector('[name="wallet"]') as HTMLSelectElement, "紫禁城\u0000销售号");
+      change(
+        cashoutForm.querySelector('[name="wallet"]') as HTMLSelectElement,
+        JSON.stringify(["紫禁城", "销售号"])
+      );
       change(cashoutForm.querySelector('[name="gameCoinAmountWan"]') as HTMLInputElement, "600");
       change(cashoutForm.querySelector('[name="rmbReceived"]') as HTMLInputElement, "90");
       cashoutForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -927,6 +931,38 @@ describe("MhxyPage", () => {
         characterName: undefined
       })
     );
+  });
+
+  it("submits only editable asset fields when updating a persisted record", async () => {
+    const container = await renderPage();
+    await switchTab(container, "资产交易记录");
+    const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
+      .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
+
+    await act(async () => {
+      Array.from(row.querySelectorAll("button"))
+        .find((button) => button.textContent === "编辑")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    const submitted = vi.mocked(updateMhxyAssetFlip).mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(submitted).toMatchObject({
+      category: "summon",
+      name: "须弥画魂",
+      purchaseCurrency: "rmb",
+      buyPriceRmb: 1200
+    });
+    expect(submitted).not.toHaveProperty("id");
+    expect(submitted).not.toHaveProperty("status");
+    expect(submitted).not.toHaveProperty("profitRmb");
+    expect(submitted).not.toHaveProperty("createdAt");
+    expect(submitted).not.toHaveProperty("updatedAt");
+    expect(submitted).not.toHaveProperty("gameCoinAllocations");
   });
 
   it("converts persisted UTC timestamps to local datetime inputs when editing", async () => {

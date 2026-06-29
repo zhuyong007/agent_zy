@@ -80,8 +80,8 @@ const gameCoinPurchaseShape = {
   acquiredAt: dateTime,
   gameCoinAmount: positiveSafeInteger,
   rmbCost: z.number().finite().positive(),
-  serverName: z.string().min(1).optional(),
-  characterName: z.string().min(1).optional(),
+  serverName: z.string().trim().min(1),
+  characterName: z.string().trim().min(1),
   note: z.string().optional()
 };
 

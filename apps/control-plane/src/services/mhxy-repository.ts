@@ -12,6 +12,7 @@ import type {
 } from "@agent-zy/shared-types";
 
 export interface MhxyRepository {
+  transaction<T>(operation: () => T): T;
   readTrades(): MhxyTradeRecord[];
   writeTrades(records: MhxyTradeRecord[]): void;
   readPriceSnapshots(): MhxyPriceSnapshot[];
@@ -49,6 +50,12 @@ function writeArray<T>(path: string, records: T[]) {
   renameSync(tempPath, path);
 }
 
+function writeTextAtomic(path: string, content: string) {
+  const tempPath = `${path}.${process.pid}.rollback.tmp`;
+  writeFileSync(tempPath, content, "utf8");
+  renameSync(tempPath, path);
+}
+
 export function createMhxyRepository(dataDir: string): MhxyRepository {
   const dir = resolve(dataDir, "mhxy");
   mkdirSync(dir, { recursive: true });
@@ -59,9 +66,29 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
   const assetFlips = resolve(dir, "asset-flips.json");
   const gameCoinPurchases = resolve(dir, "game-coin-purchases.json");
   const gameCoinCashouts = resolve(dir, "game-coin-cashouts.json");
-  [trades, snapshots, transfers, targets, assetFlips, gameCoinPurchases, gameCoinCashouts].forEach(ensureArrayFile);
+  const paths = [trades, snapshots, transfers, targets, assetFlips, gameCoinPurchases, gameCoinCashouts];
+  paths.forEach(ensureArrayFile);
 
   return {
+    transaction: <T>(operation: () => T) => {
+      const snapshots = new Map(paths.map((path) => [path, readFileSync(path, "utf8")]));
+      try {
+        return operation();
+      } catch (error) {
+        let rollbackError: unknown;
+        for (const [path, content] of snapshots) {
+          try {
+            writeTextAtomic(path, content);
+          } catch (currentRollbackError) {
+            rollbackError ??= currentRollbackError;
+          }
+        }
+        if (rollbackError) {
+          throw new AggregateError([error, rollbackError], "MHXY 数据写入失败，且自动回滚未完整完成");
+        }
+        throw error;
+      }
+    },
     readTrades: () => readArray(trades),
     writeTrades: (records) => writeArray(trades, records),
     readPriceSnapshots: () => readArray(snapshots),

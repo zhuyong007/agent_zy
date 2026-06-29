@@ -100,8 +100,15 @@ describe("mhxy service", () => {
     });
   });
 
-  it("freezes game coin conversion and charges five percent only on game coin sells", () => {
+  it("uses wallet cost for new game coin trades and does not add the legacy fee", () => {
     const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-05-31T10:00:00.000Z",
+      gameCoinAmount: 20_000_000,
+      rmbCost: 160,
+      serverName: "长安城",
+      characterName: "商人甲"
+    });
 
     const buy = service.createTrade({
       type: "buy",
@@ -133,8 +140,8 @@ describe("mhxy service", () => {
     });
     expect(sell).toMatchObject({
       gameCoinAmountWan: 1200,
-      rmbAmount: 120,
-      feeRmb: 6
+      rmbAmount: null,
+      feeRmb: 0
     });
 
     service.createPriceSnapshot({
@@ -146,11 +153,64 @@ describe("mhxy service", () => {
       serverName: "长安城"
     });
 
-    expect(service.getDashboard().tradeResults.at(-1)).toMatchObject({
-      netIncomeRmb: 114,
-      costBasisRmb: 80,
-      realizedProfitRmb: 34
+    expect(service.getDashboard().tradeResults).toHaveLength(0);
+  });
+
+  it("keeps imported historical rate trades frozen in legacy accounting mode", () => {
+    const service = createService();
+    service.replaceAllData({
+      trades: [
+        {
+          id: "legacy-buy",
+          type: "buy",
+          itemName: "Legacy Item",
+          quantity: 2,
+          unitPrice: 1000,
+          currency: "gameCoin",
+          rmbPerGameCoinWan: 0.08,
+          rmbAmount: 160,
+          feeRmb: 0,
+          occurredAt: "2026-06-01T10:00:00.000Z",
+          serverName: "Legacy Server",
+          characterName: "Legacy Buyer",
+          createdAt: "2026-06-01T10:00:00.000Z",
+          updatedAt: "2026-06-01T10:00:00.000Z"
+        },
+        {
+          id: "legacy-sell",
+          type: "sell",
+          itemName: "Legacy Item",
+          quantity: 1,
+          unitPrice: 1200,
+          currency: "gameCoin",
+          rmbPerGameCoinWan: 0.1,
+          rmbAmount: 120,
+          feeRmb: 6,
+          occurredAt: "2026-06-02T10:00:00.000Z",
+          serverName: "Legacy Server",
+          characterName: "Legacy Buyer",
+          createdAt: "2026-06-02T10:00:00.000Z",
+          updatedAt: "2026-06-02T10:00:00.000Z"
+        }
+      ],
+      priceSnapshots: [],
+      inventoryTransfers: [],
+      inventoryTargets: [],
+      assetFlips: [],
+      gameCoinPurchases: [],
+      gameCoinCashouts: []
     });
+
+    const dashboard = service.getDashboard();
+    expect(dashboard.trades).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "legacy-buy", accountingMode: "legacyRate", rmbAmount: 160 }),
+      expect.objectContaining({ id: "legacy-sell", accountingMode: "legacyRate", feeRmb: 6 })
+    ]));
+    expect(dashboard.tradeResults).toContainEqual(expect.objectContaining({
+      tradeId: "legacy-sell",
+      realizedProfitRmb: 34
+    }));
+    expect(dashboard.gameCoinWallets).toEqual([]);
   });
 
   it("values inventory using the expected sell server latest RMB snapshot", () => {
@@ -697,6 +757,104 @@ describe("mhxy service", () => {
         averageRmbPerGameCoinWan: 0.1
       })
     );
+  });
+
+  it("does not let a new trade bypass the wallet by supplying a legacy exchange rate", () => {
+    const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 10_000_000,
+      rmbCost: 100,
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+
+    const trade = service.createTrade({
+      type: "buy",
+      itemName: "Advanced Combo",
+      quantity: 1,
+      unitPrice: 500,
+      currency: "gameCoin",
+      rmbPerGameCoinWan: 999,
+      occurredAt: "2026-06-02T10:00:00.000Z",
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+
+    expect(trade).toMatchObject({ accountingMode: "wallet", rmbAmount: 50 });
+    expect(trade).not.toHaveProperty("rmbPerGameCoinWan");
+    expect(service.getDashboard().gameCoinWallets).toContainEqual(expect.objectContaining({
+      purpose: "procurement",
+      gameCoinAmount: 5_000_000,
+      rmbCostBasis: 50
+    }));
+  });
+
+  it("keeps cross-server allocations reserved when a later asset consumes game coin", () => {
+    const service = createService();
+    const first = service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 10,
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+    const second = service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T11:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 20,
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+    const trade = service.createTrade({
+      type: "buy",
+      itemName: "Cross Item",
+      quantity: 1,
+      unitPrice: 0.01,
+      currency: "gameCoin",
+      occurredAt: "2026-06-02T10:00:00.000Z",
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+
+    const asset = service.createAssetFlip({
+      category: "equipment",
+      name: "Asset Item",
+      buyAt: "2026-06-03T10:00:00.000Z",
+      purchaseCurrency: "gameCoin",
+      gameCoinCost: 100
+    });
+
+    expect(trade.gameCoinAllocations).toEqual([
+      expect.objectContaining({ gameCoinPurchaseId: first.id, gameCoinAmount: 100 })
+    ]);
+    expect(asset.gameCoinAllocations).toEqual([
+      expect.objectContaining({ gameCoinPurchaseId: second.id, gameCoinAmount: 100, rmbCost: 20 })
+    ]);
+    expect(service.getDashboard().gameCoinBalance).toEqual({ gameCoinAmount: 0, rmbCost: 0 });
+  });
+
+  it("rejects game coin trades whose displayed amount cannot resolve to a positive raw coin", () => {
+    const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T10:00:00.000Z",
+      gameCoinAmount: 100,
+      rmbCost: 10,
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+
+    expect(() => service.createTrade({
+      type: "buy",
+      itemName: "Free Item",
+      quantity: 1,
+      unitPrice: 0.00001,
+      currency: "gameCoin",
+      occurredAt: "2026-06-02T10:00:00.000Z",
+      serverName: "Source Server",
+      characterName: "Buyer"
+    })).toThrow("游戏币数量");
+    expect(service.getDashboard().trades).toHaveLength(0);
   });
 
   it("keeps six decimal precision for game coin exchange rates", () => {

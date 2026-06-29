@@ -74,6 +74,15 @@ function proportionalCost(amount: number, available: number, availableCents: num
   return amount === available ? availableCents : Math.round(availableCents * amount / available);
 }
 
+function rawGameCoinAmount(trade: MhxyTradeRecord) {
+  const amount = (trade.gameCoinAmountWan ?? trade.quantity * trade.unitPrice) * 10_000;
+  const rounded = Math.round(amount);
+  if (!Number.isSafeInteger(rounded) || rounded <= 0 || Math.abs(amount - rounded) > 1e-9) {
+    throw new Error("游戏币数量必须换算为大于 0 的整数个");
+  }
+  return rounded;
+}
+
 export function replayCrossServerLedger(
   input: ReplayCrossServerLedgerInput
 ): ReplayCrossServerLedgerResult {
@@ -291,7 +300,7 @@ export function replayCrossServerLedger(
     if (trade.type === "buy") {
       let costCents: number;
       if (trade.currency === "gameCoin" && trade.accountingMode === "wallet") {
-        const rawAmount = Math.round((trade.gameCoinAmountWan ?? trade.quantity * trade.unitPrice) * 10_000);
+        const rawAmount = rawGameCoinAmount(trade);
         const consumed = consumeCoin(trade, rawAmount, trade.gameCoinAllocations);
         costCents = consumed.costCents;
         trade.rmbAmount = fromCents(costCents);
@@ -311,7 +320,7 @@ export function replayCrossServerLedger(
     const removed = removeInventory(position, trade.quantity, ["transferred", "direct"], `${trade.itemName} ${trade.serverName ?? ""}`);
     const totalCostCents = removed.directCostCents + removed.transferredCostCents;
     if (trade.currency === "gameCoin" && trade.accountingMode === "wallet") {
-      const rawAmount = Math.round((trade.gameCoinAmountWan ?? trade.quantity * trade.unitPrice) * 10_000);
+      const rawAmount = rawGameCoinAmount(trade);
       const transferredCoins = removed.transferredQuantity === 0
         ? 0
         : Math.round(rawAmount * removed.transferredQuantity / trade.quantity);

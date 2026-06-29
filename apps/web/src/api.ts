@@ -1421,8 +1421,12 @@ export async function fetchLedgerStages(): Promise<LifeStageRecord[]> {
 async function mhxyJsonRequest<T>(path: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    ...(body === undefined
+      ? {}
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        })
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "梦幻西游账本操作失败"));
