@@ -104,12 +104,26 @@ vi.mock("../api", () => ({
         profitRmb: 300,
         createdAt: "2026-06-01T10:00:00.000Z",
         updatedAt: "2026-06-03T10:00:00.000Z"
+      },
+      {
+        id: "asset-3",
+        category: "role",
+        name: "175 大唐官府",
+        buyAt: "2026-06-05T10:00:00.000Z",
+        purchaseCurrency: "rmb",
+        buyPriceRmb: 5000,
+        status: "holding",
+        profitRmb: null,
+        serverName: "长安城",
+        characterName: "旧归属",
+        createdAt: "2026-06-05T10:00:00.000Z",
+        updatedAt: "2026-06-05T10:00:00.000Z"
       }
     ],
     assetFlipSummary: {
-      holdingCount: 1,
+      holdingCount: 2,
       soldCount: 1,
-      holdingCostRmb: 1200,
+      holdingCostRmb: 6200,
       realizedProfitRmb: 300,
       realizedRevenueRmb: 3300
     },
@@ -130,7 +144,7 @@ vi.mock("../api", () => ({
       rmbCost: 230
     },
     combinedSummary: {
-      holdingCostRmb: 1430,
+      holdingCostRmb: 6430,
       realizedProfitRmb: 300,
       gameCoinBalanceCostRmb: 230,
       mainLedgerMarketValueRmb: 0,
@@ -174,7 +188,8 @@ import {
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
-  fetchMhxyDashboard
+  fetchMhxyDashboard,
+  updateMhxyAssetFlip
 } from "../api";
 import { MhxyPage } from "./mhxy-page";
 
@@ -214,7 +229,7 @@ describe("MhxyPage", () => {
     const container = await renderPage();
     expect(container.querySelector('[data-sync-module="mhxy"]')).not.toBeNull();
     expect(container.textContent).toContain("持有总成本");
-    expect(container.textContent).toContain("¥1,430.00");
+    expect(container.textContent).toContain("¥6,430.00");
   });
 
   function change(input: HTMLInputElement | HTMLSelectElement, value: string) {
@@ -241,7 +256,7 @@ describe("MhxyPage", () => {
 
     expect(labels).toEqual([
       "跨服交易记录",
-      "角色召唤兽及装备交易记录",
+      "资产交易记录",
       "物价记录"
     ]);
     expect(container.querySelector('[data-form="trade"]')).not.toBeNull();
@@ -252,7 +267,7 @@ describe("MhxyPage", () => {
     expect(container.querySelector('[data-form="price-snapshot"]')).not.toBeNull();
     expect(container.querySelector('[data-form="trade"]')).toBeNull();
 
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
     expect(container.querySelector('[data-form="asset-flip"]')).not.toBeNull();
     expect(container.querySelector('[data-form="price-snapshot"]')).toBeNull();
   });
@@ -285,17 +300,17 @@ describe("MhxyPage", () => {
       .toBe("山东2区-水泊梁山");
   });
 
-  it("keeps role holdings and sold history primary while the asset editor stays collapsed", async () => {
+  it("keeps asset holdings and sold history primary while the asset editor stays collapsed", async () => {
     const container = await renderPage();
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
     const workspace = container.querySelector("[data-role-assets-workspace]") as HTMLElement;
     expect(workspace).not.toBeNull();
     const addAsset = workspace.querySelector(".mhxy-asset-add") as HTMLDetailsElement;
     expect(addAsset).not.toBeNull();
     expect(addAsset.open).toBe(false);
     expect(addAsset.querySelector('[data-form="asset-flip"]')).not.toBeNull();
-    expect(workspace.querySelector('[aria-label="角色当前库存"]')).not.toBeNull();
-    expect(workspace.querySelector('[aria-label="角色交易历史"]')).not.toBeNull();
+    expect(workspace.querySelector('[aria-label="资产当前库存"]')).not.toBeNull();
+    expect(workspace.querySelector('[aria-label="资产交易历史"]')).not.toBeNull();
   });
 
   it("switches to game coin fields, previews conversion, and submits raw inputs", async () => {
@@ -432,27 +447,63 @@ describe("MhxyPage", () => {
     expect(addRecord.querySelector('[data-form="price-snapshot"]')).not.toBeNull();
   });
 
-  it("shows separate role inventory and sold history with RMB totals", async () => {
+  it("shows separate asset inventory and sold history with RMB totals", async () => {
     const container = await renderPage();
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
 
-    expect(container.textContent).toContain("召唤兽 / 装备人民币账页");
+    expect(container.textContent).toContain("角色 / 召唤兽 / 装备人民币盈亏");
     expect(container.textContent).toContain("库存价值");
     expect(container.textContent).toContain("总盈亏");
-    expect(container.textContent).toContain("¥1,200.00");
+    expect(container.textContent).toContain("¥6,200.00");
     expect(container.textContent).toContain("¥300.00");
 
-    const inventory = container.querySelector('[aria-label="角色当前库存"]') as HTMLElement;
-    const history = container.querySelector('[aria-label="角色交易历史"]') as HTMLElement;
+    const records = container.querySelector('[aria-label="资产记录"]') as HTMLElement;
+    const inventory = container.querySelector('[aria-label="资产当前库存"]') as HTMLElement;
+    const history = container.querySelector('[aria-label="资产交易历史"]') as HTMLElement;
+    expect(records).not.toBeNull();
     expect(inventory.textContent).toContain("须弥画魂");
+    expect(inventory.textContent).toContain("175 大唐官府");
+    expect(inventory.textContent).toContain("角色 · 长安城");
     expect(inventory.textContent).not.toContain("160 项链");
     expect(history.textContent).toContain("160 项链");
+    expect(history.textContent).toContain("装备 · 未填区服 · 未填归属角色");
     expect(history.textContent).not.toContain("须弥画魂");
+    expect(history.textContent).not.toContain("175 大唐官府");
+
+    const category = container.querySelector('[name="category"]') as HTMLSelectElement;
+    expect(Array.from(category.options).map((option) => [option.value, option.textContent])).toEqual([
+      ["role", "角色"],
+      ["summon", "召唤兽"],
+      ["equipment", "装备"]
+    ]);
+    expect((container.querySelector('[name="characterName"]') as HTMLInputElement).parentElement?.textContent)
+      .toContain("归属角色");
   });
 
-  it("submits role assets as RMB-only trades", async () => {
+  it("uses generic empty states for asset records", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...dashboard,
+      assetFlips: [],
+      assetFlipSummary: {
+        ...dashboard.assetFlipSummary,
+        holdingCount: 0,
+        soldCount: 0,
+        holdingCostRmb: 0,
+        realizedProfitRmb: 0,
+        realizedRevenueRmb: 0
+      }
+    });
     const container = await renderPage();
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
+
+    expect(container.textContent).toContain("当前没有持有中的资产。");
+    expect(container.textContent).toContain("还没有已售出的资产记录。");
+  });
+
+  it("submits asset trades as RMB-only trades", async () => {
+    const container = await renderPage();
+    await switchTab(container, "资产交易记录");
 
     const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
     expect(form.querySelector('[name="purchaseCurrency"]')).toBeNull();
@@ -487,10 +538,68 @@ describe("MhxyPage", () => {
     );
   });
 
+  it("hides and clears the owner character when submitting a role asset", async () => {
+    const container = await renderPage();
+    await switchTab(container, "资产交易记录");
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+
+    expect(form.textContent).toContain("归属角色");
+    await act(async () => {
+      change(form.querySelector('[name="characterName"]') as HTMLInputElement, "商人甲");
+      change(form.querySelector('[name="category"]') as HTMLSelectElement, "role");
+    });
+
+    expect(form.querySelector('[name="characterName"]')).toBeNull();
+    await act(async () => {
+      change(form.querySelector('[name="name"]') as HTMLInputElement, "175 大唐官府");
+      change(form.querySelector('[name="buyPriceRmb"]') as HTMLInputElement, "5000");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyAssetFlip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "role",
+        name: "175 大唐官府",
+        characterName: undefined,
+        purchaseCurrency: "rmb",
+        buyPriceRmb: 5000
+      })
+    );
+  });
+
+  it("clears stale owner character when saving an existing role asset", async () => {
+    const container = await renderPage();
+    await switchTab(container, "资产交易记录");
+    const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
+      .find((item) => item.textContent?.includes("175 大唐官府")) as HTMLElement;
+
+    await act(async () => {
+      Array.from(row.querySelectorAll("button"))
+        .find((button) => button.textContent === "编辑")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    expect(form.querySelector('[name="characterName"]')).toBeNull();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(updateMhxyAssetFlip).toHaveBeenCalledWith(
+      "asset-3",
+      expect.objectContaining({
+        category: "role",
+        name: "175 大唐官府",
+        characterName: undefined
+      })
+    );
+  });
+
   it("converts persisted UTC timestamps to local datetime inputs when editing", async () => {
     const timezone = vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-480);
     const container = await renderPage();
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
     const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
       .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
 
@@ -546,7 +655,7 @@ describe("MhxyPage", () => {
       ]
     });
     const container = await renderPage();
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
     const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
       .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
 
@@ -563,7 +672,7 @@ describe("MhxyPage", () => {
 
   it("requires a second click before deleting an asset record", async () => {
     const container = await renderPage();
-    await switchTab(container, "角色召唤兽及装备交易记录");
+    await switchTab(container, "资产交易记录");
     const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
       .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
     const deleteButton = Array.from(row.querySelectorAll("button"))

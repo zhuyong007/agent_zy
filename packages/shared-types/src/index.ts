@@ -435,7 +435,7 @@ export interface MhxyInventoryPosition {
   unrealizedProfitRmb: number | null;
 }
 
-export type MhxyAssetFlipCategory = "summon" | "equipment";
+export type MhxyAssetFlipCategory = "role" | "summon" | "equipment";
 export type MhxyAssetFlipStatus = "holding" | "sold";
 export type MhxyAssetPurchaseCurrency = "rmb" | "gameCoin";
 

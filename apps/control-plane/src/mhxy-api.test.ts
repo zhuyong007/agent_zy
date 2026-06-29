@@ -283,6 +283,103 @@ describe("mhxy API", () => {
     }
   });
 
+  it("creates, sells, and summarizes role asset flips", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "role",
+          name: "175 大唐官府",
+          buyAt: "2026-06-01T10:00:00.000Z",
+          buyPriceRmb: 5000,
+          serverName: "长安城"
+        }
+      });
+      expect(created.statusCode).toBe(200);
+      expect(created.json()).toMatchObject({
+        category: "role",
+        status: "holding",
+        buyPriceRmb: 5000
+      });
+
+      const sold = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/asset-flips/${created.json().id}`,
+        payload: {
+          sellAt: "2026-06-03T10:00:00.000Z",
+          sellPriceRmb: 5600
+        }
+      });
+      expect(sold.json()).toMatchObject({ status: "sold", profitRmb: 600 });
+
+      const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      expect(dashboard.assetFlips).toEqual([
+        expect.objectContaining({
+          category: "role",
+          name: "175 大唐官府",
+          status: "sold",
+          buyPriceRmb: 5000,
+          sellPriceRmb: 5600,
+          profitRmb: 600,
+          serverName: "长安城"
+        })
+      ]);
+      expect(dashboard.assetFlipSummary).toMatchObject({
+        holdingCount: 0,
+        soldCount: 1,
+        realizedProfitRmb: 600
+      });
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears stale ownership when changing an asset to a role", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/asset-flips",
+        payload: {
+          category: "equipment",
+          name: "转换前装备",
+          buyAt: "2026-06-01T10:00:00.000Z",
+          buyPriceRmb: 5000,
+          serverName: "长安城",
+          characterName: "旧归属"
+        }
+      });
+      expect(created.statusCode).toBe(200);
+      expect(created.json()).toMatchObject({ characterName: "旧归属" });
+
+      const patched = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/asset-flips/${created.json().id}`,
+        payload: { category: "role" }
+      });
+      expect(patched.statusCode).toBe(200);
+      expect(patched.json()).toMatchObject({ category: "role" });
+      expect(patched.json()).not.toHaveProperty("characterName");
+
+      const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      const saved = dashboard.assetFlips.find((item: { id: string }) => item.id === created.json().id);
+      expect(saved).toMatchObject({ category: "role" });
+      expect(saved).not.toHaveProperty("characterName");
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("derives asset RMB cost from historical game coin purchase batches", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
     const app = createControlPlaneApp({ dataDir, startSchedulers: false });

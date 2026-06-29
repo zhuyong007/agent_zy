@@ -56,8 +56,8 @@ function normalizeAssetFlip(
   input: MhxyAssetFlipInput,
   existing?: MhxyAssetFlipRecord
 ): MhxyAssetFlipRecord {
-  if (input.category !== "summon" && input.category !== "equipment") {
-    throw new Error("资产类型必须是召唤兽或装备");
+  if (input.category !== "role" && input.category !== "summon" && input.category !== "equipment") {
+    throw new Error("资产类型必须是角色、召唤兽或装备");
   }
   const name = input.name.trim();
   if (!name) throw new Error("名称不能为空");
@@ -111,7 +111,9 @@ function normalizeAssetFlip(
     status,
     profitRmb: sellPriceRmb === undefined ? null : roundRmb(sellPriceRmb - buyPriceRmb),
     ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
-    ...(normalizeLabel(input.characterName) ? { characterName: normalizeLabel(input.characterName) } : {}),
+    ...(input.category !== "role" && normalizeLabel(input.characterName)
+      ? { characterName: normalizeLabel(input.characterName) }
+      : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
@@ -558,7 +560,7 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
     [input.priceSnapshots, "价格快照"],
     [input.inventoryTransfers, "库存转移"],
     [input.inventoryTargets, "库存目标"],
-    [input.assetFlips, "召唤兽装备记录"],
+    [input.assetFlips, "资产记录"],
     [input.gameCoinPurchases, "游戏币购入记录"]
   ] as const) {
     if (!Array.isArray(records)) throw new Error(`${label}必须是数组`);
@@ -609,7 +611,7 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
     return { ...normalized, updatedAt: record.updatedAt };
   });
   const assetFlips = input.assetFlips.map((record) => {
-    assertRecordMetadata(record, "召唤兽装备记录");
+    assertRecordMetadata(record, "资产记录");
     const normalized = normalizeAssetFlip(record, record);
     const allocations = record.gameCoinAllocations?.map((allocation) => {
       if (typeof allocation.gameCoinPurchaseId !== "string" || !allocation.gameCoinPurchaseId) {
@@ -837,7 +839,7 @@ export function createMhxyService(dataDir: string) {
     updateAssetFlip(id: string, patch: Partial<MhxyAssetFlipInput>) {
       const records = repository.readAssetFlips();
       const existing = records.find((record) => record.id === id);
-      if (!existing) throw new Error("召唤兽装备记录不存在");
+      if (!existing) throw new Error("资产记录不存在");
       const record = normalizeAssetFlip({ ...existing, ...patch }, existing);
       const replayed = replayAssetFlips(
         records.map((item) => (item.id === id ? record : item)),
@@ -848,7 +850,7 @@ export function createMhxyService(dataDir: string) {
     },
     deleteAssetFlip(id: string) {
       const records = repository.readAssetFlips();
-      if (!records.some((record) => record.id === id)) throw new Error("召唤兽装备记录不存在");
+      if (!records.some((record) => record.id === id)) throw new Error("资产记录不存在");
       const replayed = replayAssetFlips(
         records.filter((record) => record.id !== id),
         repository.readGameCoinPurchases()
