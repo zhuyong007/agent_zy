@@ -468,7 +468,6 @@ function PriceTrendWorkspace({
   onDelete: (id: string) => void;
 }) {
   const [selectedKey, setSelectedKey] = useState("");
-  const [quickFormOpen, setQuickFormOpen] = useState(false);
   const seriesMap = new Map<string, PriceSeries>();
   for (const snapshot of snapshots) {
     const sourceName = snapshot.serverName || "未分类来源";
@@ -562,10 +561,7 @@ function PriceTrendWorkspace({
                   type="button"
                   data-price-item={item.key}
                   className={item.key === activeSeries.key ? "is-active" : ""}
-                  onClick={() => {
-                    setSelectedKey(item.key);
-                    setQuickFormOpen(false);
-                  }}
+                  onClick={() => setSelectedKey(item.key)}
                   key={item.key}
                 >
                   <span><strong>{item.itemName}</strong><small>{item.sourceName}</small></span>
@@ -585,21 +581,13 @@ function PriceTrendWorkspace({
                   <h3>{activeSeries.itemName}</h3>
                   <small>最新采集于 {latest.capturedAt.slice(0, 10)}</small>
                 </div>
-                <details
-                  className="mhxy-price-quick-add"
-                  open={quickFormOpen}
-                  onToggle={(event) => setQuickFormOpen(event.currentTarget.open)}
-                >
-                  <summary>＋ 记录新价格</summary>
-                  <QuickSnapshotForm
-                    key={activeSeries.key}
-                    itemName={activeSeries.itemName}
-                    sourceName={activeSeries.sourceName}
-                    submit={submit}
-                    pending={pending}
-                    onSaved={() => setQuickFormOpen(false)}
-                  />
-                </details>
+                <QuickSnapshotEntry
+                  key={activeSeries.key}
+                  itemName={activeSeries.itemName}
+                  sourceName={activeSeries.sourceName}
+                  submit={submit}
+                  pending={pending}
+                />
               </div>
               <div className="mhxy-price-trend__latest">
                 <span>最新价</span>
@@ -664,6 +652,37 @@ function PriceTrendWorkspace({
   );
 }
 
+function QuickSnapshotEntry({
+  itemName,
+  sourceName,
+  submit,
+  pending
+}: {
+  itemName: string;
+  sourceName: string;
+  submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>;
+  pending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <details
+      className="mhxy-price-quick-add"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>＋ 记录新价格</summary>
+      <QuickSnapshotForm
+        itemName={itemName}
+        sourceName={sourceName}
+        submit={submit}
+        pending={pending}
+        onSaved={() => setOpen(false)}
+      />
+    </details>
+  );
+}
+
 function QuickSnapshotForm({
   itemName,
   sourceName,
@@ -683,18 +702,26 @@ function QuickSnapshotForm({
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const input = {
-      itemName,
-      serverName: sourceName,
-      currency,
-      ...(currency === "rmb"
-        ? { rmbUnitPrice: Number(data.get("price")) }
-        : {
-            gameCoinUnitPriceWan: Number(data.get("price")),
-            rmbPerGameCoinWan: Number(data.get("rate"))
-          }),
-      capturedAt: String(data.get("capturedAt"))
-    } as MhxyPriceSnapshotInput;
+    const capturedAt = String(data.get("capturedAt"));
+    let input: MhxyPriceSnapshotInput;
+    if (currency === "rmb") {
+      input = {
+        itemName,
+        serverName: sourceName,
+        currency: "rmb",
+        rmbUnitPrice: Number(data.get("price")),
+        capturedAt
+      };
+    } else {
+      input = {
+        itemName,
+        serverName: sourceName,
+        currency: "gameCoin",
+        gameCoinUnitPriceWan: Number(data.get("price")),
+        rmbPerGameCoinWan: Number(data.get("rate")),
+        capturedAt
+      };
+    }
     try {
       await submit(input);
       form.reset();

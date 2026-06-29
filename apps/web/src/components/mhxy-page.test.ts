@@ -250,10 +250,15 @@ describe("MhxyPage", () => {
   }
 
   async function setDetailsOpen(details: HTMLDetailsElement, open: boolean) {
+    if (details.open === open) return;
+    const summary = details.querySelector("summary") as HTMLElement;
     await act(async () => {
-      details.open = open;
-      details.dispatchEvent(new Event("toggle"));
+      await new Promise<void>((resolve) => {
+        details.addEventListener("toggle", () => resolve(), { once: true });
+        summary.click();
+      });
     });
+    expect(details.open).toBe(open);
   }
 
   it("separates mhxy workflows into three tabs", async () => {
@@ -455,6 +460,16 @@ describe("MhxyPage", () => {
   });
 
   it("quickly records an RMB snapshot for the active price series", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    let resolveSave!: () => void;
+    vi.mocked(createMhxyPriceSnapshot).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveSave = () => resolve({
+        ...dashboard.priceSnapshots[0],
+        id: "snapshot-new",
+        rmbUnitPrice: 338,
+        capturedAt: "2026-06-29T09:30"
+      });
+    }));
     const container = await renderPage();
     await switchTab(container, "物价记录");
     const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
@@ -479,7 +494,12 @@ describe("MhxyPage", () => {
       rmbUnitPrice: 338,
       capturedAt: "2026-06-29T09:30"
     });
-    expect(quickAdd.open).toBe(false);
+    expect(quickAdd.open).toBe(true);
+
+    await act(async () => {
+      resolveSave();
+    });
+    await vi.waitFor(() => expect(quickAdd.open).toBe(false));
   });
 
   it("keeps only the full snapshot entry in the empty price state", async () => {
@@ -540,11 +560,46 @@ describe("MhxyPage", () => {
     });
 
     const switchedQuickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
-    expect(switchedQuickAdd.open).toBe(false);
+    await vi.waitFor(() => expect(switchedQuickAdd.open).toBe(false));
     await setDetailsOpen(switchedQuickAdd, true);
     const newForm = switchedQuickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
     expect(newForm.textContent).toContain("高级必杀");
     expect((newForm.querySelector('[name="price"]') as HTMLInputElement).value).toBe("");
+  });
+
+  it("resets the quick entry when refreshed data changes the active price series", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockResolvedValueOnce({
+        ...dashboard,
+        priceSnapshots: dashboard.priceSnapshots.filter((item) => item.itemName === "高级必杀")
+      });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    await setDetailsOpen(quickAdd, true);
+    const history = container.querySelector("[data-price-history]") as HTMLElement;
+
+    await act(async () => {
+      (history.querySelector(".mhxy-delete-button") as HTMLButtonElement).click();
+    });
+    const confirm = Array.from(history.querySelectorAll("button"))
+      .find((button) => button.textContent === "确认") as HTMLButtonElement;
+    await act(async () => {
+      confirm.click();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await vi.waitFor(() => {
+      expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+        .toContain("高级必杀");
+    });
+    const refreshedQuickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    expect(refreshedQuickAdd.open).toBe(false);
+    expect(refreshedQuickAdd.textContent).toContain("高级必杀");
   });
 
   it("keeps the quick entry open and preserves its price when saving fails", async () => {
