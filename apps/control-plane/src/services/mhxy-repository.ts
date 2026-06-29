@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import type {
   MhxyAssetFlipRecord,
+  MhxyGameCoinCashoutRecord,
   MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
@@ -11,6 +12,7 @@ import type {
 } from "@agent-zy/shared-types";
 
 export interface MhxyRepository {
+  transaction<T>(operation: () => T): T;
   readTrades(): MhxyTradeRecord[];
   writeTrades(records: MhxyTradeRecord[]): void;
   readPriceSnapshots(): MhxyPriceSnapshot[];
@@ -23,6 +25,8 @@ export interface MhxyRepository {
   writeAssetFlips(records: MhxyAssetFlipRecord[]): void;
   readGameCoinPurchases(): MhxyGameCoinPurchaseRecord[];
   writeGameCoinPurchases(records: MhxyGameCoinPurchaseRecord[]): void;
+  readGameCoinCashouts(): MhxyGameCoinCashoutRecord[];
+  writeGameCoinCashouts(records: MhxyGameCoinCashoutRecord[]): void;
 }
 
 function ensureArrayFile(path: string) {
@@ -46,6 +50,12 @@ function writeArray<T>(path: string, records: T[]) {
   renameSync(tempPath, path);
 }
 
+function writeTextAtomic(path: string, content: string) {
+  const tempPath = `${path}.${process.pid}.rollback.tmp`;
+  writeFileSync(tempPath, content, "utf8");
+  renameSync(tempPath, path);
+}
+
 export function createMhxyRepository(dataDir: string): MhxyRepository {
   const dir = resolve(dataDir, "mhxy");
   mkdirSync(dir, { recursive: true });
@@ -55,9 +65,30 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
   const targets = resolve(dir, "inventory-targets.json");
   const assetFlips = resolve(dir, "asset-flips.json");
   const gameCoinPurchases = resolve(dir, "game-coin-purchases.json");
-  [trades, snapshots, transfers, targets, assetFlips, gameCoinPurchases].forEach(ensureArrayFile);
+  const gameCoinCashouts = resolve(dir, "game-coin-cashouts.json");
+  const paths = [trades, snapshots, transfers, targets, assetFlips, gameCoinPurchases, gameCoinCashouts];
+  paths.forEach(ensureArrayFile);
 
   return {
+    transaction: <T>(operation: () => T) => {
+      const snapshots = new Map(paths.map((path) => [path, readFileSync(path, "utf8")]));
+      try {
+        return operation();
+      } catch (error) {
+        let rollbackError: unknown;
+        for (const [path, content] of snapshots) {
+          try {
+            writeTextAtomic(path, content);
+          } catch (currentRollbackError) {
+            rollbackError ??= currentRollbackError;
+          }
+        }
+        if (rollbackError) {
+          throw new AggregateError([error, rollbackError], "MHXY 数据写入失败，且自动回滚未完整完成");
+        }
+        throw error;
+      }
+    },
     readTrades: () => readArray(trades),
     writeTrades: (records) => writeArray(trades, records),
     readPriceSnapshots: () => readArray(snapshots),
@@ -69,6 +100,8 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
     readAssetFlips: () => readArray(assetFlips),
     writeAssetFlips: (records) => writeArray(assetFlips, records),
     readGameCoinPurchases: () => readArray(gameCoinPurchases),
-    writeGameCoinPurchases: (records) => writeArray(gameCoinPurchases, records)
+    writeGameCoinPurchases: (records) => writeArray(gameCoinPurchases, records),
+    readGameCoinCashouts: () => readArray(gameCoinCashouts),
+    writeGameCoinCashouts: (records) => writeArray(gameCoinCashouts, records)
   };
 }

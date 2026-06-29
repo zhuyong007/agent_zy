@@ -12719,6 +12719,8 @@ body[data-theme="day"] .interview-score-edit input {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .mhxy-cross-action,
@@ -12858,6 +12860,206 @@ body[data-theme="day"] .interview-score-edit input {
 
 .mhxy-cross-inventory {
   padding: 18px;
+}
+
+.mhxy-coin-ledger {
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid var(--ledger-line);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(66, 214, 176, 0.035), transparent 45%, rgba(242, 179, 93, 0.04)),
+    rgba(17, 31, 49, 0.9);
+}
+
+.mhxy-coin-ledger::before {
+  content: "";
+  position: absolute;
+  top: 70px;
+  bottom: 62px;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(transparent, rgba(146, 165, 186, 0.3) 18%, rgba(146, 165, 186, 0.3) 82%, transparent);
+  pointer-events: none;
+}
+
+.mhxy-coin-rails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.mhxy-coin-rail {
+  min-width: 0;
+  border: 1px solid var(--ledger-line);
+  border-radius: 14px;
+  background: rgba(12, 23, 39, 0.66);
+}
+
+.mhxy-coin-rail > header {
+  display: grid;
+  gap: 7px;
+  min-height: 86px;
+  padding: 14px 15px 12px;
+  border-bottom: 1px solid var(--ledger-line);
+}
+
+.mhxy-coin-rail > header > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.mhxy-coin-rail > header span {
+  display: inline-grid;
+  width: 30px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.62rem;
+}
+
+.mhxy-coin-rail--procurement > header span {
+  background: rgba(66, 214, 176, 0.13);
+  color: var(--ledger-jade);
+}
+
+.mhxy-coin-rail--liquidation > header span {
+  background: rgba(242, 179, 93, 0.14);
+  color: var(--ledger-amber);
+}
+
+.mhxy-coin-rail h4,
+.mhxy-coin-rail p {
+  margin: 0;
+}
+
+.mhxy-coin-rail h4 {
+  color: var(--ledger-paper);
+  font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
+  font-size: 1.05rem;
+}
+
+.mhxy-coin-rail p {
+  color: var(--ledger-mist);
+  font-size: 0.72rem;
+}
+
+.mhxy-coin-wallet-list {
+  display: grid;
+}
+
+.mhxy-coin-wallet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--ledger-line);
+}
+
+.mhxy-coin-wallet:last-child {
+  border-bottom: 0;
+}
+
+.mhxy-coin-wallet > span {
+  display: grid;
+  gap: 4px;
+}
+
+.mhxy-coin-wallet > span:last-child {
+  text-align: right;
+}
+
+.mhxy-coin-wallet strong {
+  color: var(--ledger-paper);
+  font-family: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+  font-size: 0.84rem;
+}
+
+.mhxy-coin-wallet small {
+  color: var(--ledger-mist);
+  font-size: 0.68rem;
+}
+
+.mhxy-coin-journal {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mhxy-coin-journal details {
+  border: 1px solid var(--ledger-line);
+  border-radius: 10px;
+  background: rgba(12, 23, 39, 0.42);
+}
+
+.mhxy-coin-journal summary {
+  padding: 9px 11px;
+  color: var(--ledger-mist);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.mhxy-coin-journal details > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border-top: 1px solid var(--ledger-line);
+}
+
+.mhxy-coin-journal details > div > span {
+  display: grid;
+  gap: 3px;
+}
+
+.mhxy-coin-journal strong {
+  color: var(--ledger-paper);
+  font-size: 0.76rem;
+}
+
+.mhxy-coin-journal small {
+  color: var(--ledger-mist);
+  font-size: 0.66rem;
+}
+
+.mhxy-wallet-hint {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 62px;
+  padding: 9px 11px;
+  border: 1px dashed rgba(66, 214, 176, 0.3);
+  border-radius: 9px;
+  color: var(--ledger-jade);
+}
+
+.mhxy-wallet-hint small {
+  color: var(--ledger-mist);
+  font-size: 0.68rem;
+}
+
+.mhxy-coin-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border-left: 3px solid var(--ledger-jade);
+  border-radius: 8px;
+  background: rgba(66, 214, 176, 0.07);
+  color: var(--ledger-mist);
+  font-size: 0.74rem;
+}
+
+.mhxy-coin-preview strong {
+  color: var(--ledger-paper);
+  font-family: "Cascadia Mono", Consolas, monospace;
 }
 
 .mhxy-ledger-section-heading {
@@ -13147,6 +13349,7 @@ body[data-theme="day"] .interview-score-edit input {
   }
 
   .mhxy-cross-inventory,
+  .mhxy-coin-ledger,
   .mhxy-cross-streams > section,
   .mhxy-assets .mhxy-asset-list {
     padding: 13px;
@@ -13155,6 +13358,15 @@ body[data-theme="day"] .interview-score-edit input {
   .mhxy-cross-server .mhxy-table,
   .mhxy-assets .mhxy-asset-table {
     overflow-x: auto;
+  }
+
+  .mhxy-coin-rails,
+  .mhxy-coin-journal {
+    grid-template-columns: 1fr;
+  }
+
+  .mhxy-coin-ledger::before {
+    display: none;
   }
 }
 

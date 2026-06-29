@@ -26,7 +26,7 @@ describe("mhxy API", () => {
         }
       });
       expect(missingRate.statusCode).toBe(400);
-      expect(missingRate.json().message).toContain("兑换比例");
+      expect(missingRate.json().message).toContain("区服和角色");
 
       const forged = await app.inject({
         method: "POST",
@@ -35,9 +35,8 @@ describe("mhxy API", () => {
           type: "buy",
           itemName: "金刚石",
           quantity: 2,
-          unitPrice: 1000,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.08,
+          unitPrice: 80,
+          currency: "rmb",
           rmbAmount: 1,
           occurredAt: "2026-06-01T10:00:00.000Z",
           serverName: "长安城",
@@ -67,9 +66,8 @@ describe("mhxy API", () => {
           type: "buy",
           itemName: "金刚石",
           quantity: 2,
-          unitPrice: 1000,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.08,
+          unitPrice: 80,
+          currency: "rmb",
           occurredAt: "2026-06-01T10:00:00.000Z",
           serverName: "长安城",
           characterName: "商人甲"
@@ -85,10 +83,9 @@ describe("mhxy API", () => {
           type: "sell",
           itemName: "金刚石",
           quantity: 1,
-          unitPrice: 1200,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.1,
-          feeRmb: 0,
+          unitPrice: 120,
+          currency: "rmb",
+          feeRmb: 6,
           occurredAt: "2026-06-02T10:00:00.000Z",
           serverName: "长安城",
           characterName: "商人甲"
@@ -392,7 +389,9 @@ describe("mhxy API", () => {
         payload: {
           acquiredAt: "2026-06-01T10:00:00.000Z",
           gameCoinAmount: 30_000_000,
-          rmbCost: 230
+          rmbCost: 230,
+          serverName: "Legacy Server",
+          characterName: "Legacy Buyer"
         }
       });
       expect(purchase.statusCode).toBe(200);
@@ -440,6 +439,144 @@ describe("mhxy API", () => {
         url: `/api/mhxy/game-coin-purchases/${purchase.json().id}`
       });
       expect(blockedDelete.statusCode).toBe(400);
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs the cross-server game coin wallet and cashout flow through the API", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const purchase = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/game-coin-purchases",
+        payload: {
+          acquiredAt: "2026-06-01T10:00:00.000Z",
+          gameCoinAmount: 20_000_000,
+          rmbCost: 200,
+          serverName: "Source Server",
+          characterName: "Buyer"
+        }
+      });
+      expect(purchase.statusCode).toBe(200);
+      expect(purchase.json()).toMatchObject({ rmbPerGameCoinWan: 0.1 });
+
+      const buy = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/trades",
+        payload: {
+          type: "buy",
+          itemName: "Advanced Combo",
+          quantity: 1,
+          unitPrice: 1000,
+          currency: "gameCoin",
+          occurredAt: "2026-06-02T10:00:00.000Z",
+          serverName: "Source Server",
+          characterName: "Buyer"
+        }
+      });
+      expect(buy.statusCode).toBe(200);
+      expect(buy.json()).toMatchObject({ accountingMode: "wallet", rmbAmount: 100 });
+
+      const transfer = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/inventory-transfers",
+        payload: {
+          itemName: "Advanced Combo",
+          quantity: 1,
+          sourceServerName: "Source Server",
+          sourceCharacterName: "Buyer",
+          targetServerName: "Target Server",
+          targetCharacterName: "Seller",
+          transferCostRmb: 20,
+          occurredAt: "2026-06-03T10:00:00.000Z"
+        }
+      });
+      expect(transfer.statusCode).toBe(200);
+
+      const sell = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/trades",
+        payload: {
+          type: "sell",
+          itemName: "Advanced Combo",
+          quantity: 1,
+          unitPrice: 1200,
+          currency: "gameCoin",
+          occurredAt: "2026-06-04T10:00:00.000Z",
+          serverName: "Target Server",
+          characterName: "Seller"
+        }
+      });
+      expect(sell.statusCode).toBe(200);
+
+      const cashout = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/game-coin-cashouts",
+        payload: {
+          occurredAt: "2026-06-05T10:00:00.000Z",
+          serverName: "Target Server",
+          characterName: "Seller",
+          gameCoinAmount: 6_000_000,
+          rmbReceived: 90
+        }
+      });
+      expect(cashout.statusCode).toBe(200);
+      expect(cashout.json()).toMatchObject({ costBasisRmb: 60, realizedProfitRmb: 30 });
+
+      const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      expect(dashboard.gameCoinWallets).toEqual(expect.arrayContaining([
+        expect.objectContaining({ purpose: "procurement", gameCoinAmount: 10_000_000 }),
+        expect.objectContaining({ purpose: "liquidation", gameCoinAmount: 6_000_000 })
+      ]));
+      expect(dashboard.gameCoinCashoutSummary.realizedProfitRmb).toBe(30);
+
+      const patchedCashout = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/game-coin-cashouts/${cashout.json().id}`,
+        payload: { rmbReceived: 100 }
+      });
+      expect(patchedCashout.statusCode).toBe(200);
+      expect(patchedCashout.json()).toMatchObject({ realizedProfitRmb: 40 });
+
+      const deletedCashout = await app.inject({
+        method: "DELETE",
+        url: `/api/mhxy/game-coin-cashouts/${cashout.json().id}`
+      });
+      expect(deletedCashout.statusCode).toBe(200);
+      const afterDelete = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
+      expect(afterDelete.gameCoinCashouts).toHaveLength(0);
+      expect(afterDelete.gameCoinWallets).toContainEqual(expect.objectContaining({
+        purpose: "liquidation",
+        gameCoinAmount: 12_000_000
+      }));
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires a server and character when purchasing game coin through the API", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/game-coin-purchases",
+        payload: {
+          acquiredAt: "2026-06-01T10:00:00.000Z",
+          gameCoinAmount: 20_000_000,
+          rmbCost: 200
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
     } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });

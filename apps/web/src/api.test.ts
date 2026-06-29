@@ -31,8 +31,28 @@ import {
   updateBrowserAutomationWorkflow,
   undoFileOrganization,
   undoPhotoRenames,
-  syncModuleData
+  syncModuleData,
+  deleteMhxyPriceSnapshot
 } from "./api";
+
+describe("MHXY API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("does not send a JSON content type for an empty DELETE request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "snapshot-1" })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteMhxyPriceSnapshot("snapshot-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/mhxy/price-snapshots/snapshot-1"),
+      { method: "DELETE" }
+    );
+  });
+});
 
 describe("data sync API", () => {
   afterEach(() => vi.unstubAllGlobals());

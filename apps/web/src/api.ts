@@ -49,6 +49,8 @@ import type {
   MhxyDashboard,
   MhxyGameCoinPurchaseInput,
   MhxyGameCoinPurchaseRecord,
+  MhxyGameCoinCashoutInput,
+  MhxyGameCoinCashoutRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
@@ -1419,8 +1421,12 @@ export async function fetchLedgerStages(): Promise<LifeStageRecord[]> {
 async function mhxyJsonRequest<T>(path: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    ...(body === undefined
+      ? {}
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        })
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "梦幻西游账本操作失败"));
@@ -1445,6 +1451,12 @@ export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCo
   );
 export const deleteMhxyGameCoinPurchase = (id: string) =>
   mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-purchases/${id}`, "DELETE");
+export const createMhxyGameCoinCashout = (input: MhxyGameCoinCashoutInput) =>
+  mhxyJsonRequest<MhxyGameCoinCashoutRecord>("/api/mhxy/game-coin-cashouts", "POST", input);
+export const updateMhxyGameCoinCashout = (id: string, input: Partial<MhxyGameCoinCashoutInput>) =>
+  mhxyJsonRequest<MhxyGameCoinCashoutRecord>(`/api/mhxy/game-coin-cashouts/${id}`, "PATCH", input);
+export const deleteMhxyGameCoinCashout = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-cashouts/${id}`, "DELETE");
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>
