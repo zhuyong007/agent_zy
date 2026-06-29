@@ -119,7 +119,7 @@ export function MhxyPage() {
     }
   });
   const snapshotMutation = useMutation({
-    mutationFn: createMhxyPriceSnapshot,
+    mutationFn: (input: MhxyPriceSnapshotInput) => createMhxyPriceSnapshot(input),
     onSuccess: () => void refresh()
   });
   const transferMutation = useMutation({
@@ -468,6 +468,7 @@ function PriceTrendWorkspace({
   onDelete: (id: string) => void;
 }) {
   const [selectedKey, setSelectedKey] = useState("");
+  const [quickFormOpen, setQuickFormOpen] = useState(false);
   const seriesMap = new Map<string, PriceSeries>();
   for (const snapshot of snapshots) {
     const sourceName = snapshot.serverName || "未分类来源";
@@ -561,7 +562,10 @@ function PriceTrendWorkspace({
                   type="button"
                   data-price-item={item.key}
                   className={item.key === activeSeries.key ? "is-active" : ""}
-                  onClick={() => setSelectedKey(item.key)}
+                  onClick={() => {
+                    setSelectedKey(item.key);
+                    setQuickFormOpen(false);
+                  }}
                   key={item.key}
                 >
                   <span><strong>{item.itemName}</strong><small>{item.sourceName}</small></span>
@@ -575,10 +579,27 @@ function PriceTrendWorkspace({
         <div className="mhxy-market__main">
           <section className="mhxy-price-trend" data-price-trend>
             <div className="mhxy-price-trend__heading">
-              <div>
-                <span>{activeSeries.sourceName}</span>
-                <h3>{activeSeries.itemName}</h3>
-                <small>最新采集于 {latest.capturedAt.slice(0, 10)}</small>
+              <div className="mhxy-price-trend__identity">
+                <div>
+                  <span>{activeSeries.sourceName}</span>
+                  <h3>{activeSeries.itemName}</h3>
+                  <small>最新采集于 {latest.capturedAt.slice(0, 10)}</small>
+                </div>
+                <details
+                  className="mhxy-price-quick-add"
+                  open={quickFormOpen}
+                  onToggle={(event) => setQuickFormOpen(event.currentTarget.open)}
+                >
+                  <summary>＋ 记录新价格</summary>
+                  <QuickSnapshotForm
+                    key={activeSeries.key}
+                    itemName={activeSeries.itemName}
+                    sourceName={activeSeries.sourceName}
+                    submit={submit}
+                    pending={pending}
+                    onSaved={() => setQuickFormOpen(false)}
+                  />
+                </details>
               </div>
               <div className="mhxy-price-trend__latest">
                 <span>最新价</span>
@@ -641,6 +662,50 @@ function PriceTrendWorkspace({
       </div>
     </section>
   );
+}
+
+function QuickSnapshotForm({
+  itemName,
+  sourceName,
+  submit,
+  pending,
+  onSaved
+}: {
+  itemName: string;
+  sourceName: string;
+  submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>;
+  pending: boolean;
+  onSaved: () => void;
+}) {
+  const [currency, setCurrency] = useState<MhxyTradeCurrency>("rmb");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const input = {
+      itemName,
+      serverName: sourceName,
+      currency,
+      ...(currency === "rmb"
+        ? { rmbUnitPrice: Number(data.get("price")) }
+        : {
+            gameCoinUnitPriceWan: Number(data.get("price")),
+            rmbPerGameCoinWan: Number(data.get("rate"))
+          }),
+      capturedAt: String(data.get("capturedAt"))
+    } as MhxyPriceSnapshotInput;
+    try {
+      await submit(input);
+      form.reset();
+      setCurrency("rmb");
+      onSaved();
+    } catch {
+      // The mutation error is rendered by the parent; preserve the current inputs.
+    }
+  }
+
+  return <form className="mhxy-form mhxy-price-form" data-form="quick-price-snapshot" onSubmit={handleSubmit}><div><p className="eyebrow">QUICK SNAPSHOT</p><h3>记录新价格</h3><p>{itemName} · {sourceName}</p></div><label>币种<select name="currency" value={currency} onChange={(event) => setCurrency(event.target.value as MhxyTradeCurrency)}><option value="rmb">人民币</option><option value="gameCoin">游戏币</option></select></label><label>{currency === "rmb" ? "人民币单价" : "游戏币单价（万）"}<input name="price" type="number" min="0" step="any" required /></label>{currency === "gameCoin" ? <label>当时兑换比例（必填）<input name="rate" type="number" min="0.000001" step="any" required /><small>每 1 万游戏币折合多少人民币，用于固定这次商品价值。</small></label> : null}<label>采集时间<input name="capturedAt" type="datetime-local" defaultValue={localDateTime()} required /></label><button type="submit" disabled={pending}>保存新价格</button></form>;
 }
 
 function SnapshotForm({ currency, setCurrency, submit, pending }: { currency: MhxyTradeCurrency; setCurrency: (value: MhxyTradeCurrency) => void; submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>; pending: boolean }) {

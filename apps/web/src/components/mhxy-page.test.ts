@@ -249,6 +249,13 @@ describe("MhxyPage", () => {
     });
   }
 
+  async function setDetailsOpen(details: HTMLDetailsElement, open: boolean) {
+    await act(async () => {
+      details.open = open;
+      details.dispatchEvent(new Event("toggle"));
+    });
+  }
+
   it("separates mhxy workflows into three tabs", async () => {
     const container = await renderPage();
     const labels = Array.from(container.querySelectorAll(".mhxy-segment button"))
@@ -445,6 +452,121 @@ describe("MhxyPage", () => {
     expect(addRecord.open).toBe(false);
     expect(addRecord.textContent).toContain("添加记录");
     expect(addRecord.querySelector('[data-form="price-snapshot"]')).not.toBeNull();
+  });
+
+  it("quickly records an RMB snapshot for the active price series", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    await setDetailsOpen(quickAdd, true);
+    const form = quickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
+
+    expect(form.textContent).toContain("高级连击");
+    expect(form.textContent).toContain("藏宝阁（兽决）");
+    expect(form.querySelector('[name="itemName"]')).toBeNull();
+    expect(form.querySelector('[name="serverName"]')).toBeNull();
+
+    await act(async () => {
+      change(form.querySelector('[name="price"]') as HTMLInputElement, "338");
+      change(form.querySelector('[name="capturedAt"]') as HTMLInputElement, "2026-06-29T09:30");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyPriceSnapshot).toHaveBeenCalledWith({
+      itemName: "高级连击",
+      serverName: "藏宝阁（兽决）",
+      currency: "rmb",
+      rmbUnitPrice: 338,
+      capturedAt: "2026-06-29T09:30"
+    });
+    expect(quickAdd.open).toBe(false);
+  });
+
+  it("keeps only the full snapshot entry in the empty price state", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({ ...dashboard, priceSnapshots: [] });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+
+    expect(container.querySelector(".mhxy-price-quick-add")).toBeNull();
+    expect(container.querySelector(".mhxy-price-add")).not.toBeNull();
+  });
+
+  it("requires a rate and quickly records a game coin snapshot", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    await setDetailsOpen(quickAdd, true);
+    const form = quickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="currency"]') as HTMLSelectElement, "gameCoin");
+    });
+    const rate = form.querySelector('[name="rate"]') as HTMLInputElement;
+    expect(rate.required).toBe(true);
+    expect(rate.min).toBe("0.000001");
+
+    await act(async () => {
+      change(form.querySelector('[name="price"]') as HTMLInputElement, "4200");
+      change(rate, "0.081");
+      change(form.querySelector('[name="capturedAt"]') as HTMLInputElement, "2026-06-29T10:00");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyPriceSnapshot).toHaveBeenCalledWith({
+      itemName: "高级连击",
+      serverName: "藏宝阁（兽决）",
+      currency: "gameCoin",
+      gameCoinUnitPriceWan: 4200,
+      rmbPerGameCoinWan: 0.081,
+      capturedAt: "2026-06-29T10:00"
+    });
+  });
+
+  it("closes and clears the quick entry when switching the observed item", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    await setDetailsOpen(quickAdd, true);
+    const oldForm = quickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
+    await act(async () => {
+      change(oldForm.querySelector('[name="price"]') as HTMLInputElement, "999");
+    });
+
+    const itemButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级必杀"));
+    await act(async () => {
+      itemButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const switchedQuickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    expect(switchedQuickAdd.open).toBe(false);
+    await setDetailsOpen(switchedQuickAdd, true);
+    const newForm = switchedQuickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
+    expect(newForm.textContent).toContain("高级必杀");
+    expect((newForm.querySelector('[name="price"]') as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps the quick entry open and preserves its price when saving fails", async () => {
+    vi.mocked(createMhxyPriceSnapshot).mockRejectedValueOnce(new Error("保存失败"));
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const quickAdd = container.querySelector(".mhxy-price-quick-add") as HTMLDetailsElement;
+    await setDetailsOpen(quickAdd, true);
+    const form = quickAdd.querySelector('[data-form="quick-price-snapshot"]') as HTMLFormElement;
+    const price = form.querySelector('[name="price"]') as HTMLInputElement;
+
+    await act(async () => {
+      change(price, "337");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(quickAdd.open).toBe(true);
+    expect(price.value).toBe("337");
+    expect(container.textContent).toContain("保存失败");
   });
 
   it("shows separate asset inventory and sold history with RMB totals", async () => {
