@@ -324,6 +324,13 @@ export interface LedgerState {
 
 export type MhxyTradeCurrency = "rmb" | "gameCoin";
 export type MhxyTradeType = "buy" | "sell";
+export type MhxyTradeAccountingMode = "directRmb" | "legacyRate" | "wallet";
+
+export interface MhxyGameCoinAllocation {
+  gameCoinPurchaseId: string;
+  gameCoinAmount: number;
+  rmbCost: number;
+}
 
 export interface MhxyTradeInput {
   type: MhxyTradeType;
@@ -341,9 +348,12 @@ export interface MhxyTradeInput {
 
 export interface MhxyTradeRecord extends Omit<MhxyTradeInput, "feeRmb"> {
   id: string;
-  rmbAmount: number;
+  accountingMode?: MhxyTradeAccountingMode;
+  rmbAmount: number | null;
   feeRmb: number;
   gameCoinAmountWan?: number;
+  effectiveRmbPerGameCoinWan?: number;
+  gameCoinAllocations?: MhxyGameCoinAllocation[];
   createdAt: string;
   updatedAt: string;
 }
@@ -443,11 +453,14 @@ export interface MhxyGameCoinPurchaseInput {
   acquiredAt: string;
   gameCoinAmount: number;
   rmbCost: number;
+  serverName?: string;
+  characterName?: string;
   note?: string;
 }
 
 export interface MhxyGameCoinPurchaseRecord extends MhxyGameCoinPurchaseInput {
   id: string;
+  rmbPerGameCoinWan?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -457,11 +470,42 @@ export interface MhxyGameCoinPurchasePosition extends MhxyGameCoinPurchaseRecord
   remainingRmbCost: number;
 }
 
-export interface MhxyAssetGameCoinAllocation {
-  gameCoinPurchaseId: string;
+export type MhxyGameCoinWalletPurpose = "procurement" | "liquidation";
+
+export interface MhxyGameCoinWalletPosition {
+  purpose: MhxyGameCoinWalletPurpose;
+  serverName: string;
+  characterName: string;
   gameCoinAmount: number;
-  rmbCost: number;
+  rmbCostBasis: number;
+  averageRmbPerGameCoinWan: number;
 }
+
+export interface MhxyGameCoinCashoutInput {
+  occurredAt: string;
+  serverName: string;
+  characterName: string;
+  gameCoinAmount: number;
+  rmbReceived: number;
+  note?: string;
+}
+
+export interface MhxyGameCoinCashoutRecord extends MhxyGameCoinCashoutInput {
+  id: string;
+  rmbPerGameCoinWan: number;
+  costBasisRmb: number;
+  realizedProfitRmb: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MhxyGameCoinCashoutSummary {
+  gameCoinAmount: number;
+  rmbReceived: number;
+  realizedProfitRmb: number;
+}
+
+export type MhxyAssetGameCoinAllocation = MhxyGameCoinAllocation;
 
 export interface MhxyAssetFlipInput {
   category: MhxyAssetFlipCategory;
@@ -520,6 +564,7 @@ export interface MhxyDataSet {
   inventoryTargets: MhxyInventoryTarget[];
   assetFlips: MhxyAssetFlipRecord[];
   gameCoinPurchases: MhxyGameCoinPurchaseRecord[];
+  gameCoinCashouts?: MhxyGameCoinCashoutRecord[];
 }
 
 export interface MhxyDashboard {
@@ -533,6 +578,9 @@ export interface MhxyDashboard {
   assetFlips: MhxyAssetFlipRecord[];
   assetFlipSummary: MhxyAssetFlipSummary;
   gameCoinPurchases: MhxyGameCoinPurchasePosition[];
+  gameCoinCashouts: MhxyGameCoinCashoutRecord[];
+  gameCoinWallets: MhxyGameCoinWalletPosition[];
+  gameCoinCashoutSummary: MhxyGameCoinCashoutSummary;
   gameCoinBalance: {
     gameCoinAmount: number;
     rmbCost: number;

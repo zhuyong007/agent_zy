@@ -31,6 +31,8 @@ import {
   mhxyAssetFlipPatchSchema,
   mhxyGameCoinPurchaseInputSchema,
   mhxyGameCoinPurchasePatchSchema,
+  mhxyGameCoinCashoutInputSchema,
+  mhxyGameCoinCashoutPatchSchema,
   mhxyInventoryTargetSchema,
   mhxyInventoryTransferInputSchema,
   mhxyInventoryTransferPatchSchema,
@@ -1587,6 +1589,29 @@ export function createControlPlaneApp(options?: {
   app.delete("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
     mhxyAction(reply, () =>
       mhxyService.deleteGameCoinPurchase((request.params as { id: string }).id)
+    )
+  );
+
+  app.post("/api/mhxy/game-coin-cashouts", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.createGameCoinCashout(
+        parseMhxyInput(mhxyGameCoinCashoutInputSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.patch("/api/mhxy/game-coin-cashouts/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updateGameCoinCashout(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyGameCoinCashoutPatchSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.delete("/api/mhxy/game-coin-cashouts/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.deleteGameCoinCashout((request.params as { id: string }).id)
     )
   );
 

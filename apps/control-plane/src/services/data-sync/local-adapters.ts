@@ -6,6 +6,7 @@ import type {
   DataSyncModule,
   HistoryXhsState,
   MhxyAssetFlipRecord,
+  MhxyGameCoinCashoutRecord,
   MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
@@ -208,6 +209,7 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
       }
       for (const item of repository.readAssetFlips()) records.set(`asset-flip:${item.id}`, asRecord(item, "召唤兽装备记录"));
       for (const item of repository.readGameCoinPurchases()) records.set(`game-coin-purchase:${item.id}`, asRecord(item, "游戏币购入记录"));
+      for (const item of repository.readGameCoinCashouts()) records.set(`game-coin-cashout:${item.id}`, asRecord(item, "游戏币变现记录"));
       return records;
     },
     write(records) {
@@ -217,7 +219,8 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         "inventory-transfer:",
         "inventory-target:",
         "asset-flip:",
-        "game-coin-purchase:"
+        "game-coin-purchase:",
+        "game-coin-cashout:"
       ];
       assertKnownPrefixes(records, prefixes, "梦幻西游");
       for (const prefix of prefixes.filter((item) => item !== "inventory-target:")) {
@@ -237,7 +240,8 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         transfers: recordsWithPrefix(records, "inventory-transfer:") as unknown as MhxyInventoryTransferRecord[],
         targets: recordsWithPrefix(records, "inventory-target:") as unknown as MhxyInventoryTarget[],
         assetFlips: recordsWithPrefix(records, "asset-flip:") as unknown as MhxyAssetFlipRecord[],
-        gameCoinPurchases: recordsWithPrefix(records, "game-coin-purchase:") as unknown as MhxyGameCoinPurchaseRecord[]
+        gameCoinPurchases: recordsWithPrefix(records, "game-coin-purchase:") as unknown as MhxyGameCoinPurchaseRecord[],
+        gameCoinCashouts: recordsWithPrefix(records, "game-coin-cashout:") as unknown as MhxyGameCoinCashoutRecord[]
       };
       service.replaceAllData({
         trades: next.trades,
@@ -245,7 +249,8 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         inventoryTransfers: next.transfers,
         inventoryTargets: next.targets,
         assetFlips: next.assetFlips,
-        gameCoinPurchases: next.gameCoinPurchases
+        gameCoinPurchases: next.gameCoinPurchases,
+        gameCoinCashouts: next.gameCoinCashouts
       });
     }
   };

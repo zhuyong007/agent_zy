@@ -5,6 +5,8 @@ import type {
   MhxyAssetFlipRecord,
   MhxyAssetFlipSummary,
   MhxyDataSet,
+  MhxyGameCoinCashoutInput,
+  MhxyGameCoinCashoutRecord,
   MhxyGameCoinPurchaseInput,
   MhxyGameCoinPurchasePosition,
   MhxyGameCoinPurchaseRecord,
@@ -20,6 +22,7 @@ import type {
   MhxyTradeResult
 } from "@agent-zy/shared-types";
 
+import { replayCrossServerLedger } from "./mhxy-game-coin-ledger";
 import { createMhxyRepository } from "./mhxy-repository";
 
 type ReplayEvent =
@@ -29,6 +32,7 @@ type ReplayEvent =
 const toRmbCents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const fromRmbCents = (value: number) => value / 100;
 const roundRmb = (value: number) => fromRmbCents(toRmbCents(value));
+const roundRate = (value: number) => Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
 const nowIso = () => new Date().toISOString();
 const normalizeLabel = (value: string | undefined) => value?.trim() ?? "";
 const inventoryKey = (itemName: string, serverName?: string, characterName?: string) =>
@@ -135,6 +139,38 @@ function normalizeGameCoinPurchase(
     acquiredAt: new Date(input.acquiredAt).toISOString(),
     gameCoinAmount: input.gameCoinAmount,
     rmbCost: roundRmb(input.rmbCost),
+    rmbPerGameCoinWan: roundRate(input.rmbCost / (input.gameCoinAmount / 10_000)),
+    ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
+    ...(normalizeLabel(input.characterName) ? { characterName: normalizeLabel(input.characterName) } : {}),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function normalizeGameCoinCashout(
+  input: MhxyGameCoinCashoutInput,
+  existing?: MhxyGameCoinCashoutRecord
+): MhxyGameCoinCashoutRecord {
+  if (!input.occurredAt || Number.isNaN(Date.parse(input.occurredAt))) {
+    throw new Error("游戏币变现时间无效");
+  }
+  assertPositiveInteger(input.gameCoinAmount, "变现游戏币数量");
+  assertFinitePositive(input.rmbReceived, "实际人民币回款");
+  const serverName = normalizeLabel(input.serverName);
+  const characterName = normalizeLabel(input.characterName);
+  if (!serverName || !characterName) throw new Error("游戏币变现必须填写区服和角色");
+  const timestamp = nowIso();
+  return {
+    id: existing?.id ?? randomUUID(),
+    occurredAt: new Date(input.occurredAt).toISOString(),
+    serverName,
+    characterName,
+    gameCoinAmount: input.gameCoinAmount,
+    rmbReceived: roundRmb(input.rmbReceived),
+    rmbPerGameCoinWan: roundRate(input.rmbReceived / (input.gameCoinAmount / 10_000)),
+    costBasisRmb: existing?.costBasisRmb ?? 0,
+    realizedProfitRmb: existing?.realizedProfitRmb ?? 0,
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
@@ -312,22 +348,31 @@ function normalizeTrade(input: MhxyTradeInput, existing?: MhxyTradeRecord): Mhxy
   assertFiniteNonNegative(input.unitPrice, "单价");
   if (!input.occurredAt || Number.isNaN(Date.parse(input.occurredAt))) throw new Error("发生时间无效");
 
-  const rmbAmount =
-    input.currency === "gameCoin"
+  const recordInput = input as MhxyTradeInput & Partial<MhxyTradeRecord>;
+  const accountingMode = input.currency === "rmb"
+    ? "directRmb"
+    : existing?.accountingMode ?? recordInput.accountingMode ??
+      (Number.isFinite(input.rmbPerGameCoinWan) && (input.rmbPerGameCoinWan ?? 0) > 0
+        ? "legacyRate"
+        : "wallet");
+  const rmbAmount = input.currency === "rmb"
+    ? roundRmb(input.quantity * input.unitPrice)
+    : accountingMode === "legacyRate"
       ? (() => {
           if (!Number.isFinite(input.rmbPerGameCoinWan) || (input.rmbPerGameCoinWan ?? 0) <= 0) {
-            throw new Error("游戏币交易必须填写大于 0 的兑换比例");
+            throw new Error("游戏币历史交易必须填写大于 0 的兑换比例");
           }
           return roundRmb(input.quantity * input.unitPrice * (input.rmbPerGameCoinWan as number));
         })()
-      : roundRmb(input.quantity * input.unitPrice);
-  if (!Number.isFinite(rmbAmount)) throw new Error("折算人民币金额超出有效范围");
-  const feeRmb =
-    input.currency === "gameCoin"
-      ? input.type === "sell"
-        ? roundRmb(rmbAmount * 0.05)
-        : 0
-      : roundRmb(input.feeRmb ?? 0);
+      : null;
+  if (rmbAmount !== null && !Number.isFinite(rmbAmount)) throw new Error("折算人民币金额超出有效范围");
+  const feeRmb = accountingMode === "legacyRate"
+    ? input.type === "sell"
+      ? roundRmb((rmbAmount ?? 0) * 0.05)
+      : 0
+    : input.currency === "rmb"
+      ? roundRmb(input.feeRmb ?? 0)
+      : 0;
   assertFiniteNonNegative(feeRmb, "人民币手续费");
   const timestamp = nowIso();
 
@@ -338,12 +383,19 @@ function normalizeTrade(input: MhxyTradeInput, existing?: MhxyTradeRecord): Mhxy
     quantity: input.quantity,
     unitPrice: input.unitPrice,
     currency: input.currency,
+    accountingMode,
     rmbAmount,
     feeRmb,
     ...(input.currency === "gameCoin"
       ? {
           gameCoinAmountWan: input.quantity * input.unitPrice,
-          rmbPerGameCoinWan: input.rmbPerGameCoinWan
+          ...(accountingMode === "legacyRate" ? { rmbPerGameCoinWan: input.rmbPerGameCoinWan } : {}),
+          ...(accountingMode === "wallet" && recordInput.effectiveRmbPerGameCoinWan !== undefined
+            ? { effectiveRmbPerGameCoinWan: recordInput.effectiveRmbPerGameCoinWan }
+            : {}),
+          ...(accountingMode === "wallet" && recordInput.gameCoinAllocations?.length
+            ? { gameCoinAllocations: recordInput.gameCoinAllocations.map((allocation) => ({ ...allocation })) }
+            : {})
         }
       : {}),
     occurredAt: new Date(input.occurredAt).toISOString(),
@@ -500,12 +552,12 @@ function replay(
       const position = getPosition(trade.itemName, trade.serverName, trade.characterName);
       if (trade.type === "buy") {
         position.quantity += trade.quantity;
-        position.inventoryCostCents += toRmbCents(trade.rmbAmount) + toRmbCents(trade.feeRmb);
+        position.inventoryCostCents += toRmbCents(trade.rmbAmount ?? 0) + toRmbCents(trade.feeRmb);
       } else {
         const costBasisRmb = fromRmbCents(
           remove(position, trade.quantity, `${trade.itemName} ${trade.serverName ?? ""}`)
         );
-        const netIncomeRmb = roundRmb(trade.rmbAmount - trade.feeRmb);
+        const netIncomeRmb = roundRmb((trade.rmbAmount ?? 0) - trade.feeRmb);
         tradeResults.push({
           tradeId: trade.id,
           costBasisRmb,
@@ -561,7 +613,8 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
     [input.inventoryTransfers, "库存转移"],
     [input.inventoryTargets, "库存目标"],
     [input.assetFlips, "资产记录"],
-    [input.gameCoinPurchases, "游戏币购入记录"]
+    [input.gameCoinPurchases, "游戏币购入记录"],
+    [input.gameCoinCashouts ?? [], "游戏币变现记录"]
   ] as const) {
     if (!Array.isArray(records)) throw new Error(`${label}必须是数组`);
   }
@@ -610,6 +663,11 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
     const normalized = normalizeGameCoinPurchase(record, record);
     return { ...normalized, updatedAt: record.updatedAt };
   });
+  const gameCoinCashouts = (input.gameCoinCashouts ?? []).map((record) => {
+    assertRecordMetadata(record, "游戏币变现记录");
+    const normalized = normalizeGameCoinCashout(record, record);
+    return { ...normalized, updatedAt: record.updatedAt };
+  });
   const assetFlips = input.assetFlips.map((record) => {
     assertRecordMetadata(record, "资产记录");
     const normalized = normalizeAssetFlip(record, record);
@@ -629,23 +687,46 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
     };
   });
 
-  replay(trades, inventoryTransfers);
   const assetReplay = replayAssetFlips(assetFlips, gameCoinPurchases);
-  return {
+  const crossReplay = replayCrossServerLedger({
     trades,
+    transfers: inventoryTransfers,
+    purchasePositions: assetReplay.purchases,
+    cashouts: gameCoinCashouts
+  });
+  return {
+    trades: crossReplay.trades,
     priceSnapshots,
     inventoryTransfers,
     inventoryTargets,
     assetFlips: assetReplay.records,
-    gameCoinPurchases
+    gameCoinPurchases,
+    gameCoinCashouts: crossReplay.cashouts
   };
 }
 
 export function createMhxyService(dataDir: string) {
   const repository = createMhxyRepository(dataDir);
 
+  function replayAll(
+    trades = repository.readTrades(),
+    transfers = repository.readInventoryTransfers(),
+    purchases = repository.readGameCoinPurchases(),
+    cashouts = repository.readGameCoinCashouts(),
+    assetRecords = repository.readAssetFlips()
+  ) {
+    const assetReplay = replayAssetFlips(assetRecords, purchases);
+    const crossReplay = replayCrossServerLedger({
+      trades,
+      transfers,
+      purchasePositions: assetReplay.purchases,
+      cashouts
+    });
+    return { assetReplay, crossReplay };
+  }
+
   function validateHistory(trades: MhxyTradeRecord[], transfers: MhxyInventoryTransferRecord[]) {
-    replay(trades, transfers);
+    return replayAll(trades, transfers);
   }
 
   function getDashboard(): MhxyDashboard {
@@ -654,16 +735,21 @@ export function createMhxyService(dataDir: string) {
     const inventoryTransfers = repository.readInventoryTransfers();
     const inventoryTargets = repository.readInventoryTargets();
     const gameCoinPurchases = repository.readGameCoinPurchases();
-    const assetReplay = replayAssetFlips(repository.readAssetFlips(), gameCoinPurchases);
+    const gameCoinCashouts = repository.readGameCoinCashouts();
+    const { assetReplay, crossReplay: replayed } = replayAll(
+      trades,
+      inventoryTransfers,
+      gameCoinPurchases,
+      gameCoinCashouts
+    );
     const assetFlips = assetReplay.records
       .sort((left, right) => {
         const buyAt = right.buyAt.localeCompare(left.buyAt);
         return buyAt !== 0 ? buyAt : right.createdAt.localeCompare(left.createdAt);
       });
-    const gameCoinPurchasePositions = assetReplay.purchases.sort((left, right) =>
+    const gameCoinPurchasePositions = replayed.purchasePositions.sort((left, right) =>
       right.acquiredAt.localeCompare(left.acquiredAt)
     );
-    const replayed = replay(trades, inventoryTransfers);
     const targets = new Map(
       inventoryTargets.map((target) => [
         inventoryKey(target.itemName, target.serverName, target.characterName),
@@ -707,7 +793,8 @@ export function createMhxyService(dataDir: string) {
     const summary = {
       inventoryCostRmb: roundRmb(inventory.reduce((sum, item) => sum + item.inventoryCostRmb, 0)),
       realizedProfitRmb: roundRmb(
-        replayed.tradeResults.reduce((sum, item) => sum + item.realizedProfitRmb, 0)
+        replayed.tradeResults.reduce((sum, item) => sum + item.realizedProfitRmb, 0) +
+        replayed.cashoutSummary.realizedProfitRmb
       ),
       marketValueRmb: roundRmb(
         inventory.reduce((sum, item) => sum + (item.marketValueRmb ?? 0), 0)
@@ -718,17 +805,23 @@ export function createMhxyService(dataDir: string) {
       pendingValuationCount: inventory.filter((item) => item.marketValueRmb === null).length
     };
     const assetFlipSummary = summarizeAssetFlips(assetFlips);
+    const locatedPurchaseIds = new Set(
+      gameCoinPurchasePositions
+        .filter((item) => normalizeLabel(item.serverName) && normalizeLabel(item.characterName))
+        .map((item) => item.id)
+    );
+    const unlocatedGameCoinAmount = gameCoinPurchasePositions
+      .filter((item) => !locatedPurchaseIds.has(item.id))
+      .reduce((sum, item) => sum + item.remainingGameCoinAmount, 0);
+    const unlocatedRmbCost = gameCoinPurchasePositions
+      .filter((item) => !locatedPurchaseIds.has(item.id))
+      .reduce((sum, item) => sum + item.remainingRmbCost, 0);
     const gameCoinBalance = {
-      gameCoinAmount: gameCoinPurchasePositions.reduce(
-        (sum, item) => sum + item.remainingGameCoinAmount,
-        0
-      ),
-      rmbCost: roundRmb(
-        gameCoinPurchasePositions.reduce((sum, item) => sum + item.remainingRmbCost, 0)
-      )
+      gameCoinAmount: replayed.wallets.reduce((sum, item) => sum + item.gameCoinAmount, unlocatedGameCoinAmount),
+      rmbCost: roundRmb(replayed.wallets.reduce((sum, item) => sum + item.rmbCostBasis, unlocatedRmbCost))
     };
     return {
-      trades: [...trades].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
+      trades: [...replayed.trades].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
       tradeResults: replayed.tradeResults,
       priceSnapshots: [...priceSnapshots].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)),
       inventoryTransfers: [...inventoryTransfers].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
@@ -738,6 +831,9 @@ export function createMhxyService(dataDir: string) {
       assetFlips,
       assetFlipSummary,
       gameCoinPurchases: gameCoinPurchasePositions,
+      gameCoinCashouts: [...replayed.cashouts].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
+      gameCoinWallets: replayed.wallets,
+      gameCoinCashoutSummary: replayed.cashoutSummary,
       gameCoinBalance,
       combinedSummary: {
         holdingCostRmb: roundRmb(
@@ -758,9 +854,10 @@ export function createMhxyService(dataDir: string) {
     createTrade(input: MhxyTradeInput) {
       const record = normalizeTrade(input);
       const next = [...repository.readTrades(), record];
-      validateHistory(next, repository.readInventoryTransfers());
-      repository.writeTrades(next);
-      return record;
+      const replayed = validateHistory(next, repository.readInventoryTransfers());
+      repository.writeTrades(replayed.crossReplay.trades);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
+      return replayed.crossReplay.trades.find((item) => item.id === record.id) as MhxyTradeRecord;
     },
     updateTrade(id: string, patch: Partial<MhxyTradeInput>) {
       const trades = repository.readTrades();
@@ -768,16 +865,18 @@ export function createMhxyService(dataDir: string) {
       if (!existing) throw new Error("交易记录不存在");
       const record = normalizeTrade({ ...existing, ...patch }, existing);
       const next = trades.map((item) => (item.id === id ? record : item));
-      validateHistory(next, repository.readInventoryTransfers());
-      repository.writeTrades(next);
-      return record;
+      const replayed = validateHistory(next, repository.readInventoryTransfers());
+      repository.writeTrades(replayed.crossReplay.trades);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
+      return replayed.crossReplay.trades.find((item) => item.id === id) as MhxyTradeRecord;
     },
     deleteTrade(id: string) {
       const trades = repository.readTrades();
       if (!trades.some((record) => record.id === id)) throw new Error("交易记录不存在");
       const next = trades.filter((record) => record.id !== id);
-      validateHistory(next, repository.readInventoryTransfers());
-      repository.writeTrades(next);
+      const replayed = validateHistory(next, repository.readInventoryTransfers());
+      repository.writeTrades(replayed.crossReplay.trades);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return { id };
     },
     createPriceSnapshot(input: MhxyPriceSnapshotInput) {
@@ -794,8 +893,9 @@ export function createMhxyService(dataDir: string) {
     createInventoryTransfer(input: MhxyInventoryTransferInput) {
       const record = normalizeTransfer(input);
       const next = [...repository.readInventoryTransfers(), record];
-      validateHistory(repository.readTrades(), next);
+      const replayed = validateHistory(repository.readTrades(), next);
       repository.writeInventoryTransfers(next);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return record;
     },
     updateInventoryTransfer(id: string, patch: Partial<MhxyInventoryTransferInput>) {
@@ -804,16 +904,18 @@ export function createMhxyService(dataDir: string) {
       if (!existing) throw new Error("库存转移记录不存在");
       const record = normalizeTransfer({ ...existing, ...patch }, existing);
       const next = transfers.map((item) => (item.id === id ? record : item));
-      validateHistory(repository.readTrades(), next);
+      const replayed = validateHistory(repository.readTrades(), next);
       repository.writeInventoryTransfers(next);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return record;
     },
     deleteInventoryTransfer(id: string) {
       const transfers = repository.readInventoryTransfers();
       if (!transfers.some((record) => record.id === id)) throw new Error("库存转移记录不存在");
       const next = transfers.filter((record) => record.id !== id);
-      validateHistory(repository.readTrades(), next);
+      const replayed = validateHistory(repository.readTrades(), next);
       repository.writeInventoryTransfers(next);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return { id };
     },
     setInventoryTarget(input: Omit<MhxyInventoryTarget, "updatedAt">) {
@@ -829,41 +931,37 @@ export function createMhxyService(dataDir: string) {
     },
     createAssetFlip(input: MhxyAssetFlipInput) {
       const record = normalizeAssetFlip(input);
-      const replayed = replayAssetFlips(
-        [...repository.readAssetFlips(), record],
-        repository.readGameCoinPurchases()
-      );
-      repository.writeAssetFlips(replayed.records);
-      return replayed.records.find((item) => item.id === record.id) as MhxyAssetFlipRecord;
+      const replayed = replayAll(undefined, undefined, undefined, undefined, [...repository.readAssetFlips(), record]);
+      repository.writeAssetFlips(replayed.assetReplay.records);
+      repository.writeTrades(replayed.crossReplay.trades);
+      return replayed.assetReplay.records.find((item) => item.id === record.id) as MhxyAssetFlipRecord;
     },
     updateAssetFlip(id: string, patch: Partial<MhxyAssetFlipInput>) {
       const records = repository.readAssetFlips();
       const existing = records.find((record) => record.id === id);
       if (!existing) throw new Error("资产记录不存在");
       const record = normalizeAssetFlip({ ...existing, ...patch }, existing);
-      const replayed = replayAssetFlips(
-        records.map((item) => (item.id === id ? record : item)),
-        repository.readGameCoinPurchases()
-      );
-      repository.writeAssetFlips(replayed.records);
-      return replayed.records.find((item) => item.id === id) as MhxyAssetFlipRecord;
+      const replayed = replayAll(undefined, undefined, undefined, undefined, records.map((item) => (item.id === id ? record : item)));
+      repository.writeAssetFlips(replayed.assetReplay.records);
+      repository.writeTrades(replayed.crossReplay.trades);
+      return replayed.assetReplay.records.find((item) => item.id === id) as MhxyAssetFlipRecord;
     },
     deleteAssetFlip(id: string) {
       const records = repository.readAssetFlips();
       if (!records.some((record) => record.id === id)) throw new Error("资产记录不存在");
-      const replayed = replayAssetFlips(
-        records.filter((record) => record.id !== id),
-        repository.readGameCoinPurchases()
-      );
-      repository.writeAssetFlips(replayed.records);
+      const replayed = replayAll(undefined, undefined, undefined, undefined, records.filter((record) => record.id !== id));
+      repository.writeAssetFlips(replayed.assetReplay.records);
+      repository.writeTrades(replayed.crossReplay.trades);
       return { id };
     },
     createGameCoinPurchase(input: MhxyGameCoinPurchaseInput) {
       const record = normalizeGameCoinPurchase(input);
       const purchases = [...repository.readGameCoinPurchases(), record];
-      const replayed = replayAssetFlips(repository.readAssetFlips(), purchases);
+      const replayed = replayAll(undefined, undefined, purchases);
       repository.writeGameCoinPurchases(purchases);
-      repository.writeAssetFlips(replayed.records);
+      repository.writeAssetFlips(replayed.assetReplay.records);
+      repository.writeTrades(replayed.crossReplay.trades);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return record;
     },
     updateGameCoinPurchase(id: string, patch: Partial<MhxyGameCoinPurchaseInput>) {
@@ -872,18 +970,47 @@ export function createMhxyService(dataDir: string) {
       if (!existing) throw new Error("游戏币购入批次不存在");
       const record = normalizeGameCoinPurchase({ ...existing, ...patch }, existing);
       const next = purchases.map((item) => (item.id === id ? record : item));
-      const replayed = replayAssetFlips(repository.readAssetFlips(), next);
+      const replayed = replayAll(undefined, undefined, next);
       repository.writeGameCoinPurchases(next);
-      repository.writeAssetFlips(replayed.records);
+      repository.writeAssetFlips(replayed.assetReplay.records);
+      repository.writeTrades(replayed.crossReplay.trades);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return record;
     },
     deleteGameCoinPurchase(id: string) {
       const purchases = repository.readGameCoinPurchases();
       if (!purchases.some((record) => record.id === id)) throw new Error("游戏币购入批次不存在");
       const next = purchases.filter((record) => record.id !== id);
-      const replayed = replayAssetFlips(repository.readAssetFlips(), next);
+      const replayed = replayAll(undefined, undefined, next);
       repository.writeGameCoinPurchases(next);
-      repository.writeAssetFlips(replayed.records);
+      repository.writeAssetFlips(replayed.assetReplay.records);
+      repository.writeTrades(replayed.crossReplay.trades);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
+      return { id };
+    },
+    createGameCoinCashout(input: MhxyGameCoinCashoutInput) {
+      const record = normalizeGameCoinCashout(input);
+      const cashouts = [...repository.readGameCoinCashouts(), record];
+      const replayed = replayAll(undefined, undefined, undefined, cashouts);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
+      return replayed.crossReplay.cashouts.find((item) => item.id === record.id) as MhxyGameCoinCashoutRecord;
+    },
+    updateGameCoinCashout(id: string, patch: Partial<MhxyGameCoinCashoutInput>) {
+      const cashouts = repository.readGameCoinCashouts();
+      const existing = cashouts.find((record) => record.id === id);
+      if (!existing) throw new Error("游戏币变现记录不存在");
+      const record = normalizeGameCoinCashout({ ...existing, ...patch }, existing);
+      const next = cashouts.map((item) => item.id === id ? record : item);
+      const replayed = replayAll(undefined, undefined, undefined, next);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
+      return replayed.crossReplay.cashouts.find((item) => item.id === id) as MhxyGameCoinCashoutRecord;
+    },
+    deleteGameCoinCashout(id: string) {
+      const cashouts = repository.readGameCoinCashouts();
+      if (!cashouts.some((record) => record.id === id)) throw new Error("游戏币变现记录不存在");
+      const next = cashouts.filter((record) => record.id !== id);
+      const replayed = replayAll(undefined, undefined, undefined, next);
+      repository.writeGameCoinCashouts(replayed.crossReplay.cashouts);
       return { id };
     },
     replaceAllData(input: MhxyDataSet) {
@@ -894,7 +1021,8 @@ export function createMhxyService(dataDir: string) {
         inventoryTransfers: repository.readInventoryTransfers(),
         inventoryTargets: repository.readInventoryTargets(),
         assetFlips: repository.readAssetFlips(),
-        gameCoinPurchases: repository.readGameCoinPurchases()
+        gameCoinPurchases: repository.readGameCoinPurchases(),
+        gameCoinCashouts: repository.readGameCoinCashouts()
       };
       try {
         repository.writeTrades(next.trades);
@@ -903,6 +1031,7 @@ export function createMhxyService(dataDir: string) {
         repository.writeInventoryTargets(next.inventoryTargets);
         repository.writeAssetFlips(next.assetFlips);
         repository.writeGameCoinPurchases(next.gameCoinPurchases);
+        repository.writeGameCoinCashouts(next.gameCoinCashouts ?? []);
       } catch (error) {
         repository.writeTrades(current.trades);
         repository.writePriceSnapshots(current.priceSnapshots);
@@ -910,6 +1039,7 @@ export function createMhxyService(dataDir: string) {
         repository.writeInventoryTargets(current.inventoryTargets);
         repository.writeAssetFlips(current.assetFlips);
         repository.writeGameCoinPurchases(current.gameCoinPurchases);
+        repository.writeGameCoinCashouts(current.gameCoinCashouts ?? []);
         throw error;
       }
       return getDashboard();

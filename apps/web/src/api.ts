@@ -49,6 +49,8 @@ import type {
   MhxyDashboard,
   MhxyGameCoinPurchaseInput,
   MhxyGameCoinPurchaseRecord,
+  MhxyGameCoinCashoutInput,
+  MhxyGameCoinCashoutRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
@@ -1445,6 +1447,12 @@ export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCo
   );
 export const deleteMhxyGameCoinPurchase = (id: string) =>
   mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-purchases/${id}`, "DELETE");
+export const createMhxyGameCoinCashout = (input: MhxyGameCoinCashoutInput) =>
+  mhxyJsonRequest<MhxyGameCoinCashoutRecord>("/api/mhxy/game-coin-cashouts", "POST", input);
+export const updateMhxyGameCoinCashout = (id: string, input: Partial<MhxyGameCoinCashoutInput>) =>
+  mhxyJsonRequest<MhxyGameCoinCashoutRecord>(`/api/mhxy/game-coin-cashouts/${id}`, "PATCH", input);
+export const deleteMhxyGameCoinCashout = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-cashouts/${id}`, "DELETE");
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>

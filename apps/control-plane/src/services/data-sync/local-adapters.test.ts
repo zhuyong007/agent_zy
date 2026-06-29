@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createControlPlaneStore } from "../store";
 import { createMhxyRepository } from "../mhxy-repository";
+import { createMhxyService } from "../mhxy-service";
 import { createLocalDataSyncAdapters } from "./local-adapters";
 
 describe("local data sync adapters", () => {
@@ -80,19 +81,26 @@ describe("local data sync adapters", () => {
   it("round-trips all mhxy repository record categories", () => {
     const { dataDir, adapters } = fixture();
     const repository = createMhxyRepository(dataDir);
-    repository.writeTrades([{ id: "trade-1", type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 10, currency: "rmb", occurredAt: "2026-01-01", rmbAmount: 10, feeRmb: 0, createdAt: "2026-01-01", updatedAt: "2026-01-01" }]);
-    repository.writeGameCoinPurchases([{ id: "coin-1", acquiredAt: "2026-01-01", gameCoinAmount: 100, rmbCost: 10, createdAt: "2026-01-01", updatedAt: "2026-01-01" }]);
+    const service = createMhxyService(dataDir);
+    const purchase = service.createGameCoinPurchase({ acquiredAt: "2026-01-01", gameCoinAmount: 100, rmbCost: 10 });
+    service.createTrade({ type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 10, currency: "rmb", occurredAt: "2026-01-01", serverName: "Source", characterName: "Buyer" });
+    service.createInventoryTransfer({ itemName: "金刚石", quantity: 1, sourceServerName: "Source", sourceCharacterName: "Buyer", targetServerName: "Server", targetCharacterName: "Seller", transferCostRmb: 0, occurredAt: "2026-01-02" });
+    service.createTrade({ type: "sell", itemName: "金刚石", quantity: 1, unitPrice: 0.01, currency: "gameCoin", occurredAt: "2026-01-03", serverName: "Server", characterName: "Seller" });
+    const cashout = service.createGameCoinCashout({ occurredAt: "2026-01-04", serverName: "Server", characterName: "Seller", gameCoinAmount: 100, rmbReceived: 12 });
 
     const records = adapters.mhxy.read();
-    expect(records.has("trade:trade-1")).toBe(true);
-    expect(records.has("game-coin-purchase:coin-1")).toBe(true);
+    expect(records.has(`game-coin-purchase:${purchase.id}`)).toBe(true);
+    expect(records.has(`game-coin-cashout:${cashout.id}`)).toBe(true);
 
     repository.writeTrades([]);
+    repository.writeInventoryTransfers([]);
     repository.writeGameCoinPurchases([]);
+    repository.writeGameCoinCashouts([]);
     adapters.mhxy.write(records);
 
-    expect(repository.readTrades()).toHaveLength(1);
+    expect(repository.readTrades()).toHaveLength(2);
     expect(repository.readGameCoinPurchases()).toHaveLength(1);
+    expect(repository.readGameCoinCashouts()).toHaveLength(1);
   });
 
   it("rejects unknown snapshot record types before changing local data", () => {
