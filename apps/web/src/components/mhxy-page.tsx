@@ -1,5 +1,5 @@
-import type { FormEvent } from "react";
-import { useState } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
@@ -15,6 +15,7 @@ import type {
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
+  MhxyPriceSeriesUpdateInput,
   MhxyTradeCurrency,
   MhxyTradeInput,
   MhxyTradeRecord
@@ -35,6 +36,7 @@ import {
   deleteMhxyTrade,
   fetchMhxyDashboard,
   setMhxyInventoryTarget,
+  updateMhxyPriceSeries,
   updateMhxyAssetFlip,
   updateMhxyInventoryTransfer,
   updateMhxyTrade
@@ -194,6 +196,40 @@ export function MhxyPage() {
     mutationFn: (input: MhxyPriceSnapshotInput) => createMhxyPriceSnapshot(input),
     onSuccess: () => void refresh()
   });
+  const priceSeriesMutation = useMutation({
+    mutationFn: (input: MhxyPriceSeriesUpdateInput) => updateMhxyPriceSeries(input),
+    onSuccess: (result, variables) => {
+      const returnedRecordsByStableKey = new Map<string, MhxyPriceSnapshot[]>();
+      for (const record of result.records) {
+        const key = priceSnapshotStableKey(record);
+        returnedRecordsByStableKey.set(key, [
+          ...(returnedRecordsByStableKey.get(key) ?? []),
+          record
+        ]);
+      }
+      queryClient.setQueryData<Awaited<ReturnType<typeof fetchMhxyDashboard>>>(
+        ["mhxy"],
+        (current) => current
+          ? {
+              ...current,
+              priceSnapshots: current.priceSnapshots.map((record) => {
+                if (!priceSeriesIdentityMatches(record, variables.current)) return record;
+                const returned = returnedRecordsByStableKey.get(priceSnapshotStableKey(record))?.shift();
+                const migrated: MhxyPriceSnapshot = {
+                  ...(returned ?? record),
+                  itemName: variables.next.itemName.trim()
+                };
+                const nextServerName = variables.next.serverName?.trim();
+                if (nextServerName) migrated.serverName = nextServerName;
+                else delete migrated.serverName;
+                return migrated;
+              })
+            }
+          : current
+      );
+      void refresh();
+    }
+  });
   const transferMutation = useMutation({
     mutationFn: (input: MhxyInventoryTransferInput) =>
       editingTransfer ? updateMhxyInventoryTransfer(editingTransfer.id, input) : createMhxyInventoryTransfer(input),
@@ -240,6 +276,7 @@ export function MhxyPage() {
     gameCoinCashoutMutation.error,
     assetFlipMutation.error,
     snapshotMutation.error,
+    priceSeriesMutation.error,
     transferMutation.error,
     targetMutation.error,
     deleteMutation.error,
@@ -430,6 +467,8 @@ export function MhxyPage() {
             setCurrency={setSnapshotCurrency}
             submit={(input) => snapshotMutation.mutateAsync(input)}
             pending={snapshotMutation.isPending}
+            updateSeries={(input) => priceSeriesMutation.mutateAsync(input)}
+            updatePending={priceSeriesMutation.isPending}
             deletePending={deleteMutation.isPending}
             onDelete={(id) => deleteMutation.mutate({ kind: "snapshot", id })}
           />
@@ -546,6 +585,27 @@ interface PriceSeries {
   sourceName: string;
   records: MhxyPriceSnapshot[];
 }
+
+const priceSeriesKey = (identity: { itemName: string; serverName?: string }) =>
+  JSON.stringify([identity.serverName?.trim() || null, identity.itemName.trim()]);
+
+const priceSeriesIdentityMatches = (
+  record: MhxyPriceSnapshot,
+  identity: MhxyPriceSeriesUpdateInput["current"]
+) =>
+  record.itemName.trim() === identity.itemName.trim() &&
+  (record.serverName?.trim() || undefined) === (identity.serverName?.trim() || undefined);
+
+const priceSnapshotStableKey = (record: MhxyPriceSnapshot) => JSON.stringify([
+  record.id,
+  record.capturedAt,
+  record.currency,
+  record.rmbUnitPrice,
+  record.currency === "gameCoin" ? record.gameCoinUnitPriceWan : null,
+  record.currency === "gameCoin" ? record.rmbPerGameCoinWan : null,
+  record.note ?? null,
+  record.createdAt
+]);
 
 function signedMoney(value: number) {
   const prefix = value > 0 ? "+" : value < 0 ? "−" : "";
@@ -677,6 +737,8 @@ function PriceTrendWorkspace({
   setCurrency,
   submit,
   pending,
+  updateSeries,
+  updatePending,
   deletePending,
   onDelete
 }: {
@@ -685,15 +747,21 @@ function PriceTrendWorkspace({
   setCurrency: (value: MhxyTradeCurrency) => void;
   submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>;
   pending: boolean;
+  updateSeries: (input: MhxyPriceSeriesUpdateInput) => Promise<unknown>;
+  updatePending: boolean;
   deletePending: boolean;
   onDelete: (id: string) => void;
 }) {
   const [selectedKey, setSelectedKey] = useState("");
+  const [focusRequestedKey, setFocusRequestedKey] = useState<string | null>(null);
+  const selectedKeyRef = useRef(selectedKey);
+  const currentKeyRef = useRef("");
+  selectedKeyRef.current = selectedKey;
   const seriesMap = new Map<string, PriceSeries>();
   for (const snapshot of snapshots) {
     const serverName = snapshot.serverName || undefined;
     const sourceName = serverName ?? "未分类来源";
-    const key = JSON.stringify([serverName ?? null, snapshot.itemName]);
+    const key = priceSeriesKey({ serverName, itemName: snapshot.itemName });
     const current = seriesMap.get(key) ?? {
       key,
       itemName: snapshot.itemName,
@@ -709,6 +777,7 @@ function PriceTrendWorkspace({
     records: [...item.records].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
   }));
   const activeSeries = series.find((item) => item.key === selectedKey) ?? series[0] ?? null;
+  if (!currentKeyRef.current && activeSeries) currentKeyRef.current = activeSeries.key;
 
   if (!activeSeries) {
     return (
@@ -784,7 +853,12 @@ function PriceTrendWorkspace({
                   type="button"
                   data-price-item={item.key}
                   className={item.key === activeSeries.key ? "is-active" : ""}
-                  onClick={() => setSelectedKey(item.key)}
+                  onClick={() => {
+                    selectedKeyRef.current = item.key;
+                    currentKeyRef.current = item.key;
+                    setFocusRequestedKey(null);
+                    setSelectedKey(item.key);
+                  }}
                   key={item.key}
                 >
                   <span><strong>{item.itemName}</strong><small>{item.sourceName}</small></span>
@@ -804,14 +878,40 @@ function PriceTrendWorkspace({
                   <h3>{activeSeries.itemName}</h3>
                   <small>最新采集于 {latest.capturedAt.slice(0, 10)}</small>
                 </div>
-                <QuickSnapshotEntry
-                  key={activeSeries.key}
-                  itemName={activeSeries.itemName}
-                  serverName={activeSeries.serverName}
-                  sourceName={activeSeries.sourceName}
-                  submit={submit}
-                  pending={pending}
-                />
+                <div className="mhxy-price-trend__actions">
+                  <PriceSeriesEditor
+                    key={activeSeries.key}
+                    current={activeSeries}
+                    series={series}
+                    pending={updatePending}
+                    updateSeries={updateSeries}
+                    focusOnMount={focusRequestedKey === activeSeries.key}
+                    onActivated={(key) => {
+                      currentKeyRef.current = key;
+                    }}
+                    onFocusHandled={() => setFocusRequestedKey((requested) =>
+                      requested === activeSeries.key ? null : requested
+                    )}
+                    onSelectedKey={(oldKey, newKey) => {
+                      if (
+                        selectedKeyRef.current !== oldKey &&
+                        !(selectedKeyRef.current === "" && currentKeyRef.current === oldKey)
+                      ) return;
+                      selectedKeyRef.current = newKey;
+                      currentKeyRef.current = newKey;
+                      setSelectedKey(newKey);
+                      setFocusRequestedKey(newKey);
+                    }}
+                  />
+                  <QuickSnapshotEntry
+                    key={`quick-${activeSeries.key}`}
+                    itemName={activeSeries.itemName}
+                    serverName={activeSeries.serverName}
+                    sourceName={activeSeries.sourceName}
+                    submit={submit}
+                    pending={pending}
+                  />
+                </div>
               </div>
               <div className="mhxy-price-trend__latest">
                 <span>最新价</span>
@@ -873,6 +973,191 @@ function PriceTrendWorkspace({
         </div>
       </div>
     </section>
+  );
+}
+
+function PriceSeriesEditor({
+  current,
+  series,
+  pending,
+  updateSeries,
+  focusOnMount,
+  onActivated,
+  onFocusHandled,
+  onSelectedKey
+}: {
+  current: PriceSeries;
+  series: PriceSeries[];
+  pending: boolean;
+  updateSeries: (input: MhxyPriceSeriesUpdateInput) => Promise<unknown>;
+  focusOnMount: boolean;
+  onActivated: (key: string) => void;
+  onFocusHandled: () => void;
+  onSelectedKey: (oldKey: string, newKey: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [itemName, setItemName] = useState(current.itemName);
+  const [serverName, setServerName] = useState(current.serverName ?? "");
+  const [mergeDraft, setMergeDraft] = useState<{
+    next: MhxyPriceSeriesUpdateInput["next"];
+    currentRecordCount: number;
+    targetRecordCount: number;
+  } | null>(null);
+  const savingRef = useRef(false);
+  const summaryRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const mergeCancelRef = useRef<HTMLButtonElement>(null);
+  const mergeConfirmRef = useRef<HTMLButtonElement>(null);
+  const restoreSummaryFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+    summaryRef.current?.focus();
+    onFocusHandled();
+  }, [focusOnMount, onFocusHandled]);
+
+  useEffect(() => {
+    if (mergeDraft) {
+      if (pending) {
+        dialogRef.current?.focus();
+        return;
+      }
+      if (!pending && !dialogRef.current?.contains(document.activeElement)) {
+        mergeCancelRef.current?.focus();
+      }
+      return;
+    }
+    if (!restoreSummaryFocusRef.current) return;
+    restoreSummaryFocusRef.current = false;
+    summaryRef.current?.focus();
+  }, [mergeDraft, pending]);
+
+  const currentIdentity = {
+    itemName: current.itemName,
+    ...(current.serverName ? { serverName: current.serverName } : {})
+  };
+
+  function nextIdentity() {
+    const nextItemName = itemName.trim();
+    const nextServerName = serverName.trim();
+    return {
+      itemName: nextItemName,
+      ...(nextServerName ? { serverName: nextServerName } : {})
+    };
+  }
+
+  async function save(next: MhxyPriceSeriesUpdateInput["next"], confirmMerge: boolean) {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await updateSeries({ current: currentIdentity, next, confirmMerge });
+      onSelectedKey(current.key, priceSeriesKey(next));
+      setMergeDraft(null);
+      setOpen(false);
+    } catch {
+      // The mutation error is rendered by the page; preserve this editor's state.
+      if (confirmMerge && !dialogRef.current?.contains(document.activeElement)) {
+        mergeCancelRef.current?.focus();
+      }
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  function resetDraft() {
+    setItemName(current.itemName);
+    setServerName(current.serverName ?? "");
+    setMergeDraft(null);
+  }
+
+  function cancelEditing() {
+    resetDraft();
+    setOpen(false);
+  }
+
+  function cancelMerge() {
+    restoreSummaryFocusRef.current = true;
+    setMergeDraft(null);
+  }
+
+  function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (pending) return;
+      cancelMerge();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const controls = [mergeCancelRef.current, mergeConfirmRef.current].filter(
+      (control): control is HTMLButtonElement => control !== null && !control.disabled
+    );
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (!first || !last) {
+      event.preventDefault();
+      dialogRef.current?.focus();
+      return;
+    }
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || !dialogRef.current?.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !dialogRef.current?.contains(active))) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const next = nextIdentity();
+    const nextKey = priceSeriesKey(next);
+    const target = series.find((item) => item.key === nextKey && item.key !== current.key);
+    if (target) {
+      setMergeDraft({
+        next,
+        currentRecordCount: current.records.length,
+        targetRecordCount: target.records.length
+      });
+      return;
+    }
+    void save(next, false);
+  }
+
+  return (
+    <details
+      className="mhxy-price-series-edit"
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+        if (event.currentTarget.open) onActivated(current.key);
+        else resetDraft();
+      }}
+    >
+      <summary ref={summaryRef}>编辑道具</summary>
+      <form className="mhxy-form mhxy-price-form" data-form="price-series-edit" onSubmit={handleSubmit}>
+        <div><p className="eyebrow">EDIT PRICE THREAD</p><h3>编辑道具</h3></div>
+        <label>道具名<input name="itemName" required disabled={mergeDraft !== null} value={itemName} onChange={(event) => setItemName(event.target.value)} /></label>
+        <label>来源 / 区服<input name="serverName" disabled={mergeDraft !== null} value={serverName} onChange={(event) => setServerName(event.target.value)} /></label>
+        <div className="mhxy-row-actions">
+          <button type="submit" disabled={pending || mergeDraft !== null}>保存</button>
+          <button type="button" disabled={mergeDraft !== null} onClick={cancelEditing}>取消编辑</button>
+        </div>
+      </form>
+      {mergeDraft ? (
+        <div className="mhxy-price-merge-backdrop">
+          <section ref={dialogRef} role="dialog" aria-modal="true" aria-label="确认合并价格走势" tabIndex={-1} onKeyDown={handleDialogKeyDown}>
+            <h3>确认合并价格走势</h3>
+            <p>当前走势有 {mergeDraft.currentRecordCount} 条记录，目标走势有 {mergeDraft.targetRecordCount} 条记录。</p>
+            <p>将合并为：{mergeDraft.next.itemName} · {mergeDraft.next.serverName || "未分类来源"}</p>
+            <div className="mhxy-row-actions">
+              <button ref={mergeCancelRef} type="button" disabled={pending} onClick={cancelMerge}>取消</button>
+              <button ref={mergeConfirmRef} type="button" disabled={pending} onClick={() => void save(mergeDraft.next, true)}>确定合并</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </details>
   );
 }
 

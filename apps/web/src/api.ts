@@ -61,6 +61,8 @@ import type {
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
+  MhxyPriceSeriesUpdateInput,
+  MhxyPriceSeriesUpdateResult,
   MhxyTradeInput,
   MhxyTradeRecord,
   NewsState,
@@ -1545,6 +1547,8 @@ export const createMhxyPriceSnapshot = (input: MhxyPriceSnapshotInput) =>
   mhxyJsonRequest<MhxyPriceSnapshot>("/api/mhxy/price-snapshots", "POST", input);
 export const deleteMhxyPriceSnapshot = (id: string) =>
   mhxyJsonRequest<{ id: string }>(`/api/mhxy/price-snapshots/${id}`, "DELETE");
+export const updateMhxyPriceSeries = (input: MhxyPriceSeriesUpdateInput) =>
+  mhxyJsonRequest<MhxyPriceSeriesUpdateResult>("/api/mhxy/price-series", "PATCH", input);
 export const createMhxyInventoryTransfer = (input: MhxyInventoryTransferInput) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>("/api/mhxy/inventory-transfers", "POST", input);
 export const updateMhxyInventoryTransfer = (id: string, input: Partial<MhxyInventoryTransferInput>) =>

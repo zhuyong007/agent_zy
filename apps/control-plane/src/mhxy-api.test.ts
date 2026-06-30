@@ -582,4 +582,83 @@ describe("mhxy API", () => {
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
+
+  it("updates and merges isolated price series through the API", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-price-series-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      for (const [itemName, rmbUnitPrice] of [["A", 100], ["B", 200], ["C", 300]] as const) {
+        const created = await app.inject({
+          method: "POST",
+          url: "/api/mhxy/price-snapshots",
+          payload: {
+            itemName,
+            currency: "rmb",
+            rmbUnitPrice,
+            capturedAt: `2026-06-0${rmbUnitPrice / 100}T10:00:00.000Z`,
+            serverName: "长安城"
+          }
+        });
+        expect(created.statusCode).toBe(200);
+      }
+
+      const updated = await app.inject({
+        method: "PATCH",
+        url: "/api/mhxy/price-series",
+        payload: {
+          current: { itemName: "C", serverName: "长安城" },
+          next: { itemName: "D", serverName: "紫禁城" }
+        }
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json()).toMatchObject({
+        updatedCount: 1,
+        targetRecordCount: 0,
+        merged: false
+      });
+
+      const unconfirmedMerge = await app.inject({
+        method: "PATCH",
+        url: "/api/mhxy/price-series",
+        payload: {
+          current: { itemName: "A", serverName: "长安城" },
+          next: { itemName: "B", serverName: "长安城" }
+        }
+      });
+      expect(unconfirmedMerge.statusCode).toBe(400);
+      expect(unconfirmedMerge.json().message).toContain("确认合并");
+
+      const confirmedMerge = await app.inject({
+        method: "PATCH",
+        url: "/api/mhxy/price-series",
+        payload: {
+          current: { itemName: "A", serverName: "长安城" },
+          next: { itemName: "B", serverName: "长安城" },
+          confirmMerge: true
+        }
+      });
+      expect(confirmedMerge.statusCode).toBe(200);
+      expect(confirmedMerge.json()).toMatchObject({
+        updatedCount: 1,
+        targetRecordCount: 1,
+        merged: true
+      });
+
+      const blankItemName = await app.inject({
+        method: "PATCH",
+        url: "/api/mhxy/price-series",
+        payload: {
+          current: { itemName: "D", serverName: "紫禁城" },
+          next: { itemName: "   ", serverName: "紫禁城" }
+        }
+      });
+      expect(blankItemName.statusCode).toBe(400);
+      expect(blankItemName.json().message).toContain("道具名不能为空");
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
 });

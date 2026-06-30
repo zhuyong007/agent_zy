@@ -36,7 +36,8 @@ import {
   undoFileOrganization,
   undoPhotoRenames,
   syncModuleData,
-  deleteMhxyPriceSnapshot
+  deleteMhxyPriceSnapshot,
+  updateMhxyPriceSeries
 } from "./api";
 
 describe("MHXY API", () => {
@@ -54,6 +55,30 @@ describe("MHXY API", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/mhxy/price-snapshots/snapshot-1"),
       { method: "DELETE" }
+    );
+  });
+
+  it("patches a price series with the complete update input", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ records: [], updatedCount: 1, targetRecordCount: 1, merged: true })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const input = {
+      current: { itemName: "A", serverName: "长安城" },
+      next: { itemName: "B", serverName: "紫禁城" },
+      confirmMerge: true
+    };
+
+    await updateMhxyPriceSeries(input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/mhxy/price-series"),
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input)
+      }
     );
   });
 });
