@@ -398,6 +398,24 @@ export type MhxyPriceSnapshot = MhxyPriceSnapshotBase & {
       }
   );
 
+export interface MhxyPriceSeriesIdentity {
+  itemName: string;
+  serverName?: string;
+}
+
+export interface MhxyPriceSeriesUpdateInput {
+  current: MhxyPriceSeriesIdentity;
+  next: MhxyPriceSeriesIdentity;
+  confirmMerge?: boolean;
+}
+
+export interface MhxyPriceSeriesUpdateResult {
+  records: MhxyPriceSnapshot[];
+  updatedCount: number;
+  targetRecordCount: number;
+  merged: boolean;
+}
+
 export interface MhxyInventoryTransferInput {
   itemName: string;
   quantity: number;

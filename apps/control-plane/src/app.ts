@@ -41,6 +41,7 @@ import {
   mhxyInventoryTargetSchema,
   mhxyInventoryTransferInputSchema,
   mhxyInventoryTransferPatchSchema,
+  mhxyPriceSeriesUpdateSchema,
   mhxyPriceSnapshotInputSchema,
   mhxyTradeInputSchema,
   mhxyTradePatchSchema,
@@ -1688,6 +1689,14 @@ export function createControlPlaneApp(options?: {
 
   app.delete("/api/mhxy/price-snapshots/:id", async (request, reply) =>
     mhxyAction(reply, () => mhxyService.deletePriceSnapshot((request.params as { id: string }).id))
+  );
+
+  app.patch("/api/mhxy/price-series", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updatePriceSeries(
+        parseMhxyInput(mhxyPriceSeriesUpdateSchema, request.body ?? {})
+      )
+    )
   );
 
   app.post("/api/mhxy/inventory-transfers", async (request, reply) =>

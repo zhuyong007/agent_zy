@@ -44,6 +44,17 @@ export const mhxyPriceSnapshotInputSchema = z.discriminatedUnion("currency", [
   }).strict()
 ]);
 
+const priceSeriesIdentitySchema = z.object({
+  itemName: z.string().trim().min(1, "道具名不能为空"),
+  serverName: z.string().optional()
+}).strict();
+
+export const mhxyPriceSeriesUpdateSchema = z.object({
+  current: priceSeriesIdentitySchema,
+  next: priceSeriesIdentitySchema,
+  confirmMerge: z.boolean().optional()
+}).strict();
+
 const transferShape = {
   itemName: z.string(),
   quantity: positiveSafeInteger,

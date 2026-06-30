@@ -15,6 +15,9 @@ import type {
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
+  MhxyPriceSeriesIdentity,
+  MhxyPriceSeriesUpdateInput,
+  MhxyPriceSeriesUpdateResult,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
   MhxyTradeInput,
@@ -481,14 +484,16 @@ function normalizeSnapshot(
     assertFiniteNonNegative(input.rmbUnitPrice, "人民币单价");
     rmbUnitPrice = roundRmb(input.rmbUnitPrice);
   }
+  const { serverName, ...snapshotInput } = input;
+  const normalizedServerName = normalizeLabel(serverName);
   const timestamp = nowIso();
   return {
-    ...input,
+    ...snapshotInput,
     id: existing?.id ?? randomUUID(),
     itemName,
     rmbUnitPrice,
     capturedAt: new Date(input.capturedAt).toISOString(),
-    ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
+    ...(normalizedServerName ? { serverName: normalizedServerName } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
   };
@@ -940,6 +945,52 @@ export function createMhxyService(dataDir: string) {
       const record = normalizeSnapshot(input);
       repository.writePriceSnapshots([...repository.readPriceSnapshots(), record]);
       return record;
+    },
+    updatePriceSeries(input: MhxyPriceSeriesUpdateInput): MhxyPriceSeriesUpdateResult {
+      const normalizeIdentity = (identity: MhxyPriceSeriesIdentity) => {
+        const itemName = identity.itemName.trim();
+        if (!itemName) throw new Error("道具名不能为空");
+        const serverName = normalizeLabel(identity.serverName);
+        return { itemName, ...(serverName ? { serverName } : {}) };
+      };
+      const matchesIdentity = (record: MhxyPriceSnapshot, identity: MhxyPriceSeriesIdentity) =>
+        record.itemName === identity.itemName &&
+        normalizeLabel(record.serverName) === normalizeLabel(identity.serverName);
+
+      const current = normalizeIdentity(input.current);
+      const next = normalizeIdentity(input.next);
+      const records = repository.readPriceSnapshots();
+      const currentRecords = records.filter((record) => matchesIdentity(record, current));
+      if (currentRecords.length === 0) throw new Error("价格序列不存在");
+      if (matchesIdentity(currentRecords[0], next)) {
+        return { records: currentRecords, updatedCount: 0, targetRecordCount: 0, merged: false };
+      }
+
+      const targetRecords = records.filter((record) => matchesIdentity(record, next));
+      if (targetRecords.length > 0 && input.confirmMerge !== true) {
+        throw new Error("目标价格序列已存在，请确认合并");
+      }
+
+      const updatedAt = nowIso();
+      const updatedRecords = records.map((record) => {
+        if (!matchesIdentity(record, current)) return record;
+        const updatedRecord: MhxyPriceSnapshot = {
+          ...record,
+          itemName: next.itemName,
+          updatedAt
+        };
+        if (next.serverName) updatedRecord.serverName = next.serverName;
+        else delete updatedRecord.serverName;
+        return updatedRecord;
+      });
+      repository.writePriceSnapshots(updatedRecords);
+
+      return {
+        records: updatedRecords.filter((record) => matchesIdentity(record, next)),
+        updatedCount: currentRecords.length,
+        targetRecordCount: targetRecords.length,
+        merged: targetRecords.length > 0
+      };
     },
     deletePriceSnapshot(id: string) {
       const records = repository.readPriceSnapshots();

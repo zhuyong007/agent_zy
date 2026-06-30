@@ -188,6 +188,7 @@ vi.mock("../api", () => ({
   updateMhxyTrade: vi.fn(),
   deleteMhxyTrade: vi.fn(),
   createMhxyPriceSnapshot: vi.fn(),
+  updateMhxyPriceSeries: vi.fn(),
   deleteMhxyPriceSnapshot: vi.fn(),
   createMhxyInventoryTransfer: vi.fn(),
   updateMhxyInventoryTransfer: vi.fn(),
@@ -218,6 +219,7 @@ import {
   createMhxyTrade,
   deleteMhxyAssetFlip,
   fetchMhxyDashboard,
+  updateMhxyPriceSeries,
   updateMhxyTrade,
   updateMhxyAssetFlip
 } from "../api";
@@ -238,7 +240,7 @@ describe("MhxyPage", () => {
   async function renderPage() {
     const container = document.createElement("div");
     const queryClient = new QueryClient({
-      defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY } }
+      defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } }
     });
     document.body.appendChild(container);
     await queryClient.prefetchQuery({ queryKey: ["mhxy"], queryFn: fetchMhxyDashboard });
@@ -782,6 +784,559 @@ describe("MhxyPage", () => {
     expect(quickAdd.open).toBe(true);
     expect(price.value).toBe("337");
     expect(container.textContent).toContain("保存失败");
+  });
+
+  it("edits a non-first price series before its background refresh finishes", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const refreshed = {
+      ...dashboard,
+      priceSnapshots: dashboard.priceSnapshots.map((snapshot) =>
+        snapshot.itemName === "高级必杀"
+          ? { ...snapshot, itemName: "高级偷袭", serverName: "  藏宝阁（兽决）  " }
+          : snapshot
+      )
+    };
+    let resolveRefresh!: (value: typeof dashboard) => void;
+    const refreshResult = new Promise<typeof dashboard>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockImplementationOnce(() => refreshResult);
+    vi.mocked(updateMhxyPriceSeries).mockResolvedValueOnce({
+      records: refreshed.priceSnapshots.filter((snapshot) => snapshot.itemName === "高级偷袭"),
+      updatedCount: 1,
+      targetRecordCount: 0,
+      merged: false
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const itemButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级必杀")) as HTMLButtonElement;
+    await act(async () => itemButton.click());
+
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+    const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
+    const serverName = form.querySelector('[name="serverName"]') as HTMLInputElement;
+    expect(itemName.value).toBe("高级必杀");
+    expect(serverName.value).toBe("藏宝阁（兽决）");
+
+    await act(async () => {
+      change(itemName, "  高级偷袭  ");
+      change(serverName, "  藏宝阁（兽决）  ");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(updateMhxyPriceSeries).toHaveBeenCalledWith({
+      current: { itemName: "高级必杀", serverName: "藏宝阁（兽决）" },
+      next: { itemName: "高级偷袭", serverName: "藏宝阁（兽决）" },
+      confirmMerge: false
+    });
+    await vi.waitFor(() => expect(fetchMhxyDashboard).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => {
+      expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+        .toContain("高级偷袭");
+    });
+    expect((container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement).open)
+      .toBe(false);
+    await act(async () => resolveRefresh(refreshed));
+  });
+
+  it("normalizes whitespace in both parts of a price series key", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...dashboard,
+      priceSnapshots: [
+        ...dashboard.priceSnapshots,
+        {
+          ...dashboard.priceSnapshots[3],
+          id: "snapshot-5",
+          itemName: "  高级必杀  ",
+          serverName: "  藏宝阁（兽决）  ",
+          capturedAt: "2026-06-20T04:00:00.000Z"
+        }
+      ]
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+
+    const items = Array.from(container.querySelectorAll("[data-price-item]"));
+    expect(items).toHaveLength(2);
+    const killSeries = items.find((button) =>
+      button.getAttribute("data-price-item") === JSON.stringify(["藏宝阁（兽决）", "高级必杀"])
+    ) as HTMLButtonElement;
+    expect(killSeries).not.toBeUndefined();
+    await act(async () => killSeries.click());
+    expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+      .toContain("样本数量2 期");
+  });
+
+  it("keeps an API save successful when the background refresh fails", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const updatedRecord = {
+      ...dashboard.priceSnapshots[3],
+      itemName: "高级偷袭"
+    };
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockRejectedValueOnce(new Error("刷新失败"));
+    vi.mocked(updateMhxyPriceSeries).mockResolvedValueOnce({
+      records: [updatedRecord],
+      updatedCount: 1,
+      targetRecordCount: 0,
+      merged: false
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const itemButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级必杀")) as HTMLButtonElement;
+    await act(async () => itemButton.click());
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+    const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
+
+    await act(async () => {
+      change(itemName, "高级偷袭");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await vi.waitFor(() => expect(container.textContent).toContain("刷新失败"));
+
+    expect((container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement).open)
+      .toBe(false);
+    expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+      .toContain("高级偷袭");
+  });
+
+  it("keeps another price series with the same imported id unchanged when refresh fails", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const dashboardWithDuplicateId = {
+      ...dashboard,
+      priceSnapshots: dashboard.priceSnapshots.map((snapshot) =>
+        snapshot.itemName === "高级必杀"
+          ? { ...snapshot, id: dashboard.priceSnapshots[0].id }
+          : snapshot
+      )
+    };
+    const updatedRecords = dashboardWithDuplicateId.priceSnapshots
+      .filter((snapshot) => snapshot.itemName === "高级连击")
+      .map((snapshot) => ({ ...snapshot, itemName: "高级连击（新版）" }));
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboardWithDuplicateId)
+      .mockRejectedValueOnce(new Error("刷新失败"));
+    vi.mocked(updateMhxyPriceSeries).mockResolvedValueOnce({
+      records: updatedRecords,
+      updatedCount: 3,
+      targetRecordCount: 0,
+      merged: false
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="itemName"]') as HTMLInputElement, "高级连击（新版）");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await vi.waitFor(() => expect(container.textContent).toContain("刷新失败"));
+
+    const items = Array.from(container.querySelectorAll("[data-price-item]"));
+    expect(items).toHaveLength(2);
+    expect(items.some((item) => item.textContent?.includes("高级连击（新版）"))).toBe(true);
+    expect(items.some((item) => item.textContent?.includes("高级必杀"))).toBe(true);
+  });
+
+  it("does not overwrite a newer price series selection when a save finishes", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const updatedRecord = { ...dashboard.priceSnapshots[3], itemName: "高级偷袭" };
+    const refreshed = {
+      ...dashboard,
+      priceSnapshots: dashboard.priceSnapshots.map((snapshot) =>
+        snapshot.id === updatedRecord.id ? updatedRecord : snapshot
+      )
+    };
+    let resolveUpdate!: (value: {
+      records: typeof dashboard.priceSnapshots;
+      updatedCount: number;
+      targetRecordCount: number;
+      merged: boolean;
+    }) => void;
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockResolvedValueOnce(refreshed);
+    vi.mocked(updateMhxyPriceSeries).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveUpdate = resolve;
+    }));
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const killButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级必杀")) as HTMLButtonElement;
+    await act(async () => killButton.click());
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="itemName"]') as HTMLInputElement, "高级偷袭");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const comboButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级连击")) as HTMLButtonElement;
+    await act(async () => comboButton.click());
+    await act(async () => resolveUpdate({
+      records: [updatedRecord],
+      updatedCount: 1,
+      targetRecordCount: 0,
+      merged: false
+    }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await vi.waitFor(() => {
+      expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+        .toContain("高级连击");
+    });
+  });
+
+  it("asks in-app before merging two price series and preserves edits when cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      vi.mocked(updateMhxyPriceSeries).mockResolvedValueOnce({
+        records: [],
+        updatedCount: 3,
+        targetRecordCount: 1,
+        merged: true
+      });
+      const container = await renderPage();
+      await switchTab(container, "物价记录");
+      const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+      await setDetailsOpen(editor, true);
+      const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+      const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
+      const serverName = form.querySelector('[name="serverName"]') as HTMLInputElement;
+
+      await act(async () => {
+        change(itemName, "高级必杀");
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+
+      expect(updateMhxyPriceSeries).not.toHaveBeenCalled();
+      let dialog = container.querySelector('[role="dialog"][aria-label="确认合并价格走势"]') as HTMLElement;
+      expect(dialog).not.toBeNull();
+      expect(dialog.textContent).toContain("3");
+      expect(dialog.textContent).toContain("1");
+      expect(dialog.textContent).toContain("高级必杀");
+      expect(dialog.textContent).toContain("藏宝阁（兽决）");
+      expect(container.querySelector(".mhxy-price-merge-backdrop")).not.toBeNull();
+
+      await act(async () => {
+        Array.from(dialog.querySelectorAll("button"))
+          .find((button) => button.textContent === "取消")
+          ?.click();
+      });
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+      expect(itemName.value).toBe("高级必杀");
+      expect(editor.open).toBe(true);
+
+      await act(async () => {
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+      dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+      expect(itemName.matches(":disabled")).toBe(true);
+      expect(serverName.matches(":disabled")).toBe(true);
+      await act(async () => {
+        change(itemName, "高级偷袭");
+        change(serverName, "另一个来源");
+      });
+      expect(dialog.textContent).toContain("高级必杀");
+      expect(dialog.textContent).toContain("藏宝阁（兽决）");
+      await act(async () => {
+        Array.from(dialog.querySelectorAll("button"))
+          .find((button) => button.textContent === "确定合并")
+          ?.click();
+      });
+
+      expect(updateMhxyPriceSeries).toHaveBeenCalledWith({
+        current: { itemName: "高级连击", serverName: "藏宝阁（兽决）" },
+        next: { itemName: "高级必杀", serverName: "藏宝阁（兽决）" },
+        confirmMerge: true
+      });
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("traps focus in the merge dialog and restores it after Escape", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    const summary = editor.querySelector("summary") as HTMLElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="itemName"]') as HTMLInputElement, "高级必杀");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+    const cancel = Array.from(dialog.querySelectorAll("button"))
+      .find((button) => button.textContent === "取消") as HTMLButtonElement;
+    const confirm = Array.from(dialog.querySelectorAll("button"))
+      .find((button) => button.textContent === "确定合并") as HTMLButtonElement;
+    expect(document.activeElement).toBe(cancel);
+
+    confirm.focus();
+    await act(async () => {
+      confirm.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    });
+    expect(document.activeElement).toBe(cancel);
+    cancel.focus();
+    await act(async () => {
+      cancel.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+    });
+    expect(document.activeElement).toBe(confirm);
+
+    await act(async () => {
+      confirm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(summary);
+  });
+
+  it("focuses the new active series editor after a merge succeeds", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const mergedRecords = dashboard.priceSnapshots
+      .filter((snapshot) => snapshot.itemName === "高级连击")
+      .map((snapshot) => ({ ...snapshot, itemName: "高级必杀" }));
+    const mergedDashboard = {
+      ...dashboard,
+      priceSnapshots: dashboard.priceSnapshots.map((snapshot) =>
+        snapshot.itemName === "高级连击" ? { ...snapshot, itemName: "高级必杀" } : snapshot
+      )
+    };
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockResolvedValueOnce(mergedDashboard);
+    vi.mocked(updateMhxyPriceSeries).mockResolvedValueOnce({
+      records: mergedRecords,
+      updatedCount: 3,
+      targetRecordCount: 1,
+      merged: true
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="itemName"]') as HTMLInputElement, "高级必杀");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+    const confirm = Array.from(dialog.querySelectorAll("button"))
+      .find((button) => button.textContent === "确定合并") as HTMLButtonElement;
+    await act(async () => confirm.click());
+
+    await vi.waitFor(() => {
+      const activeEditor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+      expect((container.querySelector("[data-price-trend]") as HTMLElement).textContent)
+        .toContain("高级必杀");
+      expect(document.activeElement).toBe(activeEditor.querySelector("summary"));
+    });
+  });
+
+  it("keeps merge dialog focus contained after confirmation fails", async () => {
+    let rejectUpdate!: (reason: Error) => void;
+    vi.mocked(updateMhxyPriceSeries).mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectUpdate = reject;
+    }));
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    const summary = editor.querySelector("summary") as HTMLElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="itemName"]') as HTMLInputElement, "高级必杀");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+    const confirm = Array.from(dialog.querySelectorAll("button"))
+      .find((button) => button.textContent === "确定合并") as HTMLButtonElement;
+    const cancel = Array.from(dialog.querySelectorAll("button"))
+      .find((button) => button.textContent === "取消") as HTMLButtonElement;
+    confirm.focus();
+    await act(async () => {
+      confirm.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(cancel.disabled).toBe(true);
+    expect(document.activeElement).toBe(dialog);
+    await act(async () => {
+      dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+      dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(container.querySelector('[role="dialog"]')).toBe(dialog);
+    expect(document.activeElement).toBe(dialog);
+    await act(async () => summary.focus());
+    await act(async () => rejectUpdate(new Error("保存失败")));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBe(dialog);
+    expect(container.textContent).toContain("保存失败");
+    expect(Array.from(dialog.querySelectorAll("button"))).toContain(document.activeElement);
+    expect(cancel.disabled).toBe(false);
+    await act(async () => cancel.click());
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("ignores duplicate price series submissions in the same render batch", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const updatedRecords = dashboard.priceSnapshots
+      .filter((snapshot) => snapshot.itemName === "高级连击")
+      .map((snapshot) => ({ ...snapshot, itemName: "高级连击（新版）" }));
+    const refreshed = {
+      ...dashboard,
+      priceSnapshots: dashboard.priceSnapshots.map((snapshot) =>
+        snapshot.itemName === "高级连击" ? { ...snapshot, itemName: "高级连击（新版）" } : snapshot
+      )
+    };
+    let resolveUpdate!: (value: {
+      records: typeof dashboard.priceSnapshots;
+      updatedCount: number;
+      targetRecordCount: number;
+      merged: boolean;
+    }) => void;
+    vi.mocked(fetchMhxyDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockResolvedValueOnce(refreshed);
+    vi.mocked(updateMhxyPriceSeries).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveUpdate = resolve;
+    }));
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+
+    await act(async () => {
+      change(form.querySelector('[name="itemName"]') as HTMLInputElement, "高级连击（新版）");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => resolveUpdate({
+      records: updatedRecords,
+      updatedCount: 3,
+      targetRecordCount: 0,
+      merged: false
+    }));
+
+    expect(updateMhxyPriceSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps failed price series edits and resets the editor when selection changes", async () => {
+    vi.mocked(updateMhxyPriceSeries).mockRejectedValueOnce(new Error("保存失败"));
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+    const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
+
+    await act(async () => {
+      change(itemName, "失败后保留");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await vi.waitFor(() => expect(container.textContent).toContain("保存失败"));
+    expect(editor.open).toBe(true);
+    expect(itemName.value).toBe("失败后保留");
+
+    const itemButton = Array.from(container.querySelectorAll("[data-price-item]"))
+      .find((button) => button.textContent?.includes("高级必杀")) as HTMLButtonElement;
+    await act(async () => itemButton.click());
+    const nextEditor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    expect(nextEditor.open).toBe(false);
+    expect(nextEditor.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("edits a price series without turning its missing source placeholder into data", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    const snapshotWithoutServer = { ...dashboard.priceSnapshots[0] };
+    delete snapshotWithoutServer.serverName;
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...dashboard,
+      priceSnapshots: [snapshotWithoutServer]
+    });
+    vi.mocked(updateMhxyPriceSeries).mockResolvedValueOnce({
+      records: [{ ...snapshotWithoutServer, itemName: "高级连击（散装）" }],
+      updatedCount: 1,
+      targetRecordCount: 0,
+      merged: false
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+    const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
+    const serverName = form.querySelector('[name="serverName"]') as HTMLInputElement;
+    expect(serverName.value).toBe("");
+
+    await act(async () => {
+      change(itemName, "高级连击（散装）");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(updateMhxyPriceSeries).toHaveBeenCalledWith({
+      current: { itemName: "高级连击" },
+      next: { itemName: "高级连击（散装）" },
+      confirmMerge: false
+    });
+    expect(JSON.stringify(vi.mocked(updateMhxyPriceSeries).mock.calls[0]?.[0]))
+      .not.toContain("未分类来源");
+  });
+
+  it("cancels price series editing without saving", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    const editor = container.querySelector(".mhxy-price-series-edit") as HTMLDetailsElement;
+    await setDetailsOpen(editor, true);
+    const form = editor.querySelector('[data-form="price-series-edit"]') as HTMLFormElement;
+    const itemName = form.querySelector('[name="itemName"]') as HTMLInputElement;
+    const serverName = form.querySelector('[name="serverName"]') as HTMLInputElement;
+
+    await act(async () => {
+      change(itemName, "临时名称");
+      change(serverName, "临时来源");
+      Array.from(form.querySelectorAll("button"))
+        .find((button) => button.textContent === "取消编辑")
+        ?.click();
+    });
+
+    expect(editor.open).toBe(false);
+    expect(updateMhxyPriceSeries).not.toHaveBeenCalled();
+    await setDetailsOpen(editor, true);
+    expect(itemName.value).toBe("高级连击");
+    expect(serverName.value).toBe("藏宝阁（兽决）");
   });
 
   it("shows separate asset inventory and sold history with RMB totals", async () => {
