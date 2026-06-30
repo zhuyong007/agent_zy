@@ -2407,6 +2407,82 @@ textarea {
   font-size: 1.2rem;
 }
 
+.mhxy-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.mhxy-overview__group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel-strong);
+}
+
+.mhxy-overview__heading {
+  display: grid;
+  gap: 3px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mhxy-overview__heading strong {
+  color: var(--text);
+  font-size: .9rem;
+}
+
+.mhxy-overview__heading small {
+  min-height: 1.35em;
+  color: var(--muted);
+  font-size: .68rem;
+}
+
+.mhxy-overview__metrics {
+  display: grid;
+}
+
+.mhxy-overview__metrics span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 9px 13px;
+  color: var(--muted);
+  font-size: .68rem;
+}
+
+.mhxy-overview__metrics span + span {
+  border-top: 1px solid var(--line);
+}
+
+.mhxy-overview__metrics strong {
+  color: var(--text);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: .76rem;
+  font-weight: 650;
+}
+
+.mhxy-transfer-role {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+}
+
+.mhxy-transfer-role span,
+.mhxy-transfer-role small {
+  color: var(--muted);
+  font-size: .72rem;
+}
+
+.mhxy-transfer-role strong {
+  color: var(--text);
+}
+
 .mhxy-grid {
   display: grid;
   grid-template-columns: 1.6fr 1fr 1fr;
@@ -3799,6 +3875,16 @@ textarea {
   .mhxy-coin-wallet__balance,
   .mhxy-coin-wallet form {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .mhxy-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .mhxy-hero__aside {
+    justify-items: stretch;
   }
 }
 

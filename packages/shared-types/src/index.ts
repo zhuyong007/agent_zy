@@ -416,7 +416,24 @@ export interface MhxyPriceSeriesUpdateResult {
   merged: boolean;
 }
 
-export interface MhxyInventoryTransferInput {
+export interface MhxyRoleInventoryTransferInput {
+  scope: "role";
+  characterName: string;
+  sourceServerName: string;
+  targetServerName: string;
+  transferCostRmb: number;
+  occurredAt: string;
+  note?: string;
+}
+
+export type MhxyInventoryTransferInput = MhxyRoleInventoryTransferInput;
+
+export type MhxyInventoryTransferPatch = Partial<Pick<
+  MhxyRoleInventoryTransferInput,
+  "targetServerName" | "transferCostRmb" | "occurredAt" | "note"
+>>;
+
+export interface MhxyLegacyInventoryTransferRecord {
   itemName: string;
   quantity: number;
   sourceServerName: string;
@@ -426,13 +443,20 @@ export interface MhxyInventoryTransferInput {
   transferCostRmb: number;
   occurredAt: string;
   note?: string;
-}
-
-export interface MhxyInventoryTransferRecord extends MhxyInventoryTransferInput {
   id: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface MhxyRoleInventoryTransferRecord extends MhxyRoleInventoryTransferInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MhxyInventoryTransferRecord =
+  | MhxyRoleInventoryTransferRecord
+  | MhxyLegacyInventoryTransferRecord;
 
 export interface MhxyInventoryTarget {
   itemName: string;
@@ -575,6 +599,22 @@ export interface MhxyCombinedSummary {
   mainLedgerUnrealizedProfitRmb: number;
 }
 
+export interface MhxyOverviewCategorySummary {
+  holdingCostRmb: number;
+  expectedValueRmb: number;
+  realizedProfitRmb: number;
+}
+
+export interface MhxyCrossServerOverviewSummary extends MhxyOverviewCategorySummary {
+  transferExpenseRmb: number;
+}
+
+export interface MhxyOverviewSummary {
+  crossServer: MhxyCrossServerOverviewSummary;
+  assetTrading: MhxyOverviewCategorySummary;
+  total: MhxyOverviewCategorySummary;
+}
+
 export interface MhxyDataSet {
   trades: MhxyTradeRecord[];
   priceSnapshots: MhxyPriceSnapshot[];
@@ -604,6 +644,7 @@ export interface MhxyDashboard {
     rmbCost: number;
   };
   combinedSummary: MhxyCombinedSummary;
+  overviewSummary: MhxyOverviewSummary;
 }
 
 export type ScheduleUrgency = "low" | "medium" | "high";

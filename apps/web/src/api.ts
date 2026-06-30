@@ -58,6 +58,7 @@ import type {
   MhxyGameCoinCashoutRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
+  MhxyInventoryTransferPatch,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
@@ -1551,7 +1552,7 @@ export const updateMhxyPriceSeries = (input: MhxyPriceSeriesUpdateInput) =>
   mhxyJsonRequest<MhxyPriceSeriesUpdateResult>("/api/mhxy/price-series", "PATCH", input);
 export const createMhxyInventoryTransfer = (input: MhxyInventoryTransferInput) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>("/api/mhxy/inventory-transfers", "POST", input);
-export const updateMhxyInventoryTransfer = (id: string, input: Partial<MhxyInventoryTransferInput>) =>
+export const updateMhxyInventoryTransfer = (id: string, input: MhxyInventoryTransferPatch) =>
   mhxyJsonRequest<MhxyInventoryTransferRecord>(`/api/mhxy/inventory-transfers/${id}`, "PATCH", input);
 export const deleteMhxyInventoryTransfer = (id: string) =>
   mhxyJsonRequest<{ id: string }>(`/api/mhxy/inventory-transfers/${id}`, "DELETE");

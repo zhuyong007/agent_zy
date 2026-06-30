@@ -14,12 +14,15 @@ import type {
   MhxyInventoryPosition,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
+  MhxyInventoryTransferPatch,
   MhxyInventoryTransferRecord,
+  MhxyLegacyInventoryTransferRecord,
   MhxyPriceSeriesIdentity,
   MhxyPriceSeriesUpdateInput,
   MhxyPriceSeriesUpdateResult,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
+  MhxyRoleInventoryTransferRecord,
   MhxyTradeInput,
   MhxyTradeRecord,
   MhxyTradeResult
@@ -499,10 +502,48 @@ function normalizeSnapshot(
   };
 }
 
-function normalizeTransfer(
+function isRoleTransfer(
+  record: MhxyInventoryTransferRecord
+): record is MhxyRoleInventoryTransferRecord {
+  return "scope" in record && record.scope === "role";
+}
+
+function normalizeRoleTransfer(
   input: MhxyInventoryTransferInput,
-  existing?: MhxyInventoryTransferRecord
-): MhxyInventoryTransferRecord {
+  existing?: MhxyRoleInventoryTransferRecord
+): MhxyRoleInventoryTransferRecord {
+  if (input.scope !== "role") throw new Error("库存转移范围必须是角色");
+  assertFiniteNonNegative(input.transferCostRmb, "转移成本");
+  for (const [value, name] of [
+    [input.characterName, "角色"],
+    [input.sourceServerName, "源区服"],
+    [input.targetServerName, "目标区服"]
+  ] as const) {
+    if (!value.trim()) throw new Error(`${name}不能为空`);
+  }
+  if (input.sourceServerName.trim() === input.targetServerName.trim()) {
+    throw new Error("源区服和目标区服不能相同");
+  }
+  if (!input.occurredAt || Number.isNaN(Date.parse(input.occurredAt))) throw new Error("发生时间无效");
+  const timestamp = nowIso();
+  return {
+    scope: "role",
+    characterName: input.characterName.trim(),
+    sourceServerName: input.sourceServerName.trim(),
+    targetServerName: input.targetServerName.trim(),
+    transferCostRmb: roundRmb(input.transferCostRmb),
+    occurredAt: new Date(input.occurredAt).toISOString(),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    id: existing?.id ?? randomUUID(),
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function normalizeLegacyTransfer(
+  input: MhxyLegacyInventoryTransferRecord,
+  existing?: MhxyLegacyInventoryTransferRecord
+): MhxyLegacyInventoryTransferRecord {
   if (!input.itemName.trim()) throw new Error("道具名不能为空");
   assertPositiveInteger(input.quantity);
   assertFiniteNonNegative(input.transferCostRmb, "转移成本");
@@ -625,6 +666,28 @@ function replay(
     }
 
     const transfer = event.record;
+    if (isRoleTransfer(transfer)) {
+      const sourcePositions = [...inventory.values()].filter((position) =>
+        position.quantity > 0 &&
+        position.serverName === transfer.sourceServerName &&
+        position.characterName === transfer.characterName
+      );
+      if (sourcePositions.length === 0) {
+        throw new Error(`角色没有可转移库存：${transfer.sourceServerName}/${transfer.characterName}`);
+      }
+      for (const source of sourcePositions) {
+        const target = getPosition(
+          source.itemName,
+          transfer.targetServerName,
+          transfer.characterName
+        );
+        target.quantity += source.quantity;
+        target.inventoryCostCents += source.inventoryCostCents;
+        source.quantity = 0;
+        source.inventoryCostCents = 0;
+      }
+      continue;
+    }
     const source = getPosition(
       transfer.itemName,
       transfer.sourceServerName,
@@ -705,7 +768,9 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
   });
   const inventoryTransfers = input.inventoryTransfers.map((record) => {
     assertRecordMetadata(record, "库存转移记录");
-    const normalized = normalizeTransfer(record, record);
+    const normalized = isRoleTransfer(record)
+      ? normalizeRoleTransfer(record, record)
+      : normalizeLegacyTransfer(record, record);
     return { ...normalized, updatedAt: record.updatedAt };
   });
   const inventoryTargets = input.inventoryTargets.map((record) => {
@@ -846,11 +911,17 @@ export function createMhxyService(dataDir: string) {
             : null
         } satisfies MhxyInventoryPosition;
       });
+    const transferExpenseRmb = roundRmb(
+      inventoryTransfers
+        .filter(isRoleTransfer)
+        .reduce((sum, transfer) => sum + transfer.transferCostRmb, 0)
+    );
     const summary = {
       inventoryCostRmb: roundRmb(inventory.reduce((sum, item) => sum + item.inventoryCostRmb, 0)),
       realizedProfitRmb: roundRmb(
         replayed.tradeResults.reduce((sum, item) => sum + item.realizedProfitRmb, 0) +
-        replayed.cashoutSummary.realizedProfitRmb
+        replayed.cashoutSummary.realizedProfitRmb -
+        transferExpenseRmb
       ),
       marketValueRmb: roundRmb(
         inventory.reduce((sum, item) => sum + (item.marketValueRmb ?? 0), 0)
@@ -876,6 +947,31 @@ export function createMhxyService(dataDir: string) {
       gameCoinAmount: replayed.wallets.reduce((sum, item) => sum + item.gameCoinAmount, unlocatedGameCoinAmount),
       rmbCost: roundRmb(replayed.wallets.reduce((sum, item) => sum + item.rmbCostBasis, unlocatedRmbCost))
     };
+    const crossServerHoldingCostRmb = roundRmb(summary.inventoryCostRmb + gameCoinBalance.rmbCost);
+    const crossServerExpectedValueRmb = roundRmb(
+      inventory.reduce(
+        (sum, item) => sum + (item.marketValueRmb ?? item.inventoryCostRmb),
+        gameCoinBalance.rmbCost
+      )
+    );
+    const overviewSummary = {
+      crossServer: {
+        holdingCostRmb: crossServerHoldingCostRmb,
+        expectedValueRmb: crossServerExpectedValueRmb,
+        realizedProfitRmb: summary.realizedProfitRmb,
+        transferExpenseRmb
+      },
+      assetTrading: {
+        holdingCostRmb: assetFlipSummary.holdingCostRmb,
+        expectedValueRmb: assetFlipSummary.holdingCostRmb,
+        realizedProfitRmb: assetFlipSummary.realizedProfitRmb
+      },
+      total: {
+        holdingCostRmb: roundRmb(crossServerHoldingCostRmb + assetFlipSummary.holdingCostRmb),
+        expectedValueRmb: roundRmb(crossServerExpectedValueRmb + assetFlipSummary.holdingCostRmb),
+        realizedProfitRmb: roundRmb(summary.realizedProfitRmb + assetFlipSummary.realizedProfitRmb)
+      }
+    };
     return {
       trades: [...replayed.trades].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
       tradeResults: replayed.tradeResults,
@@ -892,16 +988,13 @@ export function createMhxyService(dataDir: string) {
       gameCoinCashoutSummary: replayed.cashoutSummary,
       gameCoinBalance,
       combinedSummary: {
-        holdingCostRmb: roundRmb(
-          summary.inventoryCostRmb + assetFlipSummary.holdingCostRmb + gameCoinBalance.rmbCost
-        ),
-        realizedProfitRmb: roundRmb(
-          summary.realizedProfitRmb + assetFlipSummary.realizedProfitRmb
-        ),
+        holdingCostRmb: overviewSummary.total.holdingCostRmb,
+        realizedProfitRmb: overviewSummary.total.realizedProfitRmb,
         gameCoinBalanceCostRmb: gameCoinBalance.rmbCost,
         mainLedgerMarketValueRmb: summary.marketValueRmb,
         mainLedgerUnrealizedProfitRmb: summary.unrealizedProfitRmb
-      }
+      },
+      overviewSummary
     };
   }
 
@@ -999,7 +1092,7 @@ export function createMhxyService(dataDir: string) {
       return { id };
     },
     createInventoryTransfer(input: MhxyInventoryTransferInput) {
-      const record = normalizeTransfer(input);
+      const record = normalizeRoleTransfer(input);
       const next = [...repository.readInventoryTransfers(), record];
       const replayed = validateHistory(repository.readTrades(), next);
       repository.transaction(() => {
@@ -1008,11 +1101,12 @@ export function createMhxyService(dataDir: string) {
       });
       return record;
     },
-    updateInventoryTransfer(id: string, patch: Partial<MhxyInventoryTransferInput>) {
+    updateInventoryTransfer(id: string, patch: MhxyInventoryTransferPatch) {
       const transfers = repository.readInventoryTransfers();
       const existing = transfers.find((record) => record.id === id);
       if (!existing) throw new Error("库存转移记录不存在");
-      const record = normalizeTransfer({ ...existing, ...patch }, existing);
+      if (!isRoleTransfer(existing)) throw new Error("历史单道具转移不支持编辑");
+      const record = normalizeRoleTransfer({ ...existing, ...patch }, existing);
       const next = transfers.map((item) => (item.id === id ? record : item));
       const replayed = validateHistory(repository.readTrades(), next);
       repository.transaction(() => {

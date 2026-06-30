@@ -56,19 +56,22 @@ export const mhxyPriceSeriesUpdateSchema = z.object({
 }).strict();
 
 const transferShape = {
-  itemName: z.string(),
-  quantity: positiveSafeInteger,
+  scope: z.literal("role"),
+  characterName: z.string(),
   sourceServerName: z.string(),
-  sourceCharacterName: z.string(),
   targetServerName: z.string(),
-  targetCharacterName: z.string(),
   transferCostRmb: finiteNonNegative,
   occurredAt: dateTime,
   note: z.string().optional()
 };
 
 export const mhxyInventoryTransferInputSchema = z.object(transferShape).strict();
-export const mhxyInventoryTransferPatchSchema = z.object(transferShape).partial().strict();
+export const mhxyInventoryTransferPatchSchema = z.object({
+  targetServerName: transferShape.targetServerName.optional(),
+  transferCostRmb: transferShape.transferCostRmb.optional(),
+  occurredAt: transferShape.occurredAt.optional(),
+  note: transferShape.note
+}).strict();
 
 const assetFlipShape = {
   category: z.enum(["role", "summon", "equipment"]),

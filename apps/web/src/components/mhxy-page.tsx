@@ -16,6 +16,7 @@ import type {
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
   MhxyPriceSeriesUpdateInput,
+  MhxyRoleInventoryTransferRecord,
   MhxyTradeCurrency,
   MhxyTradeInput,
   MhxyTradeRecord
@@ -83,6 +84,11 @@ const assetFlipCategoryLabels: Record<MhxyAssetFlipCategory, string> = {
   equipment: "装备"
 };
 
+const isRoleTransfer = (
+  transfer: MhxyInventoryTransferRecord
+): transfer is MhxyRoleInventoryTransferRecord =>
+  "scope" in transfer && transfer.scope === "role";
+
 const emptyTrade = (): MhxyTradeInput => ({
   type: "buy",
   itemName: "",
@@ -138,6 +144,36 @@ const editableAssetFlip = (record: MhxyAssetFlipRecord): MhxyAssetFlipInput => (
   note: record.note ?? ""
 });
 
+function OverviewGroup({
+  group,
+  title,
+  holdingCostRmb,
+  expectedValueRmb,
+  realizedProfitRmb,
+  note
+}: {
+  group: "total" | "crossServer" | "assetTrading";
+  title: string;
+  holdingCostRmb: number;
+  expectedValueRmb: number;
+  realizedProfitRmb: number;
+  note?: string;
+}) {
+  return (
+    <section className="mhxy-overview__group" data-overview-group={group}>
+      <div className="mhxy-overview__heading">
+        <strong>{title}</strong>
+        {note ? <small>{note}</small> : null}
+      </div>
+      <div className="mhxy-overview__metrics">
+        <span>持有成本<strong>{money(holdingCostRmb)}</strong></span>
+        <span>预计价值<strong>{money(expectedValueRmb)}</strong></span>
+        <span>已实现收益<strong>{money(realizedProfitRmb)}</strong></span>
+      </div>
+    </section>
+  );
+}
+
 export function MhxyPage() {
   const queryClient = useQueryClient();
   const [themeKey, setThemeKey] = useThemePreference();
@@ -153,7 +189,7 @@ export function MhxyPage() {
   const [editingAssetFlipId, setEditingAssetFlipId] = useState<string | null>(null);
   const [assetFormOpen, setAssetFormOpen] = useState(false);
   const [snapshotCurrency, setSnapshotCurrency] = useState<MhxyTradeCurrency>("rmb");
-  const [editingTransfer, setEditingTransfer] = useState<MhxyInventoryTransferRecord | null>(null);
+  const [editingTransfer, setEditingTransfer] = useState<MhxyRoleInventoryTransferRecord | null>(null);
   const [transferFormOpen, setTransferFormOpen] = useState(false);
   const query = useQuery({ queryKey: ["mhxy"], queryFn: fetchMhxyDashboard });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["mhxy"] });
@@ -232,7 +268,14 @@ export function MhxyPage() {
   });
   const transferMutation = useMutation({
     mutationFn: (input: MhxyInventoryTransferInput) =>
-      editingTransfer ? updateMhxyInventoryTransfer(editingTransfer.id, input) : createMhxyInventoryTransfer(input),
+      editingTransfer
+        ? updateMhxyInventoryTransfer(editingTransfer.id, {
+            targetServerName: input.targetServerName,
+            transferCostRmb: input.transferCostRmb,
+            occurredAt: input.occurredAt,
+            note: input.note
+          })
+        : createMhxyInventoryTransfer(input),
     onSuccess: () => {
       setEditingTransfer(null);
       setTransferFormOpen(false);
@@ -256,6 +299,14 @@ export function MhxyPage() {
   });
 
   const dashboard = query.data;
+  const roleLocations = [...new Map(
+    (dashboard?.inventory ?? [])
+      .filter((item) => item.characterName.trim())
+      .map((item) => [
+        JSON.stringify([item.serverName, item.characterName]),
+        { serverName: item.serverName, characterName: item.characterName }
+      ])
+  ).values()];
   const gameCoinAmount = trade.quantity * trade.unitPrice;
   const matchingProcurementWallet = (dashboard?.gameCoinWallets ?? []).find((wallet) =>
     wallet.purpose === "procurement" &&
@@ -335,11 +386,30 @@ export function MhxyPage() {
           </div>
           <div className="mhxy-hero__aside">
             <DataSyncControl module="mhxy" onSynced={refresh} />
-            <div className="mhxy-summary">
-              <span>持有总成本<strong>{money(dashboard?.combinedSummary?.holdingCostRmb ?? dashboard?.summary.inventoryCostRmb ?? 0)}</strong></span>
-              <span>已实现总收益<strong>{money(dashboard?.combinedSummary?.realizedProfitRmb ?? dashboard?.summary.realizedProfitRmb ?? 0)}</strong></span>
-              <span>主账本市场估值<strong>{money(dashboard?.summary.marketValueRmb ?? 0)}</strong></span>
-              <span>主账本未实现浮盈<strong>{money(dashboard?.summary.unrealizedProfitRmb ?? 0)}</strong></span>
+            <div className="mhxy-overview" aria-label="交易分类总览">
+              <OverviewGroup
+                group="total"
+                title="全部"
+                holdingCostRmb={dashboard?.overviewSummary?.total.holdingCostRmb ?? 0}
+                expectedValueRmb={dashboard?.overviewSummary?.total.expectedValueRmb ?? 0}
+                realizedProfitRmb={dashboard?.overviewSummary?.total.realizedProfitRmb ?? 0}
+              />
+              <OverviewGroup
+                group="crossServer"
+                title="跨服交易"
+                holdingCostRmb={dashboard?.overviewSummary?.crossServer.holdingCostRmb ?? 0}
+                expectedValueRmb={dashboard?.overviewSummary?.crossServer.expectedValueRmb ?? 0}
+                realizedProfitRmb={dashboard?.overviewSummary?.crossServer.realizedProfitRmb ?? 0}
+                note={`转服费用 ${money(dashboard?.overviewSummary?.crossServer.transferExpenseRmb ?? 0)}`}
+              />
+              <OverviewGroup
+                group="assetTrading"
+                title="资产交易"
+                holdingCostRmb={dashboard?.overviewSummary?.assetTrading.holdingCostRmb ?? 0}
+                expectedValueRmb={dashboard?.overviewSummary?.assetTrading.expectedValueRmb ?? 0}
+                realizedProfitRmb={dashboard?.overviewSummary?.assetTrading.realizedProfitRmb ?? 0}
+                note="预计价值暂按成本"
+              />
             </div>
           </div>
         </header>
@@ -402,7 +472,13 @@ export function MhxyPage() {
                 </details>
                 <details className="mhxy-cross-action" open={transferFormOpen} onToggle={(event) => setTransferFormOpen(event.currentTarget.open)}>
                   <summary>⇄ 库存转移</summary>
-                  <TransferForm key={editingTransfer?.id ?? "new-transfer"} submit={(input) => transferMutation.mutateAsync(input)} editing={editingTransfer} pending={transferMutation.isPending} />
+                  <TransferForm
+                    key={editingTransfer?.id ?? "new-transfer"}
+                    submit={(input) => transferMutation.mutateAsync(input)}
+                    editing={editingTransfer}
+                    roles={roleLocations}
+                    pending={transferMutation.isPending}
+                  />
                 </details>
                 <details className="mhxy-cross-action" open={coinPurchaseFormOpen} onToggle={(event) => setCoinPurchaseFormOpen(event.currentTarget.open)}>
                   <summary>＋ 人民币购币</summary>
@@ -454,7 +530,33 @@ export function MhxyPage() {
               </section>
               <section data-cross-transfers>
                 <div className="mhxy-ledger-section-heading"><div><h3>转移轨迹</h3><p>角色与区服之间的库存路线。</p></div><span>{dashboard?.inventoryTransfers.length ?? 0} 笔</span></div>
-                <div className="mhxy-history">{(dashboard?.inventoryTransfers ?? []).map((item) => <article key={item.id}><div><strong>{item.itemName}｜{item.quantity} 个</strong><p>{item.sourceServerName}/{item.sourceCharacterName} → {item.targetServerName}/{item.targetCharacterName}｜转移成本 {money(item.transferCostRmb)}</p></div><div className="mhxy-row-actions"><button type="button" onClick={() => { setEditingTransfer(item); setTransferFormOpen(true); }}>编辑</button><ConfirmDeleteButton pending={deleteMutation.isPending} onConfirm={() => deleteMutation.mutate({ kind: "transfer", id: item.id })} /></div></article>)}{(dashboard?.inventoryTransfers ?? []).length === 0 ? <p className="mhxy-ledger-empty">暂无库存转移。</p> : null}</div>
+                <div className="mhxy-history">{(dashboard?.inventoryTransfers ?? []).map((item) => {
+                  if (isRoleTransfer(item)) {
+                    return (
+                      <article key={item.id} data-transfer-scope="role">
+                        <div>
+                          <strong>{item.characterName}｜全部道具随迁</strong>
+                          <p>{item.sourceServerName} → {item.targetServerName}｜转服费用 {money(item.transferCostRmb)}</p>
+                        </div>
+                        <div className="mhxy-row-actions">
+                          <button type="button" onClick={() => { setEditingTransfer(item); setTransferFormOpen(true); }}>编辑</button>
+                          <ConfirmDeleteButton pending={deleteMutation.isPending} onConfirm={() => deleteMutation.mutate({ kind: "transfer", id: item.id })} />
+                        </div>
+                      </article>
+                    );
+                  }
+                  return (
+                    <article key={item.id} data-transfer-scope="legacy">
+                      <div>
+                        <strong>{item.itemName}｜{item.quantity} 个</strong>
+                        <p>历史单道具转移｜{item.sourceServerName}/{item.sourceCharacterName} → {item.targetServerName}/{item.targetCharacterName}｜转移成本 {money(item.transferCostRmb)}</p>
+                      </div>
+                      <div className="mhxy-row-actions">
+                        <ConfirmDeleteButton pending={deleteMutation.isPending} onConfirm={() => deleteMutation.mutate({ kind: "transfer", id: item.id })} />
+                      </div>
+                    </article>
+                  );
+                })}{(dashboard?.inventoryTransfers ?? []).length === 0 ? <p className="mhxy-ledger-empty">暂无库存转移。</p> : null}</div>
               </section>
             </div>
           </section>
@@ -1277,20 +1379,67 @@ function SnapshotForm({ currency, setCurrency, submit, pending }: { currency: Mh
   return <form className="mhxy-form mhxy-price-form" data-form="price-snapshot" onSubmit={handleSubmit}><div><p className="eyebrow">NEW SNAPSHOT</p><h3>添加价格记录</h3></div><label>币种<select name="currency" value={currency} onChange={(e) => setCurrency(e.target.value as MhxyTradeCurrency)}><option value="rmb">人民币</option><option value="gameCoin">游戏币</option></select></label><label>道具名<input name="itemName" required /></label><label>来源 / 区服<input name="serverName" required placeholder="例如：藏宝阁（兽决）" /></label><label>{currency === "rmb" ? "人民币单价" : "游戏币单价（万）"}<input name="price" type="number" min="0" step="any" required /></label>{currency === "gameCoin" ? <label>当时兑换比例（必填）<input name="rate" type="number" min="0.000001" step="any" required /><small>每 1 万游戏币折合多少人民币，用于固定这次商品价值。</small></label> : null}<label>采集时间<input name="capturedAt" type="datetime-local" defaultValue={localDateTime()} required /></label><button type="submit" disabled={pending}>保存记录</button></form>;
 }
 
-function TransferForm({ submit, editing, pending }: { submit: (input: MhxyInventoryTransferInput) => Promise<unknown>; editing: MhxyInventoryTransferRecord | null; pending: boolean }) {
+function TransferForm({
+  submit,
+  editing,
+  roles,
+  pending
+}: {
+  submit: (input: MhxyInventoryTransferInput) => Promise<unknown>;
+  editing: MhxyRoleInventoryTransferRecord | null;
+  roles: Array<{ serverName: string; characterName: string }>;
+  pending: boolean;
+}) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const [selectedServerName, selectedCharacterName] = editing
+      ? [editing.sourceServerName, editing.characterName]
+      : parseWalletValue(data.get("roleLocation"));
     try {
-      await submit({ itemName: String(data.get("itemName")), quantity: Number(data.get("quantity")), sourceServerName: String(data.get("sourceServerName")), sourceCharacterName: String(data.get("sourceCharacterName")), targetServerName: String(data.get("targetServerName")), targetCharacterName: String(data.get("targetCharacterName")), transferCostRmb: Number(data.get("transferCostRmb")), occurredAt: String(data.get("occurredAt")) });
+      await submit({
+        scope: "role",
+        characterName: selectedCharacterName,
+        sourceServerName: selectedServerName,
+        targetServerName: String(data.get("targetServerName")),
+        transferCostRmb: Number(data.get("transferCostRmb")),
+        occurredAt: String(data.get("occurredAt")),
+        note: String(data.get("note") ?? "")
+      });
       if (!editing) form.reset();
     } catch {
       // The mutation error is rendered by the parent; preserve the current inputs.
     }
   }
 
-  return <form className="mhxy-form mhxy-cross-form" data-form="inventory-transfer" onSubmit={handleSubmit}><div><p className="eyebrow">ROUTE ENTRY</p><h3>{editing ? "编辑库存转移" : "跨服库存转移"}</h3></div><label>道具名<input name="itemName" defaultValue={editing?.itemName} required /></label><label>数量<input name="quantity" type="number" min="1" step="1" defaultValue={editing?.quantity} required /></label><label>源区服<input name="sourceServerName" defaultValue={editing?.sourceServerName} required /></label><label>源角色<input name="sourceCharacterName" defaultValue={editing?.sourceCharacterName} required /></label><label>目标区服<input name="targetServerName" defaultValue={editing?.targetServerName} required /></label><label>目标角色<input name="targetCharacterName" defaultValue={editing?.targetCharacterName} required /></label><label>人民币转移成本<input name="transferCostRmb" type="number" min="0" step="any" defaultValue={editing?.transferCostRmb} required /></label><label>发生时间<input name="occurredAt" type="datetime-local" defaultValue={editing ? toLocalDateTimeInput(editing.occurredAt) : localDateTime()} required /></label><button type="submit" disabled={pending}>{editing ? "保存并重新推导" : "保存转移"}</button></form>;
+  return (
+    <form className="mhxy-form mhxy-cross-form" data-form="inventory-transfer" onSubmit={handleSubmit}>
+      <div><p className="eyebrow">ROLE ROUTE ENTRY</p><h3>{editing ? "编辑角色转服" : "记录角色转服"}</h3></div>
+      {editing ? (
+        <div className="mhxy-transfer-role">
+          <span>角色与源区服</span>
+          <strong>{editing.characterName} · {editing.sourceServerName}</strong>
+          <small>历史身份固定，修改后会重新回放全部库存。</small>
+        </div>
+      ) : (
+        <label>角色
+          <select name="roleLocation" required disabled={roles.length === 0}>
+            {roles.length === 0 ? <option value="">暂无可转移角色</option> : roles.map((role) => (
+              <option key={JSON.stringify([role.serverName, role.characterName])} value={JSON.stringify([role.serverName, role.characterName])}>
+                {role.characterName} · {role.serverName}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label>目标区服<input name="targetServerName" defaultValue={editing?.targetServerName} required /></label>
+      <label>人民币转服费用<input name="transferCostRmb" type="number" min="0" step="any" defaultValue={editing?.transferCostRmb ?? 0} required /></label>
+      <label>发生时间<input name="occurredAt" type="datetime-local" defaultValue={editing ? toLocalDateTimeInput(editing.occurredAt) : localDateTime()} required /></label>
+      <label>备注<input name="note" defaultValue={editing?.note ?? ""} /></label>
+      <button type="submit" disabled={pending || (!editing && roles.length === 0)}>{editing ? "保存并重新推导" : "保存转服"}</button>
+    </form>
+  );
 }
 
 function ConfirmDeleteButton({ onConfirm, pending }: { onConfirm: () => void; pending: boolean }) {

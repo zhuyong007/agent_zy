@@ -52,7 +52,32 @@ vi.mock("../api", () => ({
         updatedAt: "2026-06-28T12:00:00.000Z"
       }
     ],
-    inventoryTransfers: [],
+    inventoryTransfers: [
+      {
+        id: "transfer-role-1",
+        scope: "role",
+        characterName: "商人甲",
+        sourceServerName: "山东2区-水泊梁山",
+        targetServerName: "紫禁城",
+        transferCostRmb: 12,
+        occurredAt: "2026-06-29T10:00:00.000Z",
+        createdAt: "2026-06-29T10:00:00.000Z",
+        updatedAt: "2026-06-29T10:00:00.000Z"
+      },
+      {
+        id: "transfer-legacy-1",
+        itemName: "高级必杀",
+        quantity: 1,
+        sourceServerName: "长安城",
+        sourceCharacterName: "旧采购号",
+        targetServerName: "紫禁城",
+        targetCharacterName: "旧销售号",
+        transferCostRmb: 8,
+        occurredAt: "2026-06-28T10:00:00.000Z",
+        createdAt: "2026-06-28T10:00:00.000Z",
+        updatedAt: "2026-06-28T10:00:00.000Z"
+      }
+    ],
     inventoryTargets: [],
     inventory: [
       {
@@ -67,6 +92,19 @@ vi.mock("../api", () => ({
         valuationSourceName: "藏宝阁（兽决）",
         marketValueRmb: 680,
         unrealizedProfitRmb: 116
+      },
+      {
+        itemName: "高级必杀",
+        serverName: "山东2区-水泊梁山",
+        characterName: "商人甲",
+        quantity: 1,
+        inventoryCostRmb: 50,
+        averageUnitCostRmb: 50,
+        expectedSellServerName: "山东2区-水泊梁山",
+        latestRmbUnitPrice: null,
+        valuationSourceName: null,
+        marketValueRmb: null,
+        unrealizedProfitRmb: null
       }
     ],
     summary: {
@@ -168,11 +206,29 @@ vi.mock("../api", () => ({
       rmbCost: 230
     },
     combinedSummary: {
-      holdingCostRmb: 6430,
-      realizedProfitRmb: 300,
+      holdingCostRmb: 6994,
+      realizedProfitRmb: 288,
       gameCoinBalanceCostRmb: 230,
       mainLedgerMarketValueRmb: 0,
       mainLedgerUnrealizedProfitRmb: 0
+    },
+    overviewSummary: {
+      crossServer: {
+        holdingCostRmb: 794,
+        expectedValueRmb: 910,
+        realizedProfitRmb: -12,
+        transferExpenseRmb: 12
+      },
+      assetTrading: {
+        holdingCostRmb: 6200,
+        expectedValueRmb: 6200,
+        realizedProfitRmb: 300
+      },
+      total: {
+        holdingCostRmb: 6994,
+        expectedValueRmb: 7110,
+        realizedProfitRmb: 288
+      }
     }
   })),
   createMhxyAssetFlip: vi.fn(async (input) => ({ id: "asset-new", ...input })),
@@ -215,6 +271,7 @@ import {
   createMhxyAssetFlip,
   createMhxyGameCoinCashout,
   createMhxyGameCoinPurchase,
+  createMhxyInventoryTransfer,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
@@ -260,8 +317,25 @@ describe("MhxyPage", () => {
   it("shows the mhxy data synchronization control", async () => {
     const container = await renderPage();
     expect(container.querySelector('[data-sync-module="mhxy"]')).not.toBeNull();
-    expect(container.textContent).toContain("持有总成本");
-    expect(container.textContent).toContain("¥6,430.00");
+  });
+
+  it("groups the top overview by cross-server, asset, and total values", async () => {
+    const container = await renderPage();
+    const groups = Array.from(container.querySelectorAll("[data-overview-group]")) as HTMLElement[];
+    expect(groups.map((group) => group.getAttribute("data-overview-group"))).toEqual([
+      "total",
+      "crossServer",
+      "assetTrading"
+    ]);
+    expect(groups[0].textContent).toContain("全部");
+    expect(groups[0].textContent).toContain("¥6,994.00");
+    expect(groups[0].textContent).toContain("¥7,110.00");
+    expect(groups[0].textContent).toContain("¥288.00");
+    expect(groups[1].textContent).toContain("跨服交易");
+    expect(groups[1].textContent).toContain("转服费用 ¥12.00");
+    expect(groups[2].textContent).toContain("资产交易");
+    expect(groups[2].textContent).toContain("预计价值暂按成本");
+    expect(container.querySelector(".mhxy-overview")?.textContent).not.toContain("物价记录");
   });
 
   function change(input: HTMLInputElement | HTMLSelectElement, value: string) {
@@ -328,6 +402,54 @@ describe("MhxyPage", () => {
     expect(workspace.querySelector("[data-cross-inventory]")).not.toBeNull();
     expect(workspace.querySelector("[data-cross-trades]")).not.toBeNull();
     expect(workspace.querySelector("[data-cross-transfers]")).not.toBeNull();
+  });
+
+  it("records one role transfer instead of individual item quantities", async () => {
+    const container = await renderPage();
+    const transferDetails = Array.from(container.querySelectorAll(".mhxy-cross-action"))[1] as HTMLDetailsElement;
+    await setDetailsOpen(transferDetails, true);
+    const form = transferDetails.querySelector('[data-form="inventory-transfer"]') as HTMLFormElement;
+    const role = form.querySelector('[name="roleLocation"]') as HTMLSelectElement;
+
+    expect(Array.from(role.options).map((option) => option.textContent)).toEqual([
+      "商人甲 · 山东2区-水泊梁山"
+    ]);
+    expect(form.querySelector('[name="itemName"]')).toBeNull();
+    expect(form.querySelector('[name="quantity"]')).toBeNull();
+    expect(form.querySelector('[name="targetCharacterName"]')).toBeNull();
+
+    await act(async () => {
+      change(role, JSON.stringify(["山东2区-水泊梁山", "商人甲"]));
+      change(form.querySelector('[name="targetServerName"]') as HTMLInputElement, "紫禁城");
+      change(form.querySelector('[name="transferCostRmb"]') as HTMLInputElement, "20");
+      change(form.querySelector('[name="note"]') as HTMLInputElement, "整号转服");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyInventoryTransfer).toHaveBeenCalledWith(expect.objectContaining({
+      scope: "role",
+      characterName: "商人甲",
+      sourceServerName: "山东2区-水泊梁山",
+      targetServerName: "紫禁城",
+      transferCostRmb: 20,
+      note: "整号转服"
+    }));
+  });
+
+  it("shows role routes and keeps legacy item transfers read-only", async () => {
+    const container = await renderPage();
+    const roleTransfer = container.querySelector('[data-transfer-scope="role"]') as HTMLElement;
+    const legacyTransfer = container.querySelector('[data-transfer-scope="legacy"]') as HTMLElement;
+
+    expect(roleTransfer.textContent).toContain("商人甲");
+    expect(roleTransfer.textContent).toContain("山东2区-水泊梁山 → 紫禁城");
+    expect(roleTransfer.textContent).toContain("全部道具随迁");
+    expect(roleTransfer.textContent).toContain("转服费用 ¥12.00");
+    expect(roleTransfer.textContent).toContain("编辑");
+    expect(legacyTransfer.textContent).toContain("历史单道具转移");
+    expect(legacyTransfer.textContent).toContain("高级必杀｜1 个");
+    expect(legacyTransfer.textContent).not.toContain("编辑");
+    expect(legacyTransfer.textContent).toContain("删除");
   });
 
   it("shows current and target servers separately and explains the market valuation", async () => {

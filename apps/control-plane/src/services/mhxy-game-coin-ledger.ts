@@ -5,6 +5,7 @@ import type {
   MhxyGameCoinPurchasePosition,
   MhxyGameCoinWalletPosition,
   MhxyInventoryTransferRecord,
+  MhxyRoleInventoryTransferRecord,
   MhxyTradeRecord,
   MhxyTradeResult
 } from "@agent-zy/shared-types";
@@ -18,6 +19,10 @@ const locationKey = (serverName?: string, characterName?: string) =>
   JSON.stringify([label(serverName), label(characterName)]);
 const inventoryKey = (itemName: string, serverName?: string, characterName?: string) =>
   JSON.stringify([itemName.trim(), label(serverName), label(characterName)]);
+const isRoleTransfer = (
+  transfer: MhxyInventoryTransferRecord
+): transfer is MhxyRoleInventoryTransferRecord =>
+  "scope" in transfer && transfer.scope === "role";
 
 export interface MhxyLedgerInventoryPosition {
   itemName: string;
@@ -264,6 +269,36 @@ export function replayCrossServerLedger(
   for (const event of events) {
     if (event.kind === "transfer") {
       const transfer = event.record;
+      if (isRoleTransfer(transfer)) {
+        const sourcePositions = [...inventory.values()].filter((position) =>
+          position.quantity > 0 &&
+          position.serverName === transfer.sourceServerName &&
+          position.characterName === transfer.characterName
+        );
+        if (sourcePositions.length === 0) {
+          throw new Error(`角色没有可转移库存：${transfer.sourceServerName}/${transfer.characterName}`);
+        }
+        for (const source of sourcePositions) {
+          const movedQuantity = source.quantity;
+          const removed = removeInventory(
+            source,
+            movedQuantity,
+            ["direct", "transferred"],
+            `${source.itemName} ${transfer.sourceServerName}`
+          );
+          const movedCost = removed.directCostCents + removed.transferredCostCents;
+          const target = getPosition(
+            source.itemName,
+            transfer.targetServerName,
+            transfer.characterName
+          );
+          target.quantity += movedQuantity;
+          target.inventoryCostCents += movedCost;
+          target.transferredQuantity += movedQuantity;
+          target.transferredCostCents += movedCost;
+        }
+        continue;
+      }
       const source = getPosition(transfer.itemName, transfer.sourceServerName, transfer.sourceCharacterName);
       const removed = removeInventory(source, transfer.quantity, ["direct", "transferred"], `${transfer.itemName} ${transfer.sourceServerName}`);
       const target = getPosition(transfer.itemName, transfer.targetServerName, transfer.targetCharacterName);

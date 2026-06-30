@@ -84,9 +84,9 @@ describe("local data sync adapters", () => {
     const service = createMhxyService(dataDir);
     const purchase = service.createGameCoinPurchase({ acquiredAt: "2026-01-01", gameCoinAmount: 100, rmbCost: 10 });
     service.createTrade({ type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 10, currency: "rmb", occurredAt: "2026-01-01", serverName: "Source", characterName: "Buyer" });
-    service.createInventoryTransfer({ itemName: "金刚石", quantity: 1, sourceServerName: "Source", sourceCharacterName: "Buyer", targetServerName: "Server", targetCharacterName: "Seller", transferCostRmb: 0, occurredAt: "2026-01-02" });
-    service.createTrade({ type: "sell", itemName: "金刚石", quantity: 1, unitPrice: 0.01, currency: "gameCoin", occurredAt: "2026-01-03", serverName: "Server", characterName: "Seller" });
-    const cashout = service.createGameCoinCashout({ occurredAt: "2026-01-04", serverName: "Server", characterName: "Seller", gameCoinAmount: 100, rmbReceived: 12 });
+    service.createInventoryTransfer({ scope: "role", characterName: "Buyer", sourceServerName: "Source", targetServerName: "Server", transferCostRmb: 0, occurredAt: "2026-01-02" });
+    service.createTrade({ type: "sell", itemName: "金刚石", quantity: 1, unitPrice: 0.01, currency: "gameCoin", occurredAt: "2026-01-03", serverName: "Server", characterName: "Buyer" });
+    const cashout = service.createGameCoinCashout({ occurredAt: "2026-01-04", serverName: "Server", characterName: "Buyer", gameCoinAmount: 100, rmbReceived: 12 });
 
     const records = adapters.mhxy.read();
     expect(records.has(`game-coin-purchase:${purchase.id}`)).toBe(true);

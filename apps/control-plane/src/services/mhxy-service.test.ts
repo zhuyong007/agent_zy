@@ -529,7 +529,7 @@ describe("mhxy service", () => {
     expect(service.getDashboard().priceSnapshots).toEqual([]);
   });
 
-  it("moves weighted inventory cost and mandatory transfer cost across servers", () => {
+  it("moves every item held by a role without capitalizing the transfer expense", () => {
     const service = createService();
 
     service.createTrade({
@@ -542,31 +542,147 @@ describe("mhxy service", () => {
       serverName: "长安城",
       characterName: "商人甲"
     });
-    service.createInventoryTransfer({
+    service.createTrade({
+      type: "buy",
+      itemName: "夜光珠",
+      quantity: 1,
+      unitPrice: 50,
+      currency: "rmb",
+      occurredAt: "2026-06-01T11:00:00.000Z",
+      serverName: "长安城",
+      characterName: "商人甲"
+    });
+    service.createTrade({
+      type: "buy",
       itemName: "金刚石",
       quantity: 1,
+      unitPrice: 80,
+      currency: "rmb",
+      occurredAt: "2026-06-01T12:00:00.000Z",
+      serverName: "紫禁城",
+      characterName: "商人甲"
+    });
+    service.createInventoryTransfer({
+      scope: "role",
+      characterName: "商人甲",
       sourceServerName: "长安城",
-      sourceCharacterName: "商人甲",
       targetServerName: "紫禁城",
-      targetCharacterName: "商人乙",
       transferCostRmb: 20,
       occurredAt: "2026-06-02T10:00:00.000Z"
     });
 
-    expect(service.getDashboard().inventory).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          serverName: "长安城",
-          quantity: 1,
-          inventoryCostRmb: 100
-        }),
-        expect.objectContaining({
-          serverName: "紫禁城",
-          quantity: 1,
-          inventoryCostRmb: 120
-        })
-      ])
-    );
+    const dashboard = service.getDashboard();
+    expect(dashboard.inventory).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        itemName: "金刚石",
+        serverName: "紫禁城",
+        characterName: "商人甲",
+        quantity: 3,
+        inventoryCostRmb: 280
+      }),
+      expect.objectContaining({
+        itemName: "夜光珠",
+        serverName: "紫禁城",
+        characterName: "商人甲",
+        quantity: 1,
+        inventoryCostRmb: 50
+      })
+    ]));
+    expect(dashboard.inventory.some((item) => item.serverName === "长安城")).toBe(false);
+    expect(dashboard.summary).toMatchObject({
+      inventoryCostRmb: 330,
+      realizedProfitRmb: -20
+    });
+    expect(dashboard.overviewSummary.crossServer.transferExpenseRmb).toBe(20);
+  });
+
+  it("builds cost and expected-value overview groups with inventory price fallback", () => {
+    const service = createService();
+    service.createTrade({ type: "buy", itemName: "有行情", quantity: 1, unitPrice: 100, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
+    service.createTrade({ type: "buy", itemName: "无行情", quantity: 1, unitPrice: 50, currency: "rmb", occurredAt: "2026-06-01T11:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
+    service.createPriceSnapshot({ itemName: "有行情", currency: "rmb", rmbUnitPrice: 140, capturedAt: "2026-06-02T10:00:00.000Z", serverName: "长安城" });
+    service.createGameCoinPurchase({ acquiredAt: "2026-06-01T09:00:00.000Z", gameCoinAmount: 1_000_000, rmbCost: 100, serverName: "长安城", characterName: "商人甲" });
+    service.createAssetFlip({ category: "role", name: "持有角色", buyAt: "2026-06-01T08:00:00.000Z", buyPriceRmb: 500 });
+    service.createAssetFlip({ category: "equipment", name: "已售装备", buyAt: "2026-06-01T07:00:00.000Z", buyPriceRmb: 200, sellAt: "2026-06-03T10:00:00.000Z", sellPriceRmb: 250 });
+
+    expect(service.getDashboard().overviewSummary).toEqual({
+      crossServer: {
+        holdingCostRmb: 250,
+        expectedValueRmb: 290,
+        realizedProfitRmb: 0,
+        transferExpenseRmb: 0
+      },
+      assetTrading: {
+        holdingCostRmb: 500,
+        expectedValueRmb: 500,
+        realizedProfitRmb: 50
+      },
+      total: {
+        holdingCostRmb: 750,
+        expectedValueRmb: 790,
+        realizedProfitRmb: 50
+      }
+    });
+  });
+
+  it("replays role-transfer edits and deletes atomically", () => {
+    const service = createService();
+    service.createTrade({ type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 100, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
+    const transfer = service.createInventoryTransfer({ scope: "role", characterName: "商人甲", sourceServerName: "长安城", targetServerName: "紫禁城", transferCostRmb: 20, occurredAt: "2026-06-02T10:00:00.000Z" });
+
+    service.updateInventoryTransfer(transfer.id, { targetServerName: "建邺城", transferCostRmb: 10 });
+    expect(service.getDashboard()).toMatchObject({
+      inventory: [expect.objectContaining({ serverName: "建邺城", inventoryCostRmb: 100 })],
+      summary: { realizedProfitRmb: -10 }
+    });
+
+    service.deleteInventoryTransfer(transfer.id);
+    expect(service.getDashboard()).toMatchObject({
+      inventory: [expect.objectContaining({ serverName: "长安城", inventoryCostRmb: 100 })],
+      summary: { realizedProfitRmb: 0 }
+    });
+  });
+
+  it("rejects role transfers without source inventory or a different target server", () => {
+    const service = createService();
+    expect(() => service.createInventoryTransfer({ scope: "role", characterName: "空角色", sourceServerName: "长安城", targetServerName: "紫禁城", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" })).toThrow("角色没有可转移库存");
+    expect(() => service.createInventoryTransfer({ scope: "role", characterName: "空角色", sourceServerName: "长安城", targetServerName: "长安城", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" })).toThrow("源区服和目标区服不能相同");
+  });
+
+  it("keeps imported legacy item transfers on their original accounting rules", () => {
+    const seed = createService();
+    const trade = seed.createTrade({ type: "buy", itemName: "金刚石", quantity: 2, unitPrice: 100, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
+    const service = createService();
+    service.replaceAllData({
+      trades: [trade],
+      priceSnapshots: [],
+      inventoryTransfers: [{
+        id: "legacy-transfer",
+        itemName: "金刚石",
+        quantity: 1,
+        sourceServerName: "长安城",
+        sourceCharacterName: "商人甲",
+        targetServerName: "紫禁城",
+        targetCharacterName: "商人乙",
+        transferCostRmb: 20,
+        occurredAt: "2026-06-02T10:00:00.000Z",
+        createdAt: "2026-06-02T10:00:00.000Z",
+        updatedAt: "2026-06-02T10:00:00.000Z"
+      }],
+      inventoryTargets: [],
+      assetFlips: [],
+      gameCoinPurchases: [],
+      gameCoinCashouts: []
+    });
+
+    expect(service.getDashboard()).toMatchObject({
+      inventory: expect.arrayContaining([
+        expect.objectContaining({ serverName: "长安城", inventoryCostRmb: 100 }),
+        expect.objectContaining({ serverName: "紫禁城", inventoryCostRmb: 120 })
+      ]),
+      overviewSummary: { crossServer: { transferExpenseRmb: 0 } }
+    });
+    expect(() => service.updateInventoryTransfer("legacy-transfer", { transferCostRmb: 10 })).toThrow("历史单道具转移不支持编辑");
   });
 
   it("rejects unlocated game coin trades, oversells, and invalid historical edits", () => {
@@ -1101,12 +1217,10 @@ describe("mhxy service", () => {
       characterName: "Buyer"
     });
     service.createInventoryTransfer({
-      itemName: "Advanced Combo",
-      quantity: 1,
+      scope: "role",
+      characterName: "Buyer",
       sourceServerName: "Source Server",
-      sourceCharacterName: "Buyer",
       targetServerName: "Target Server",
-      targetCharacterName: "Seller",
       transferCostRmb: 20,
       occurredAt: "2026-06-03T10:00:00.000Z"
     });
@@ -1118,7 +1232,7 @@ describe("mhxy service", () => {
       currency: "gameCoin",
       occurredAt: "2026-06-04T10:00:00.000Z",
       serverName: "Target Server",
-      characterName: "Seller"
+      characterName: "Buyer"
     });
 
     expect(sale).toMatchObject({
@@ -1127,14 +1241,14 @@ describe("mhxy service", () => {
       rmbAmount: null
     });
     expect(service.getDashboard()).toMatchObject({
-      summary: { realizedProfitRmb: 0 },
+      summary: { realizedProfitRmb: -20 },
       gameCoinWallets: expect.arrayContaining([
         expect.objectContaining({
           purpose: "liquidation",
           serverName: "Target Server",
-          characterName: "Seller",
+          characterName: "Buyer",
           gameCoinAmount: 12_000_000,
-          rmbCostBasis: 120
+          rmbCostBasis: 100
         })
       ])
     });
@@ -1142,24 +1256,24 @@ describe("mhxy service", () => {
     const cashout = service.createGameCoinCashout({
       occurredAt: "2026-06-05T10:00:00.000Z",
       serverName: "Target Server",
-      characterName: "Seller",
+      characterName: "Buyer",
       gameCoinAmount: 6_000_000,
       rmbReceived: 90
     });
 
     expect(cashout).toMatchObject({
       rmbPerGameCoinWan: 0.15,
-      costBasisRmb: 60,
-      realizedProfitRmb: 30
+      costBasisRmb: 50,
+      realizedProfitRmb: 40
     });
     expect(service.getDashboard()).toMatchObject({
-      summary: { realizedProfitRmb: 30 },
-      gameCoinCashoutSummary: { realizedProfitRmb: 30 },
+      summary: { realizedProfitRmb: 20 },
+      gameCoinCashoutSummary: { realizedProfitRmb: 40 },
       gameCoinWallets: expect.arrayContaining([
         expect.objectContaining({
           purpose: "liquidation",
           gameCoinAmount: 6_000_000,
-          rmbCostBasis: 60
+          rmbCostBasis: 50
         })
       ])
     });
@@ -1198,7 +1312,7 @@ describe("mhxy service", () => {
       currency: "rmb",
       occurredAt: "2026-06-01T10:00:00.000Z",
       serverName: "Target Server",
-      characterName: "Seller"
+      characterName: "Buyer"
     });
     service.createTrade({
       type: "buy",
@@ -1211,12 +1325,10 @@ describe("mhxy service", () => {
       characterName: "Buyer"
     });
     service.createInventoryTransfer({
-      itemName: "Mixed Item",
-      quantity: 1,
+      scope: "role",
+      characterName: "Buyer",
       sourceServerName: "Source Server",
-      sourceCharacterName: "Buyer",
       targetServerName: "Target Server",
-      targetCharacterName: "Seller",
       transferCostRmb: 0,
       occurredAt: "2026-06-02T10:00:00.000Z"
     });
@@ -1228,7 +1340,7 @@ describe("mhxy service", () => {
       currency: "gameCoin",
       occurredAt: "2026-06-03T10:00:00.000Z",
       serverName: "Target Server",
-      characterName: "Seller"
+      characterName: "Buyer"
     });
 
     expect(service.getDashboard().gameCoinWallets).toEqual(expect.arrayContaining([
@@ -1250,12 +1362,10 @@ describe("mhxy service", () => {
       characterName: "Buyer"
     });
     service.createInventoryTransfer({
-      itemName: "Cashout Guard",
-      quantity: 1,
+      scope: "role",
+      characterName: "Buyer",
       sourceServerName: "Source",
-      sourceCharacterName: "Buyer",
       targetServerName: "Target",
-      targetCharacterName: "Seller",
       transferCostRmb: 0,
       occurredAt: "2026-06-02T10:00:00.000Z"
     });
@@ -1267,13 +1377,13 @@ describe("mhxy service", () => {
       currency: "gameCoin",
       occurredAt: "2026-06-03T10:00:00.000Z",
       serverName: "Target",
-      characterName: "Seller"
+      characterName: "Buyer"
     });
 
     expect(() => service.createGameCoinCashout({
       occurredAt: "2026-06-04T10:00:00.000Z",
       serverName: "Target",
-      characterName: "Seller",
+      characterName: "Buyer",
       gameCoinAmount: 101,
       rmbReceived: 12
     })).toThrow("准备卖出的游戏币余额不足");
@@ -1283,11 +1393,11 @@ describe("mhxy service", () => {
   it("conserves liquidation cost cents across partial and final cashouts", () => {
     const service = createService();
     service.createTrade({ type: "buy", itemName: "Cent Item", quantity: 1, unitPrice: 1, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "Source", characterName: "Buyer" });
-    service.createInventoryTransfer({ itemName: "Cent Item", quantity: 1, sourceServerName: "Source", sourceCharacterName: "Buyer", targetServerName: "Target", targetCharacterName: "Seller", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" });
-    service.createTrade({ type: "sell", itemName: "Cent Item", quantity: 1, unitPrice: 0.0003, currency: "gameCoin", occurredAt: "2026-06-03T10:00:00.000Z", serverName: "Target", characterName: "Seller" });
+    service.createInventoryTransfer({ scope: "role", characterName: "Buyer", sourceServerName: "Source", targetServerName: "Target", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" });
+    service.createTrade({ type: "sell", itemName: "Cent Item", quantity: 1, unitPrice: 0.0003, currency: "gameCoin", occurredAt: "2026-06-03T10:00:00.000Z", serverName: "Target", characterName: "Buyer" });
 
-    const first = service.createGameCoinCashout({ occurredAt: "2026-06-04T10:00:00.000Z", serverName: "Target", characterName: "Seller", gameCoinAmount: 1, rmbReceived: 0.5 });
-    const second = service.createGameCoinCashout({ occurredAt: "2026-06-05T10:00:00.000Z", serverName: "Target", characterName: "Seller", gameCoinAmount: 2, rmbReceived: 1 });
+    const first = service.createGameCoinCashout({ occurredAt: "2026-06-04T10:00:00.000Z", serverName: "Target", characterName: "Buyer", gameCoinAmount: 1, rmbReceived: 0.5 });
+    const second = service.createGameCoinCashout({ occurredAt: "2026-06-05T10:00:00.000Z", serverName: "Target", characterName: "Buyer", gameCoinAmount: 2, rmbReceived: 1 });
 
     expect(first.costBasisRmb).toBe(0.33);
     expect(second.costBasisRmb).toBe(0.67);

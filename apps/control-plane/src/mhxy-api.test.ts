@@ -136,17 +136,28 @@ describe("mhxy API", () => {
         method: "POST",
         url: "/api/mhxy/inventory-transfers",
         payload: {
-          itemName: "金刚石",
-          quantity: 1,
+          scope: "role",
+          characterName: "商人甲",
           sourceServerName: "长安城",
-          sourceCharacterName: "商人甲",
           targetServerName: "紫禁城",
-          targetCharacterName: "商人乙",
           transferCostRmb: 20,
           occurredAt: "2026-06-02T10:00:00.000Z"
         }
       });
       expect(transfer.statusCode).toBe(200);
+      expect(transfer.json()).toMatchObject({
+        scope: "role",
+        characterName: "商人甲",
+        sourceServerName: "长安城",
+        targetServerName: "紫禁城"
+      });
+
+      const immutableSource = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/inventory-transfers/${transfer.json().id}`,
+        payload: { sourceServerName: "建邺城" }
+      });
+      expect(immutableSource.statusCode).toBe(400);
 
       const snapshotWithoutRate = await app.inject({
         method: "POST",
@@ -189,12 +200,15 @@ describe("mhxy API", () => {
       expect(target.statusCode).toBe(200);
 
       const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
-      expect(dashboard.inventory).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ serverName: "长安城", marketValueRmb: 150 }),
-          expect.objectContaining({ serverName: "紫禁城", marketValueRmb: 150 })
-        ])
-      );
+      expect(dashboard.inventory).toEqual([
+        expect.objectContaining({
+          serverName: "紫禁城",
+          characterName: "商人甲",
+          quantity: 2,
+          inventoryCostRmb: 200,
+          marketValueRmb: 300
+        })
+      ]);
     } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });
@@ -486,12 +500,10 @@ describe("mhxy API", () => {
         method: "POST",
         url: "/api/mhxy/inventory-transfers",
         payload: {
-          itemName: "Advanced Combo",
-          quantity: 1,
+          scope: "role",
+          characterName: "Buyer",
           sourceServerName: "Source Server",
-          sourceCharacterName: "Buyer",
           targetServerName: "Target Server",
-          targetCharacterName: "Seller",
           transferCostRmb: 20,
           occurredAt: "2026-06-03T10:00:00.000Z"
         }
@@ -509,7 +521,7 @@ describe("mhxy API", () => {
           currency: "gameCoin",
           occurredAt: "2026-06-04T10:00:00.000Z",
           serverName: "Target Server",
-          characterName: "Seller"
+          characterName: "Buyer"
         }
       });
       expect(sell.statusCode).toBe(200);
@@ -520,20 +532,20 @@ describe("mhxy API", () => {
         payload: {
           occurredAt: "2026-06-05T10:00:00.000Z",
           serverName: "Target Server",
-          characterName: "Seller",
+          characterName: "Buyer",
           gameCoinAmount: 6_000_000,
           rmbReceived: 90
         }
       });
       expect(cashout.statusCode).toBe(200);
-      expect(cashout.json()).toMatchObject({ costBasisRmb: 60, realizedProfitRmb: 30 });
+      expect(cashout.json()).toMatchObject({ costBasisRmb: 50, realizedProfitRmb: 40 });
 
       const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
       expect(dashboard.gameCoinWallets).toEqual(expect.arrayContaining([
         expect.objectContaining({ purpose: "procurement", gameCoinAmount: 10_000_000 }),
         expect.objectContaining({ purpose: "liquidation", gameCoinAmount: 6_000_000 })
       ]));
-      expect(dashboard.gameCoinCashoutSummary.realizedProfitRmb).toBe(30);
+      expect(dashboard.gameCoinCashoutSummary.realizedProfitRmb).toBe(40);
 
       const patchedCashout = await app.inject({
         method: "PATCH",
@@ -541,7 +553,7 @@ describe("mhxy API", () => {
         payload: { rmbReceived: 100 }
       });
       expect(patchedCashout.statusCode).toBe(200);
-      expect(patchedCashout.json()).toMatchObject({ realizedProfitRmb: 40 });
+      expect(patchedCashout.json()).toMatchObject({ realizedProfitRmb: 50 });
 
       const deletedCashout = await app.inject({
         method: "DELETE",
