@@ -319,6 +319,146 @@ describe("mhxy service", () => {
     ).toThrow("必须填写大于 0 的当时兑换比例");
   });
 
+  it("批量重命同一价格序列并保留快照业务字段", () => {
+    const service = createService();
+    const rmb = service.createPriceSnapshot({
+      itemName: "  金刚石  ",
+      currency: "rmb",
+      rmbUnitPrice: 120,
+      capturedAt: "2026-06-01T10:00:00.000Z",
+      serverName: "  长安城  ",
+      note: "人民币样本"
+    });
+    const gameCoin = service.createPriceSnapshot({
+      itemName: "金刚石",
+      currency: "gameCoin",
+      gameCoinUnitPriceWan: 1500,
+      rmbPerGameCoinWan: 0.08,
+      capturedAt: "2026-06-02T10:00:00.000Z",
+      serverName: "长安城",
+      note: "游戏币样本"
+    });
+
+    const result = service.updatePriceSeries({
+      current: { itemName: " 金刚石 ", serverName: " 长安城 " },
+      next: { itemName: "  高级金刚石  ", serverName: "  紫禁城  " }
+    });
+
+    expect(result).toMatchObject({ updatedCount: 2, targetRecordCount: 0, merged: false });
+    expect(result.records).toHaveLength(2);
+    expect(result.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: rmb.id,
+          itemName: "高级金刚石",
+          serverName: "紫禁城",
+          currency: "rmb",
+          rmbUnitPrice: 120,
+          capturedAt: rmb.capturedAt,
+          createdAt: rmb.createdAt,
+          note: "人民币样本"
+        }),
+        expect.objectContaining({
+          id: gameCoin.id,
+          itemName: "高级金刚石",
+          serverName: "紫禁城",
+          currency: "gameCoin",
+          rmbUnitPrice: 120,
+          gameCoinUnitPriceWan: 1500,
+          rmbPerGameCoinWan: 0.08,
+          capturedAt: gameCoin.capturedAt,
+          createdAt: gameCoin.createdAt,
+          note: "游戏币样本"
+        })
+      ])
+    );
+  });
+
+  it("要求确认后才将价格序列合并到已有目标", () => {
+    const service = createService();
+    service.createPriceSnapshot({
+      itemName: "A",
+      currency: "rmb",
+      rmbUnitPrice: 100,
+      capturedAt: "2026-06-01T10:00:00.000Z"
+    });
+    service.createPriceSnapshot({
+      itemName: "B",
+      currency: "rmb",
+      rmbUnitPrice: 200,
+      capturedAt: "2026-06-02T10:00:00.000Z"
+    });
+
+    expect(() =>
+      service.updatePriceSeries({ current: { itemName: "A" }, next: { itemName: "B" } })
+    ).toThrow("目标价格序列已存在，请确认合并");
+    expect(service.getDashboard().priceSnapshots.map((record) => record.itemName).sort()).toEqual([
+      "A",
+      "B"
+    ]);
+
+    const result = service.updatePriceSeries({
+      current: { itemName: "A" },
+      next: { itemName: "B" },
+      confirmMerge: true
+    });
+
+    expect(result).toMatchObject({ updatedCount: 1, targetRecordCount: 1, merged: true });
+    expect(result.records).toHaveLength(2);
+    expect(service.getDashboard().priceSnapshots.map((record) => record.itemName)).toEqual(["B", "B"]);
+  });
+
+  it("将无来源的相同身份视为 no-op", () => {
+    const service = createService();
+    const snapshot = service.createPriceSnapshot({
+      itemName: "  金刚石  ",
+      currency: "rmb",
+      rmbUnitPrice: 120,
+      capturedAt: "2026-06-01T10:00:00.000Z"
+    });
+
+    const result = service.updatePriceSeries({
+      current: { itemName: "  金刚石 ", serverName: "   " },
+      next: { itemName: "金刚石", serverName: "" }
+    });
+
+    expect(result).toMatchObject({ updatedCount: 0, targetRecordCount: 0, merged: false });
+    expect(result.records).toEqual([{ ...snapshot }]);
+    expect(result.records[0]).not.toHaveProperty("serverName");
+  });
+
+  it("清空价格序列来源时删除 serverName 属性", () => {
+    const service = createService();
+    service.createPriceSnapshot({
+      itemName: "金刚石",
+      currency: "rmb",
+      rmbUnitPrice: 120,
+      capturedAt: "2026-06-01T10:00:00.000Z",
+      serverName: "长安城"
+    });
+
+    const result = service.updatePriceSeries({
+      current: { itemName: "金刚石", serverName: "长安城" },
+      next: { itemName: "金刚石", serverName: "  " }
+    });
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).not.toHaveProperty("serverName");
+    expect(service.getDashboard().priceSnapshots[0]).not.toHaveProperty("serverName");
+  });
+
+  it("拒绝更新不存在的价格序列", () => {
+    const service = createService();
+
+    expect(() =>
+      service.updatePriceSeries({
+        current: { itemName: "不存在", serverName: "长安城" },
+        next: { itemName: "新名称", serverName: "紫禁城" }
+      })
+    ).toThrow("价格序列不存在");
+    expect(service.getDashboard().priceSnapshots).toEqual([]);
+  });
+
   it("moves weighted inventory cost and mandatory transfer cost across servers", () => {
     const service = createService();
 
