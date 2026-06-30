@@ -393,6 +393,7 @@ export function MhxyPage() {
                 holdingCostRmb={dashboard?.overviewSummary?.total.holdingCostRmb ?? 0}
                 expectedValueRmb={dashboard?.overviewSummary?.total.expectedValueRmb ?? 0}
                 realizedProfitRmb={dashboard?.overviewSummary?.total.realizedProfitRmb ?? 0}
+                note="倒卖+跨服"
               />
               <OverviewGroup
                 group="crossServer"
@@ -408,7 +409,7 @@ export function MhxyPage() {
                 holdingCostRmb={dashboard?.overviewSummary?.assetTrading.holdingCostRmb ?? 0}
                 expectedValueRmb={dashboard?.overviewSummary?.assetTrading.expectedValueRmb ?? 0}
                 realizedProfitRmb={dashboard?.overviewSummary?.assetTrading.realizedProfitRmb ?? 0}
-                note="预计价值暂按成本"
+                note="预计价值按买入成本"
               />
             </div>
           </div>
