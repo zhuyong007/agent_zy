@@ -1,0 +1,14 @@
+{
+  "syncKey": "price-snapshot:bb8b990b-38b7-4fba-8a9e-ae0ad901e1cd",
+  "value": {
+    "note": "根据用户提供的藏宝阁价格表图片整理",
+    "currency": "rmb",
+    "capturedAt": "2026-04-13T04:00:00.000Z",
+    "rmbUnitPrice": 349,
+    "itemName": "高级连击",
+    "serverName": "藏宝阁（兽决）",
+    "id": "bb8b990b-38b7-4fba-8a9e-ae0ad901e1cd",
+    "createdAt": "2026-06-28T14:19:05.720Z",
+    "updatedAt": "2026-06-28T14:19:05.720Z"
+  }
+}

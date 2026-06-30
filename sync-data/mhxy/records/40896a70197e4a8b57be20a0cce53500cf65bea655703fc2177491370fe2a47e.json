@@ -1,0 +1,14 @@
+{
+  "syncKey": "price-snapshot:9ac01f12-3c55-49a9-99fe-b52f8c37e422",
+  "value": {
+    "note": "根据用户提供的藏宝阁价格表图片整理",
+    "currency": "rmb",
+    "capturedAt": "2026-04-13T04:00:00.000Z",
+    "rmbUnitPrice": 112,
+    "itemName": "摧心浪",
+    "serverName": "藏宝阁（高内丹）",
+    "id": "9ac01f12-3c55-49a9-99fe-b52f8c37e422",
+    "createdAt": "2026-06-28T14:19:06.096Z",
+    "updatedAt": "2026-06-28T14:19:06.096Z"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "syncKey": "price-snapshot:5abe52ed-8113-43fa-b543-2054879a1854",
+  "value": {
+    "note": "根据用户提供的藏宝阁价格表图片整理",
+    "currency": "rmb",
+    "capturedAt": "2026-04-13T04:00:00.000Z",
+    "rmbUnitPrice": 150,
+    "itemName": "高魔",
+    "serverName": "藏宝阁（兽决）",
+    "id": "5abe52ed-8113-43fa-b543-2054879a1854",
+    "createdAt": "2026-06-28T14:19:05.792Z",
+    "updatedAt": "2026-06-28T14:19:05.792Z"
+  }
+}

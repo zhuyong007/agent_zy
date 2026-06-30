@@ -1,0 +1,14 @@
+{
+  "syncKey": "price-snapshot:4f11b8cd-008e-489f-a6bd-61d053c6171f",
+  "value": {
+    "note": "根据用户提供的藏宝阁价格表图片整理",
+    "currency": "rmb",
+    "capturedAt": "2026-04-13T04:00:00.000Z",
+    "rmbUnitPrice": 65,
+    "itemName": "舍身击",
+    "serverName": "藏宝阁（高内丹）",
+    "id": "4f11b8cd-008e-489f-a6bd-61d053c6171f",
+    "createdAt": "2026-06-28T14:19:06.115Z",
+    "updatedAt": "2026-06-28T14:19:06.115Z"
+  }
+}

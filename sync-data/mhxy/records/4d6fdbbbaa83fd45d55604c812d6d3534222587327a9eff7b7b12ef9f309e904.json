@@ -1,0 +1,14 @@
+{
+  "syncKey": "price-snapshot:b30c64ac-4c33-4e36-8489-aa5c81b1b885",
+  "value": {
+    "note": "根据用户提供的藏宝阁价格表图片整理",
+    "currency": "rmb",
+    "capturedAt": "2026-01-31T04:00:00.000Z",
+    "rmbUnitPrice": 137,
+    "itemName": "高法爆",
+    "serverName": "藏宝阁（兽决）",
+    "id": "b30c64ac-4c33-4e36-8489-aa5c81b1b885",
+    "createdAt": "2026-06-28T14:19:05.681Z",
+    "updatedAt": "2026-06-28T14:19:05.681Z"
+  }
+}
