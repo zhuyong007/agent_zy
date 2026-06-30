@@ -14,6 +14,7 @@ import {
 } from "../history-view";
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 import { DataSyncControl } from "./data-sync-control";
+import { HistoryCommentReplyPanel } from "./history-comment-reply-panel";
 
 function formatDateTime(timestamp?: string | null) {
   if (!timestamp) {
@@ -372,6 +373,11 @@ export function HistoryPage() {
               </div>
             ) : null}
           </section>
+
+          <HistoryCommentReplyPanel
+            notifications={historyNotifications}
+            records={dashboard.historyCommentReplies?.records ?? []}
+          />
 
           {selectedNotification && selectedPayload ? (
             <>

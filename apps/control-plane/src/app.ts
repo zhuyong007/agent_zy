@@ -11,6 +11,11 @@ import { createHeuristicRouterModel, createHybridRouter } from "@agent-zy/router
 import { createAgentWorkerPool } from "./runtime/agent-pool";
 import { createEventBus } from "./services/events";
 import { createEventLogService } from "./services/event-log-service";
+import {
+  createHistoryCommentReplyService,
+  type HistoryCommentReplyCreateInput,
+  type HistoryCommentReplyService
+} from "./services/history-comment-reply-service";
 import { createHistoryXhsService, type HistoryXhsService } from "./services/history-xhs-service";
 import { createLedgerReportService } from "./services/ledger-report-service";
 import { createLedgerSemanticService } from "./services/ledger-semantic-service";
@@ -83,6 +88,7 @@ export function createControlPlaneApp(options?: {
   openExternalUrl?: ExternalUrlOpener;
   restartProject?: ProjectRestarter;
   historyXhsService?: HistoryXhsService;
+  historyCommentReplyService?: HistoryCommentReplyService;
   classicShotVideoProcessor?: ClassicShotVideoProcessor;
   browserAutomationExecutor?: BrowserAutomationExecutor;
   screenMonitorCapture?: ScreenMonitorScreenCapture;
@@ -158,6 +164,8 @@ export function createControlPlaneApp(options?: {
   });
   const mhxyService = createMhxyService(dataDir);
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
+  const historyCommentReplyService =
+    options?.historyCommentReplyService ?? createHistoryCommentReplyService({ store, modelRuntime });
   const classicShotVideoProcessor = options?.classicShotVideoProcessor ?? createClassicShotVideoProcessor();
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
@@ -1472,6 +1480,61 @@ export function createControlPlaneApp(options?: {
     } catch (error) {
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "小红书数据文件导入失败"
+      });
+    }
+  });
+
+  app.post("/api/history/comment-replies/extract", async (request, reply) => {
+    try {
+      const file = parseFallbackMultipartFile(request.headers["content-type"], request.body, "file");
+
+      return await historyCommentReplyService.extractScreenshot({
+        buffer: file.buffer,
+        mimeType: file.mimetype
+      });
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "评论截图识别失败"
+      });
+    }
+  });
+
+  app.post("/api/history/comment-replies", async (request, reply) => {
+    try {
+      return await historyCommentReplyService.createReply(
+        (request.body ?? {}) as HistoryCommentReplyCreateInput
+      );
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "评论回复生成失败"
+      });
+    }
+  });
+
+  app.put("/api/history/comment-replies/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = (request.body ?? {}) as { replyText?: unknown };
+
+    try {
+      return await historyCommentReplyService.updateReply(
+        params.id,
+        typeof body.replyText === "string" ? body.replyText : ""
+      );
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "评论回复更新失败"
+      });
+    }
+  });
+
+  app.delete("/api/history/comment-replies/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      return historyCommentReplyService.deleteReply(params.id);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "评论回复删除失败"
       });
     }
   });

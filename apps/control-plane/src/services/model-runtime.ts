@@ -133,7 +133,14 @@ export function createModelRuntime(options: {
   const retries = options.retries ?? DEFAULT_MODEL_RETRIES;
 
   function summarize(value: unknown, secrets: string[]) {
-    const text = typeof value === "string" ? value : JSON.stringify(value);
+    const text =
+      typeof value === "string"
+        ? value
+        : JSON.stringify(value, (key, item) =>
+            key === "url" && typeof item === "string" && item.startsWith("data:image/")
+              ? "[image omitted]"
+              : item
+          );
     return redactSecrets(text ?? "", secrets).slice(0, 500);
   }
 

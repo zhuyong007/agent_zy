@@ -24,6 +24,10 @@ import {
   applyPromptTemplate,
   deletePromptTemplate,
   importHistoryXhsAnalytics,
+  extractHistoryCommentScreenshot,
+  createHistoryCommentReply,
+  updateHistoryCommentReply,
+  deleteHistoryCommentReply,
   testModelProfile,
   runBrowserAutomationWorkflow,
   stopBrowserAutomationRun,
@@ -524,6 +528,50 @@ describe("importHistoryXhsAnalytics", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/dashboard");
     expect(dashboard.historyXhs?.overview.totalViews).toBe(1200);
+  });
+});
+
+describe("history comment reply API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uploads screenshots and manages reply drafts", async () => {
+    const record = {
+      id: "reply-1",
+      replyText: "张骞首次出使西域是在公元前138年，这个时间点确实很关键，感谢认真阅读。"
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ detectedNoteTitle: "张骞出使西域", comments: [], targetCandidates: [], warnings: [] })
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => record })
+      .mockResolvedValueOnce({ ok: true, json: async () => record })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ records: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractHistoryCommentScreenshot(new File(["png"], "comment.png", { type: "image/png" }));
+    await createHistoryCommentReply({
+      targetNotificationId: "history-note-1",
+      targetModuleType: null,
+      commenterName: "阿青",
+      commentText: "第一次出发是哪一年？",
+      inputMode: "screenshot",
+      detectedNoteTitle: "张骞出使西域"
+    });
+    await updateHistoryCommentReply("reply-1", record.replyText);
+    await deleteHistoryCommentReply("reply-1");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/history/comment-replies/extract");
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: "PUT",
+      body: JSON.stringify({ replyText: record.replyText })
+    });
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ method: "DELETE" });
   });
 });
 
