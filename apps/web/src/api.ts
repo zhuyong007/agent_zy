@@ -26,6 +26,11 @@ import type {
   FileOrganizerPreviewInput,
   FileOrganizerPreviewResult,
   FileOrganizerUndoResult,
+  HistoryCommentExtraction,
+  HistoryCommentReplyInputMode,
+  HistoryCommentReplyRecord,
+  HistoryCommentReplyState,
+  HistoryDynastyModuleType,
   HistoryXhsState,
   ImageToVideoProject,
   ImageToVideoState,
@@ -1231,6 +1236,79 @@ export async function importHistoryXhsAnalytics(file: File): Promise<DashboardDa
     ...dashboard,
     historyXhs
   };
+}
+
+export type HistoryCommentReplyCreateRequest = {
+  targetNotificationId: string;
+  targetModuleType?: HistoryDynastyModuleType | null;
+  commenterName?: string | null;
+  commentText: string;
+  inputMode: HistoryCommentReplyInputMode;
+  detectedNoteTitle?: string | null;
+};
+
+export async function extractHistoryCommentScreenshot(file: File): Promise<HistoryCommentExtraction> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_BASE}/api/history/comment-replies/extract`, {
+    method: "POST",
+    body: formData
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "评论截图识别失败"));
+  }
+
+  return response.json();
+}
+
+export async function createHistoryCommentReply(
+  input: HistoryCommentReplyCreateRequest
+): Promise<HistoryCommentReplyRecord> {
+  const response = await fetch(`${API_BASE}/api/history/comment-replies`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "评论回复生成失败"));
+  }
+
+  return response.json();
+}
+
+export async function updateHistoryCommentReply(
+  id: string,
+  replyText: string
+): Promise<HistoryCommentReplyRecord> {
+  const response = await fetch(`${API_BASE}/api/history/comment-replies/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ replyText })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "评论回复重新校验失败"));
+  }
+
+  return response.json();
+}
+
+export async function deleteHistoryCommentReply(id: string): Promise<HistoryCommentReplyState> {
+  const response = await fetch(`${API_BASE}/api/history/comment-replies/${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "评论回复删除失败"));
+  }
+
+  return response.json();
 }
 
 export type NewsRefreshInput = {

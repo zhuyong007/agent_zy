@@ -1320,6 +1320,108 @@ describe("control-plane app", () => {
     }
   });
 
+  it("extracts, creates, updates and deletes history comment reply drafts", async () => {
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-history-comment-api-test-"));
+    const record = {
+      id: "reply-api-1",
+      targetNotificationId: "history-note-1",
+      targetModuleType: null,
+      sourceTitle: "张骞出使西域",
+      commenterName: "阿青",
+      commentText: "第一次出发是哪一年？",
+      replyText: "张骞首次出使西域是在公元前138年，这个时间点确实很关键，感谢认真阅读。",
+      inputMode: "screenshot" as const,
+      detectedNoteTitle: "张骞出使西域",
+      factualStatus: "ready" as const,
+      verificationNote: "由原内容直接支撑",
+      createdAt: "2026-06-29T08:00:00.000Z",
+      updatedAt: "2026-06-29T08:00:00.000Z"
+    };
+    const extractScreenshot = vi.fn(async () => ({
+      detectedNoteTitle: "张骞出使西域",
+      comments: [{ commenterName: "阿青", commentText: "第一次出发是哪一年？" }],
+      targetCandidates: [
+        {
+          targetNotificationId: "history-note-1",
+          targetModuleType: null,
+          sourceTitle: "张骞出使西域",
+          score: 1
+        }
+      ],
+      warnings: []
+    }));
+    const createReply = vi.fn(async () => record);
+    const updateReply = vi.fn(async (_id: string, replyText: string) => ({ ...record, replyText }));
+    const deleteReply = vi.fn(() => ({ records: [] }));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false,
+      historyCommentReplyService: {
+        extractScreenshot,
+        createReply,
+        updateReply,
+        deleteReply
+      }
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const extractionResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/history/comment-replies/extract",
+        headers: {
+          "content-type": "multipart/form-data; boundary=history-comment-boundary"
+        },
+        payload: createMultipartFilePayload({
+          boundary: "history-comment-boundary",
+          fieldName: "file",
+          filename: "comment.png",
+          mimeType: "image/png",
+          content: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+        })
+      });
+      expect(extractionResponse.statusCode).toBe(200);
+      expect(extractionResponse.json().comments).toHaveLength(1);
+      expect(extractScreenshot).toHaveBeenCalledWith(
+        expect.objectContaining({ buffer: expect.any(Buffer), mimeType: "image/png" })
+      );
+
+      const createResponse = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/history/comment-replies",
+        payload: {
+          targetNotificationId: "history-note-1",
+          targetModuleType: null,
+          commenterName: "阿青",
+          commentText: "第一次出发是哪一年？",
+          inputMode: "screenshot",
+          detectedNoteTitle: "张骞出使西域"
+        }
+      });
+      expect(createResponse.statusCode).toBe(200);
+      expect(createResponse.json().id).toBe("reply-api-1");
+
+      const updateResponse = await isolatedApp.inject({
+        method: "PUT",
+        url: "/api/history/comment-replies/reply-api-1",
+        payload: { replyText: record.replyText }
+      });
+      expect(updateResponse.statusCode).toBe(200);
+      expect(updateReply).toHaveBeenCalledWith("reply-api-1", record.replyText);
+
+      const deleteResponse = await isolatedApp.inject({
+        method: "DELETE",
+        url: "/api/history/comment-replies/reply-api-1"
+      });
+      expect(deleteResponse.statusCode).toBe(200);
+      expect(deleteResponse.json()).toEqual({ records: [] });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, { recursive: true, force: true });
+    }
+  });
+
   it("manages model profiles without exposing API keys", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-model-profile-test-"));
     const isolatedApp = createControlPlaneApp({

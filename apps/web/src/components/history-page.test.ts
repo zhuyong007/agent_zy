@@ -166,6 +166,29 @@ const dashboardAfterDelete: DashboardData = {
   notifications: []
 };
 
+const savedReply = {
+  id: "reply-saved",
+  targetNotificationId: "history-1",
+  targetModuleType: null,
+  sourceTitle: "Silk Road",
+  commenterName: "Reader",
+  commentText: "What moved along the Silk Road?",
+  replyText: "丝绸之路流动的不只是商品，也包括知识与观念，这个理解很关键，感谢认真阅读。",
+  inputMode: "manual" as const,
+  detectedNoteTitle: null,
+  factualStatus: "ready" as const,
+  verificationNote: "由原内容直接支撑",
+  createdAt: "2026-06-29T08:00:00.000Z",
+  updatedAt: "2026-06-29T08:00:00.000Z"
+};
+
+const replyDashboard: DashboardData = {
+  ...dashboard,
+  historyCommentReplies: {
+    records: [savedReply]
+  }
+} as DashboardData;
+
 vi.mock("../api", () => ({
   fetchDashboard: vi.fn(async () => dashboard),
   fetchHomeLayout: vi.fn(async () => []),
@@ -173,12 +196,43 @@ vi.mock("../api", () => ({
   generateHistory: vi.fn(async () => dashboard),
   reportClientEvent: vi.fn(async () => ({ ok: true })),
   importHistoryXhsAnalytics: vi.fn(async () => dashboard),
+  extractHistoryCommentScreenshot: vi.fn(async () => ({
+    detectedNoteTitle: null,
+    comments: [],
+    targetCandidates: [],
+    warnings: []
+  })),
+  createHistoryCommentReply: vi.fn(async () => ({
+    id: "reply-created",
+    targetNotificationId: "history-1",
+    targetModuleType: null,
+    sourceTitle: "Silk Road",
+    commenterName: "Reader",
+    commentText: "What moved along the Silk Road?",
+    replyText: "丝绸之路流动的不只是商品，也包括知识与观念，这个理解很关键，感谢认真阅读。",
+    inputMode: "manual",
+    detectedNoteTitle: null,
+    factualStatus: "ready",
+    verificationNote: "由原内容直接支撑",
+    createdAt: "2026-06-29T08:00:00.000Z",
+    updatedAt: "2026-06-29T08:00:00.000Z"
+  })),
+  updateHistoryCommentReply: vi.fn(),
+  deleteHistoryCommentReply: vi.fn(async () => ({ records: [] })),
   cancelNotification: vi.fn(async () => dashboardAfterDelete),
   openDashboardStream: vi.fn(() => () => undefined),
   restartProject: vi.fn(async () => ({ ok: true }))
 }));
 
-import { cancelNotification, fetchDashboard, importHistoryXhsAnalytics } from "../api";
+import {
+  cancelNotification,
+  createHistoryCommentReply,
+  deleteHistoryCommentReply,
+  extractHistoryCommentScreenshot,
+  fetchDashboard,
+  importHistoryXhsAnalytics,
+  updateHistoryCommentReply
+} from "../api";
 import { HistoryPage } from "./history-page";
 
 describe("HistoryPage", () => {
@@ -357,6 +411,179 @@ describe("HistoryPage", () => {
     });
 
     expect(importHistoryXhsAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it("generates a grounded manual reply and requires re-verification after editing", async () => {
+    await renderHistoryPage();
+
+    expect(container.textContent).toContain("评论回复");
+    const targetSelect = container.querySelector(
+      'select[aria-label="选择关联历史内容"]'
+    ) as HTMLSelectElement | null;
+    const commenterInput = container.querySelector(
+      'input[aria-label="评论者昵称"]'
+    ) as HTMLInputElement | null;
+    const commentInput = container.querySelector(
+      'textarea[aria-label="用户评论"]'
+    ) as HTMLTextAreaElement | null;
+    const generateButton = container.querySelector(
+      'button[aria-label="生成评论回复"]'
+    ) as HTMLButtonElement | null;
+
+    expect(targetSelect).toBeTruthy();
+    expect(commentInput).toBeTruthy();
+    expect(generateButton?.disabled).toBe(true);
+
+    await act(async () => {
+      const selectSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      const textareaSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      selectSetter?.call(targetSelect, "history-1::");
+      targetSelect?.dispatchEvent(new Event("change", { bubbles: true }));
+      inputSetter?.call(commenterInput, "Reader");
+      commenterInput?.dispatchEvent(new Event("input", { bubbles: true }));
+      textareaSetter?.call(commentInput, "What moved along the Silk Road?");
+      commentInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(generateButton?.disabled).toBe(false);
+
+    await act(async () => {
+      generateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(createHistoryCommentReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetNotificationId: "history-1",
+        commentText: "What moved along the Silk Road?"
+      })
+    );
+    expect(container.textContent).toContain("可复制");
+
+    const replyEditor = container.querySelector(
+      'textarea[aria-label="生成的评论回复"]'
+    ) as HTMLTextAreaElement | null;
+    const copyButton = container.querySelector(
+      'button[aria-label="复制评论回复"]'
+    ) as HTMLButtonElement | null;
+
+    expect(replyEditor).toBeTruthy();
+    expect(copyButton?.disabled).toBe(false);
+
+    await act(async () => {
+      const textareaSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      textareaSetter?.call(replyEditor, `${replyEditor?.value} 补充`);
+      replyEditor?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(copyButton?.disabled).toBe(true);
+    expect(container.textContent).toContain("保存并重新校验");
+  });
+
+  it("extracts multiple screenshot comments and requires an explicit content match", async () => {
+    vi.mocked(extractHistoryCommentScreenshot).mockResolvedValueOnce({
+      detectedNoteTitle: "Silk Road",
+      comments: [
+        { commenterName: "Reader A", commentText: "When did it start?" },
+        { commenterName: "Reader B", commentText: "What ideas moved along it?" }
+      ],
+      targetCandidates: [
+        {
+          targetNotificationId: "history-1",
+          targetModuleType: null,
+          sourceTitle: "Silk Road",
+          score: 1
+        }
+      ],
+      warnings: []
+    });
+    await renderHistoryPage();
+
+    const screenshotTab = container.querySelector(
+      'button[aria-label="截图识别评论"]'
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      screenshotTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const screenshotInput = container.querySelector(
+      'input[aria-label="上传评论截图"]'
+    ) as HTMLInputElement | null;
+    await act(async () => {
+      Object.defineProperty(screenshotInput, "files", {
+        value: [new File(["png"], "comments.png", { type: "image/png" })],
+        configurable: true
+      });
+      screenshotInput?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(extractHistoryCommentScreenshot).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Reader A");
+    expect(container.textContent).toContain("Reader B");
+    const targetSelect = container.querySelector(
+      'select[aria-label="选择关联历史内容"]'
+    ) as HTMLSelectElement | null;
+    expect(targetSelect?.value).toBe("");
+
+    const secondComment = container.querySelector(
+      'button[aria-label="选择Reader B的评论"]'
+    ) as HTMLButtonElement | null;
+    const candidateButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Silk Road · 100%")
+    ) as HTMLButtonElement | undefined;
+    await act(async () => {
+      secondComment?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      candidateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect((container.querySelector('textarea[aria-label="用户评论"]') as HTMLTextAreaElement).value).toBe(
+      "What ideas moved along it?"
+    );
+    expect(targetSelect?.value).toBe("history-1::");
+  });
+
+  it("reopens, re-verifies and deletes persisted reply drafts", async () => {
+    const editedReply = `${savedReply.replyText.slice(0, -1)}，也欢迎继续讨论。`;
+    vi.mocked(updateHistoryCommentReply).mockResolvedValueOnce({
+      ...savedReply,
+      replyText: editedReply,
+      updatedAt: "2026-06-29T09:00:00.000Z"
+    });
+    await renderHistoryPage(replyDashboard);
+
+    const draftButton = container.querySelector(
+      ".history-reply-drafts article > button:first-child"
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      draftButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const replyEditor = container.querySelector(
+      'textarea[aria-label="生成的评论回复"]'
+    ) as HTMLTextAreaElement | null;
+    await act(async () => {
+      const textareaSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      textareaSetter?.call(replyEditor, editedReply);
+      replyEditor?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const reverifyButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("保存并重新校验")
+    ) as HTMLButtonElement | undefined;
+    await act(async () => {
+      reverifyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(updateHistoryCommentReply).toHaveBeenCalledWith("reply-saved", editedReply);
+
+    const deleteButton = container.querySelector(
+      'button[aria-label="删除回复草稿 Silk Road"]'
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(deleteHistoryCommentReply).toHaveBeenCalledWith("reply-saved");
   });
 
   it("renders and copies dynasty four-module payloads", async () => {

@@ -352,6 +352,60 @@ describe("model runtime", () => {
     ]);
   });
 
+  it("omits image data URLs from persisted model request summaries", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-image-log-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const profile = store.createModelProfile({
+      id: "vision-log-profile",
+      displayName: "Vision log profile",
+      provider: "openai",
+      modelName: "gpt-vision",
+      baseUrl: "https://vision.example/v1",
+      apiKeyRef: "secret:vision-log-profile",
+      capabilities: ["chat", "text", "vision"],
+      temperature: 0.1,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["vision"]
+    });
+    secrets.save(profile.id, "sk-vision-log-secret");
+    const append = vi.fn();
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      eventLog: { append } as any
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
+          status: 200
+        })
+      )
+    );
+
+    await runtime.chat({
+      kind: "chat",
+      purpose: "vision",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "分析截图" },
+            { type: "image_url", image_url: { url: "data:image/jpeg;base64,private-image-data" } }
+          ]
+        }
+      ]
+    });
+
+    const persistedLogs = JSON.stringify(append.mock.calls);
+    expect(persistedLogs).not.toContain("private-image-data");
+    expect(persistedLogs).toContain("[image omitted]");
+  });
+
   it("rejects multimodal messages when the selected profile lacks vision capability", async () => {
     const runtime = setupRuntime();
 

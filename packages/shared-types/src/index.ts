@@ -804,6 +804,48 @@ export interface HistoryXhsState {
   sourceUrl: string;
 }
 
+export type HistoryCommentReplyFactStatus = "ready" | "needs-verification";
+export type HistoryCommentReplyInputMode = "manual" | "screenshot";
+
+export interface HistoryCommentExtractionComment {
+  commenterName: string | null;
+  commentText: string;
+}
+
+export interface HistoryCommentTargetCandidate {
+  targetNotificationId: string;
+  targetModuleType: HistoryDynastyModuleType | null;
+  sourceTitle: string;
+  score: number;
+}
+
+export interface HistoryCommentExtraction {
+  detectedNoteTitle: string | null;
+  comments: HistoryCommentExtractionComment[];
+  targetCandidates: HistoryCommentTargetCandidate[];
+  warnings: string[];
+}
+
+export interface HistoryCommentReplyRecord {
+  id: string;
+  targetNotificationId: string;
+  targetModuleType: HistoryDynastyModuleType | null;
+  sourceTitle: string;
+  commenterName: string | null;
+  commentText: string;
+  replyText: string;
+  inputMode: HistoryCommentReplyInputMode;
+  detectedNoteTitle: string | null;
+  factualStatus: HistoryCommentReplyFactStatus;
+  verificationNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HistoryCommentReplyState {
+  records: HistoryCommentReplyRecord[];
+}
+
 export type ImageToVideoProjectStage =
   | "INIT"
   | "FIRST_IMAGE_UPLOADED"
@@ -1771,6 +1813,7 @@ export interface AppState {
   summary: SummaryState;
   historyPush: HistoryPushState;
   historyXhs?: HistoryXhsState;
+  historyCommentReplies?: HistoryCommentReplyState;
   nightlyReview: NightlyReviewState;
   modelSettings: ModelSettingsState;
 }
@@ -1817,6 +1860,7 @@ export interface DashboardData {
     dashboard: SummaryDashboard;
   };
   historyXhs?: HistoryXhsState;
+  historyCommentReplies?: HistoryCommentReplyState;
   modelSettingsDashboard?: ModelSettingsDashboard;
   agents: AgentRuntimeView[];
 }

@@ -401,6 +401,44 @@ describe("control-plane store", () => {
     expect(reloadedStore.getDashboard([], []).historyXhs?.overview.totalViews).toBe(1200);
   });
 
+  it("persists history comment reply drafts without screenshot data", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+
+    store.setHistoryCommentReplyState({
+      records: [
+        {
+          id: "reply-1",
+          targetNotificationId: "history-note-1",
+          targetModuleType: null,
+          sourceTitle: "张骞出使西域",
+          commenterName: "小红薯",
+          commentText: "张骞第一次出使西域是哪一年？",
+          replyText: "张骞首次出使西域是在公元前138年，这个时间点确实很关键。",
+          inputMode: "screenshot",
+          detectedNoteTitle: "张骞出使西域",
+          factualStatus: "ready",
+          verificationNote: null,
+          createdAt: "2026-06-29T08:00:00.000Z",
+          updatedAt: "2026-06-29T08:00:00.000Z"
+        }
+      ]
+    });
+
+    const reloadedStore = createControlPlaneStore(dataDir);
+    const persistedState = JSON.parse(readFileSync(join(dataDir, "state.json"), "utf8"));
+
+    expect(reloadedStore.getDashboard([], []).historyCommentReplies?.records).toEqual([
+      expect.objectContaining({
+        id: "reply-1",
+        commentText: "张骞第一次出使西域是哪一年？",
+        factualStatus: "ready"
+      })
+    ]);
+    expect(JSON.stringify(persistedState.historyCommentReplies)).not.toContain("data:image");
+  });
+
   it("bootstraps legacy ledger entries into dedicated facts during store initialization", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);

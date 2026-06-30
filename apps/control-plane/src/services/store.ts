@@ -22,6 +22,9 @@ import type {
   LedgerFactRecord,
   LedgerReportRecord,
   LedgerSemanticRecord,
+  HistoryCommentReplyRecord,
+  HistoryCommentReplyState,
+  HistoryDynastyModuleType,
   HistoryPushState,
   HistoryXhsState,
   ImageToVideoDashboardSummary,
@@ -259,6 +262,7 @@ function createInitialState(): AppState {
     interview: createEmptyInterviewState(),
     summary: createEmptySummaryState(),
     historyXhs: createEmptyHistoryXhsState(),
+    historyCommentReplies: createEmptyHistoryCommentReplyState(),
     historyPush: {
       lastTriggeredDate: null
     },
@@ -381,6 +385,12 @@ function createEmptyHistoryXhsState(): HistoryXhsState {
     status: "idle",
     lastError: null,
     sourceUrl: XHS_ANALYTICS_URL
+  };
+}
+
+function createEmptyHistoryCommentReplyState(): HistoryCommentReplyState {
+  return {
+    records: []
   };
 }
 
@@ -1581,6 +1591,45 @@ function normalizeHistoryXhsState(historyXhs: Partial<HistoryXhsState> | undefin
   };
 }
 
+const HISTORY_DYNASTY_MODULE_TYPES = new Set<HistoryDynastyModuleType>([
+  "王朝兴衰录",
+  "皇帝图鉴",
+  "风云人物",
+  "历史冷知识"
+]);
+
+function normalizeHistoryCommentReplyState(
+  value: Partial<HistoryCommentReplyState> | undefined
+): HistoryCommentReplyState {
+  const records = Array.isArray(value?.records) ? value.records : [];
+
+  return {
+    records: records
+      .filter((record): record is HistoryCommentReplyRecord => Boolean(record && typeof record === "object"))
+      .map((record) => ({
+        id: typeof record.id === "string" ? record.id : "",
+        targetNotificationId:
+          typeof record.targetNotificationId === "string" ? record.targetNotificationId : "",
+        targetModuleType:
+          record.targetModuleType && HISTORY_DYNASTY_MODULE_TYPES.has(record.targetModuleType)
+            ? record.targetModuleType
+            : null,
+        sourceTitle: typeof record.sourceTitle === "string" ? record.sourceTitle : "",
+        commenterName: typeof record.commenterName === "string" ? record.commenterName : null,
+        commentText: typeof record.commentText === "string" ? record.commentText : "",
+        replyText: typeof record.replyText === "string" ? record.replyText : "",
+        inputMode: record.inputMode === "screenshot" ? ("screenshot" as const) : ("manual" as const),
+        detectedNoteTitle: typeof record.detectedNoteTitle === "string" ? record.detectedNoteTitle : null,
+        factualStatus:
+          record.factualStatus === "ready" ? ("ready" as const) : ("needs-verification" as const),
+        verificationNote: typeof record.verificationNote === "string" ? record.verificationNote : null,
+        createdAt: typeof record.createdAt === "string" ? record.createdAt : nowIso(),
+        updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : nowIso()
+      }))
+      .filter((record) => record.id && record.targetNotificationId && record.commentText)
+  };
+}
+
 function normalizeHistoryPushState(
   historyPush: Partial<HistoryPushState> | undefined
 ): HistoryPushState {
@@ -1798,6 +1847,7 @@ function normalizeAppState(state: AppState): AppState {
     interview: normalizeInterviewState(state.interview),
     summary: normalizeSummaryState(state.summary),
     historyXhs: normalizeHistoryXhsState(state.historyXhs),
+    historyCommentReplies: normalizeHistoryCommentReplyState(state.historyCommentReplies),
     historyPush: normalizeHistoryPushState(state.historyPush),
     nightlyReview: state.nightlyReview ?? {
       lastTriggeredDate: null
@@ -1831,6 +1881,7 @@ export interface ControlPlaneStore {
   setInterviewState(interview: InterviewState): InterviewState;
   setSummaryState(summary: SummaryState): SummaryState;
   setHistoryXhsState(historyXhs: HistoryXhsState): HistoryXhsState;
+  setHistoryCommentReplyState(historyCommentReplies: HistoryCommentReplyState): HistoryCommentReplyState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
   updateModelProfile(id: string, patch: Partial<ModelProfile>): ModelProfile;
   deleteModelProfile(id: string): { ok: true };
@@ -2040,6 +2091,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
       persist();
 
       return structuredClone(state.historyXhs);
+    },
+    setHistoryCommentReplyState(historyCommentReplies) {
+      state.historyCommentReplies = normalizeHistoryCommentReplyState(historyCommentReplies);
+      persist();
+
+      return structuredClone(state.historyCommentReplies);
     },
     createModelProfile(profile) {
       const now = nowIso();
@@ -2252,6 +2309,7 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           dashboard: buildSummaryDashboard(state.summary, now)
         },
         historyXhs: state.historyXhs,
+        historyCommentReplies: state.historyCommentReplies,
         modelSettingsDashboard: buildModelSettingsDashboard(state.modelSettings),
         agents: manifests.map((manifest) => {
           const runtimeView = runtimeViews.find((item) => item.id === manifest.id);
