@@ -484,14 +484,16 @@ function normalizeSnapshot(
     assertFiniteNonNegative(input.rmbUnitPrice, "人民币单价");
     rmbUnitPrice = roundRmb(input.rmbUnitPrice);
   }
+  const { serverName, ...snapshotInput } = input;
+  const normalizedServerName = normalizeLabel(serverName);
   const timestamp = nowIso();
   return {
-    ...input,
+    ...snapshotInput,
     id: existing?.id ?? randomUUID(),
     itemName,
     rmbUnitPrice,
     capturedAt: new Date(input.capturedAt).toISOString(),
-    ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
+    ...(normalizedServerName ? { serverName: normalizedServerName } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
   };
@@ -969,10 +971,9 @@ export function createMhxyService(dataDir: string) {
         throw new Error("目标价格序列已存在，请确认合并");
       }
 
-      const currentIds = new Set(currentRecords.map((record) => record.id));
       const updatedAt = nowIso();
       const updatedRecords = records.map((record) => {
-        if (!currentIds.has(record.id)) return record;
+        if (!matchesIdentity(record, current)) return record;
         const updatedRecord: MhxyPriceSnapshot = {
           ...record,
           itemName: next.itemName,

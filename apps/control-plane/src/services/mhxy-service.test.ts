@@ -374,6 +374,53 @@ describe("mhxy service", () => {
     );
   });
 
+  it("导入数据存在重复 ID 时仅更新匹配身份的价格序列", () => {
+    const service = createService();
+    service.replaceAllData({
+      trades: [],
+      priceSnapshots: [
+        {
+          id: "duplicate-id",
+          itemName: "A",
+          currency: "rmb",
+          rmbUnitPrice: 100,
+          capturedAt: "2026-06-01T10:00:00.000Z",
+          createdAt: "2026-06-01T10:00:00.000Z",
+          updatedAt: "2026-06-01T10:00:00.000Z"
+        },
+        {
+          id: "duplicate-id",
+          itemName: "B",
+          currency: "rmb",
+          rmbUnitPrice: 200,
+          capturedAt: "2026-06-02T10:00:00.000Z",
+          createdAt: "2026-06-02T10:00:00.000Z",
+          updatedAt: "2026-06-02T10:00:00.000Z"
+        }
+      ],
+      inventoryTransfers: [],
+      inventoryTargets: [],
+      assetFlips: [],
+      gameCoinPurchases: [],
+      gameCoinCashouts: []
+    });
+
+    const result = service.updatePriceSeries({
+      current: { itemName: "A" },
+      next: { itemName: "C" }
+    });
+
+    expect(result).toMatchObject({ updatedCount: 1, targetRecordCount: 0, merged: false });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).toMatchObject({ id: "duplicate-id", itemName: "C", rmbUnitPrice: 100 });
+    expect(service.getDashboard().priceSnapshots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "duplicate-id", itemName: "B", rmbUnitPrice: 200 }),
+        expect.objectContaining({ id: "duplicate-id", itemName: "C", rmbUnitPrice: 100 })
+      ])
+    );
+  });
+
   it("要求确认后才将价格序列合并到已有目标", () => {
     const service = createService();
     service.createPriceSnapshot({
@@ -424,6 +471,29 @@ describe("mhxy service", () => {
 
     expect(result).toMatchObject({ updatedCount: 0, targetRecordCount: 0, merged: false });
     expect(result.records).toEqual([{ ...snapshot }]);
+    expect(result.records[0]).not.toHaveProperty("serverName");
+  });
+
+  it("创建快照时忽略纯空白来源并保持无来源 no-op", () => {
+    const service = createService();
+    const snapshot = service.createPriceSnapshot({
+      itemName: "金刚石",
+      currency: "rmb",
+      rmbUnitPrice: 120,
+      capturedAt: "2026-06-01T10:00:00.000Z",
+      serverName: "   "
+    });
+
+    expect(snapshot).not.toHaveProperty("serverName");
+    expect(service.getDashboard().priceSnapshots[0]).not.toHaveProperty("serverName");
+
+    const result = service.updatePriceSeries({
+      current: { itemName: "金刚石", serverName: "  " },
+      next: { itemName: " 金刚石 " }
+    });
+
+    expect(result).toMatchObject({ updatedCount: 0, targetRecordCount: 0, merged: false });
+    expect(result.records).toHaveLength(1);
     expect(result.records[0]).not.toHaveProperty("serverName");
   });
 
