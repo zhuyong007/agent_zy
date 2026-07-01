@@ -30,7 +30,7 @@ import { createPromptTemplateService } from "./services/prompt-template-service"
 import { createChildMealService } from "./services/child-meal-service";
 import { createInterviewService } from "./services/interview-service";
 import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
-import { createMhxyService } from "./services/mhxy-service";
+import { createMhxyService, type MhxyService } from "./services/mhxy-service";
 import {
   mhxyAssetFlipInputSchema,
   mhxyAssetFlipPatchSchema,
@@ -45,6 +45,7 @@ import {
   mhxyPriceSnapshotInputSchema,
   mhxyTradeInputSchema,
   mhxyTradePatchSchema,
+  MhxyInputError,
   parseMhxyInput
 } from "./services/mhxy-validation";
 import { createGitDataSyncTransport } from "./services/data-sync/git-transport";
@@ -96,6 +97,7 @@ export function createControlPlaneApp(options?: {
   screenMonitorNotifier?: ScreenMonitorNotifier;
   modelRuntime?: ModelRuntime;
   dataSyncService?: DataSyncService;
+  mhxyService?: MhxyService;
 }) {
   const app = Fastify();
   const startedAt = new Date().toISOString();
@@ -163,7 +165,7 @@ export function createControlPlaneApp(options?: {
     store,
     modelRuntime
   });
-  const mhxyService = createMhxyService(dataDir);
+  const mhxyService = options?.mhxyService ?? createMhxyService(dataDir);
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
   const historyCommentReplyService =
     options?.historyCommentReplyService ?? createHistoryCommentReplyService({ store, modelRuntime });
@@ -1587,8 +1589,23 @@ export function createControlPlaneApp(options?: {
     try {
       return action();
     } catch (error) {
-      return reply.code(400).send({
-        message: error instanceof Error ? error.message : "梦幻西游账本操作失败"
+      if (!(error instanceof Error)) {
+        return reply.code(500).send({ message: "梦幻西游账本操作失败" });
+      }
+      const conflict = /库存不足|余额不足|没有可转移库存|批次分配不完整|不能使用交易时间|资产不能使用|准备卖出的游戏币|目标价格序列已存在|历史单道具转移不支持编辑|游戏币批次不存在：/u;
+      const notFound = /(?:交易记录|价格快照|价格序列|库存转移记录|资产记录|游戏币购入批次|游戏币变现记录)不存在/u;
+      const validation = /必须|不能为空|无效|不能小于|不能大于|不能早于|不能相同|超出有效范围|不是有效|缺少有效|不匹配|未知记录类型/u;
+      const statusCode = error instanceof MhxyInputError
+        ? 400
+        : conflict.test(error.message)
+          ? 409
+          : notFound.test(error.message)
+            ? 404
+            : validation.test(error.message)
+              ? 400
+              : 500;
+      return reply.code(statusCode).send({
+        message: statusCode === 500 ? "梦幻西游账本操作失败" : error.message
       });
     }
   };

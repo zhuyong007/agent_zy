@@ -334,7 +334,7 @@ describe("MhxyPage", () => {
     expect(groups[1].textContent).toContain("跨服交易");
     expect(groups[1].textContent).toContain("转服费用 ¥12.00");
     expect(groups[2].textContent).toContain("资产交易");
-    expect(groups[2].textContent).toContain("预计价值暂按成本");
+    expect(groups[2].textContent).toContain("预计价值按买入成本");
     expect(container.querySelector(".mhxy-overview")?.textContent).not.toContain("物价记录");
   });
 
@@ -1640,6 +1640,33 @@ describe("MhxyPage", () => {
     expect(submitted).not.toHaveProperty("createdAt");
     expect(submitted).not.toHaveProperty("updatedAt");
     expect(submitted).not.toHaveProperty("gameCoinAllocations");
+  });
+
+  it("submits explicit nulls when reopening a sold asset", async () => {
+    const container = await renderPage();
+    await switchTab(container, "资产交易记录");
+    const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
+      .find((item) => item.textContent?.includes("160 项链")) as HTMLElement;
+
+    await act(async () => {
+      Array.from(row.querySelectorAll("button"))
+        .find((button) => button.textContent === "编辑")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    await act(async () => {
+      change(form.querySelector('[name="sellAt"]') as HTMLInputElement, "");
+      change(form.querySelector('[name="sellPriceRmb"]') as HTMLInputElement, "");
+    });
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(updateMhxyAssetFlip).toHaveBeenCalledWith(
+      "asset-2",
+      expect.objectContaining({ sellAt: null, sellPriceRmb: null })
+    );
   });
 
   it("converts persisted UTC timestamps to local datetime inputs when editing", async () => {

@@ -48,6 +48,16 @@ function asRecord(value: unknown, label: string): SyncRecord {
   return structuredClone(value as SyncRecord);
 }
 
+function setUniqueRecord(records: SyncRecordMap, key: string, value: unknown, label: string) {
+  if (records.has(key)) {
+    const id = value && typeof value === "object" && !Array.isArray(value) && "id" in value
+      ? String(value.id)
+      : key;
+    throw new Error(`${label}存在重复 ID：${id}`);
+  }
+  records.set(key, asRecord(value, label));
+}
+
 function recordsWithPrefix(records: SyncRecordMap, prefix: string) {
   return [...records.entries()]
     .filter(([key]) => key.startsWith(prefix))
@@ -200,16 +210,16 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
   return {
     read() {
       const records: SyncRecordMap = new Map();
-      for (const item of repository.readTrades()) records.set(`trade:${item.id}`, asRecord(item, "梦幻交易"));
-      for (const item of repository.readPriceSnapshots()) records.set(`price-snapshot:${item.id}`, asRecord(item, "价格快照"));
-      for (const item of repository.readInventoryTransfers()) records.set(`inventory-transfer:${item.id}`, asRecord(item, "库存转移"));
+      for (const item of repository.readTrades()) setUniqueRecord(records, `trade:${item.id}`, item, "梦幻交易");
+      for (const item of repository.readPriceSnapshots()) setUniqueRecord(records, `price-snapshot:${item.id}`, item, "价格快照");
+      for (const item of repository.readInventoryTransfers()) setUniqueRecord(records, `inventory-transfer:${item.id}`, item, "库存转移");
       for (const item of repository.readInventoryTargets()) {
         const identity = canonicalJson([item.itemName, item.serverName, item.characterName]);
-        records.set(`inventory-target:${identity}`, asRecord(item, "库存目标"));
+        setUniqueRecord(records, `inventory-target:${identity}`, item, "库存目标");
       }
-      for (const item of repository.readAssetFlips()) records.set(`asset-flip:${item.id}`, asRecord(item, "召唤兽装备记录"));
-      for (const item of repository.readGameCoinPurchases()) records.set(`game-coin-purchase:${item.id}`, asRecord(item, "游戏币购入记录"));
-      for (const item of repository.readGameCoinCashouts()) records.set(`game-coin-cashout:${item.id}`, asRecord(item, "游戏币变现记录"));
+      for (const item of repository.readAssetFlips()) setUniqueRecord(records, `asset-flip:${item.id}`, item, "召唤兽装备记录");
+      for (const item of repository.readGameCoinPurchases()) setUniqueRecord(records, `game-coin-purchase:${item.id}`, item, "游戏币购入记录");
+      for (const item of repository.readGameCoinCashouts()) setUniqueRecord(records, `game-coin-cashout:${item.id}`, item, "游戏币变现记录");
       return records;
     },
     write(records) {

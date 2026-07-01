@@ -103,6 +103,24 @@ describe("local data sync adapters", () => {
     expect(repository.readGameCoinCashouts()).toHaveLength(1);
   });
 
+  it("rejects duplicate mhxy record IDs instead of silently dropping data", () => {
+    const { dataDir, adapters } = fixture();
+    const repository = createMhxyRepository(dataDir);
+    const service = createMhxyService(dataDir);
+    const snapshot = service.createPriceSnapshot({
+      itemName: "金刚石",
+      currency: "rmb",
+      rmbUnitPrice: 100,
+      capturedAt: "2026-01-01"
+    });
+    repository.writePriceSnapshots([
+      snapshot,
+      { ...snapshot, itemName: "定魂珠" }
+    ]);
+
+    expect(() => adapters.mhxy.read()).toThrow("价格快照存在重复 ID");
+  });
+
   it("rejects unknown snapshot record types before changing local data", () => {
     const { dataDir, adapters } = fixture();
     const repository = createMhxyRepository(dataDir);

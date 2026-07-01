@@ -5,8 +5,73 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneApp } from "./app";
+import { createMhxyService } from "./services/mhxy-service";
 
 describe("mhxy API", () => {
+  it("classifies not-found, ledger-conflict, and unexpected errors", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const missing = await app.inject({
+        method: "DELETE",
+        url: "/api/mhxy/trades/missing"
+      });
+      expect(missing.statusCode).toBe(404);
+
+      const conflict = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/trades",
+        payload: {
+          type: "sell",
+          itemName: "不存在的库存",
+          quantity: 1,
+          unitPrice: 100,
+          currency: "rmb",
+          occurredAt: "2026-06-01T10:00:00.000Z",
+          serverName: "长安城",
+          characterName: "商人甲"
+        }
+      });
+      expect(conflict.statusCode).toBe(409);
+    } finally {
+      await app.close();
+    }
+
+    const failingService = createMhxyService(dataDir);
+    const failingApp = createControlPlaneApp({
+      dataDir,
+      startSchedulers: false,
+      mhxyService: {
+        ...failingService,
+        createTrade() {
+          throw new Error("unexpected storage failure");
+        }
+      }
+    });
+    await failingApp.ready();
+    try {
+      const unexpected = await failingApp.inject({
+        method: "POST",
+        url: "/api/mhxy/trades",
+        payload: {
+          type: "buy",
+          itemName: "金刚石",
+          quantity: 1,
+          unitPrice: 100,
+          currency: "rmb",
+          occurredAt: "2026-06-01T10:00:00.000Z"
+        }
+      });
+      expect(unexpected.statusCode).toBe(500);
+      expect(unexpected.json().message).toBe("梦幻西游账本操作失败");
+    } finally {
+      await failingApp.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("creates recalculated records and returns the RMB dashboard", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
     const app = createControlPlaneApp({ dataDir, startSchedulers: false });
@@ -274,13 +339,29 @@ describe("mhxy API", () => {
         profitRmb: 299.76
       });
 
+      const reopened = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/asset-flips/${created.json().id}`,
+        payload: {
+          sellAt: null,
+          sellPriceRmb: null
+        }
+      });
+      expect(reopened.statusCode).toBe(200);
+      expect(reopened.json()).toMatchObject({
+        status: "holding",
+        profitRmb: null
+      });
+      expect(reopened.json()).not.toHaveProperty("sellAt");
+      expect(reopened.json()).not.toHaveProperty("sellPriceRmb");
+
       const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
       expect(dashboard.assetFlips).toHaveLength(1);
       expect(dashboard.assetFlipSummary).toMatchObject({
-        holdingCount: 0,
-        soldCount: 1,
-        holdingCostRmb: 0,
-        realizedProfitRmb: 299.76
+        holdingCount: 1,
+        soldCount: 0,
+        holdingCostRmb: 3000.24,
+        realizedProfitRmb: 0
       });
       const deleted = await app.inject({
         method: "DELETE",
@@ -440,7 +521,7 @@ describe("mhxy API", () => {
           gameCoinCost: 30_000_000
         }
       });
-      expect(insufficient.statusCode).toBe(400);
+      expect(insufficient.statusCode).toBe(409);
       expect(insufficient.json().message).toContain("游戏币余额不足");
 
       const dashboard = (await app.inject({ method: "GET", url: "/api/mhxy" })).json();
@@ -452,7 +533,7 @@ describe("mhxy API", () => {
         method: "DELETE",
         url: `/api/mhxy/game-coin-purchases/${purchase.json().id}`
       });
-      expect(blockedDelete.statusCode).toBe(400);
+      expect(blockedDelete.statusCode).toBe(409);
     } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });
@@ -639,7 +720,7 @@ describe("mhxy API", () => {
           next: { itemName: "B", serverName: "长安城" }
         }
       });
-      expect(unconfirmedMerge.statusCode).toBe(400);
+      expect(unconfirmedMerge.statusCode).toBe(409);
       expect(unconfirmedMerge.json().message).toContain("确认合并");
 
       const confirmedMerge = await app.inject({

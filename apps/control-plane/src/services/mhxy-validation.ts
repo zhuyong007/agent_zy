@@ -88,7 +88,11 @@ const assetFlipShape = {
 };
 
 export const mhxyAssetFlipInputSchema = z.object(assetFlipShape).strict();
-export const mhxyAssetFlipPatchSchema = z.object(assetFlipShape).partial().strict();
+export const mhxyAssetFlipPatchSchema = z.object({
+  ...assetFlipShape,
+  sellAt: z.union([dateTime, z.literal(""), z.null()]).optional(),
+  sellPriceRmb: finiteNonNegative.nullable().optional()
+}).partial().strict();
 
 const gameCoinPurchaseShape = {
   acquiredAt: dateTime,
@@ -121,8 +125,10 @@ export const mhxyInventoryTargetSchema = z.object({
   expectedSellServerName: z.string()
 }).strict();
 
+export class MhxyInputError extends Error {}
+
 export function parseMhxyInput<T>(schema: ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (result.success) return result.data;
-  throw new Error(result.error.issues[0]?.message ?? "梦幻西游账本输入无效");
+  throw new MhxyInputError(result.error.issues[0]?.message ?? "梦幻西游账本输入无效");
 }

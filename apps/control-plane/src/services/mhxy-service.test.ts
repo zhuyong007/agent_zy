@@ -9,10 +9,10 @@ import { createMhxyService } from "./mhxy-service";
 describe("mhxy service", () => {
   const tempDirs: string[] = [];
 
-  function createService() {
+  function createService(now?: () => Date) {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-"));
     tempDirs.push(dataDir);
-    return createMhxyService(dataDir);
+    return createMhxyService(dataDir, now);
   }
 
   afterEach(() => {
@@ -72,6 +72,25 @@ describe("mhxy service", () => {
         averageUnitCostRmb: 130
       })
     ]);
+  });
+
+  it("keeps future trades in history without applying them to the current dashboard", () => {
+    const service = createService(() => new Date("2026-06-01T00:00:00.000Z"));
+    const future = service.createTrade({
+      type: "buy",
+      itemName: "未来道具",
+      quantity: 1,
+      unitPrice: 100,
+      currency: "rmb",
+      occurredAt: "2026-06-02T00:00:00.000Z",
+      serverName: "长安城",
+      characterName: "商人甲"
+    });
+
+    const dashboard = service.getDashboard();
+    expect(dashboard.trades).toContainEqual(expect.objectContaining({ id: future.id }));
+    expect(dashboard.inventory).toEqual([]);
+    expect(dashboard.overviewSummary.crossServer.holdingCostRmb).toBe(0);
   });
 
   it("conserves the full inventory cost when selling the entire position", () => {
@@ -1114,6 +1133,73 @@ describe("mhxy service", () => {
       gameCoinAmount: 5_000_000,
       rmbCostBasis: 50
     }));
+  });
+
+  it("recomputes accounting when an RMB trade is changed to game coin", () => {
+    const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T09:00:00.000Z",
+      gameCoinAmount: 10_000_000,
+      rmbCost: 100,
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+    const original = service.createTrade({
+      type: "buy",
+      itemName: "Advanced Combo",
+      quantity: 1,
+      unitPrice: 100,
+      currency: "rmb",
+      occurredAt: "2026-06-02T10:00:00.000Z",
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+
+    const updated = service.updateTrade(original.id, {
+      currency: "gameCoin",
+      unitPrice: 500
+    });
+
+    expect(updated).toMatchObject({ accountingMode: "wallet", rmbAmount: 50 });
+    expect(service.getDashboard().inventory).toContainEqual(
+      expect.objectContaining({ itemName: "Advanced Combo", inventoryCostRmb: 50 })
+    );
+    expect(service.getDashboard().gameCoinBalance).toEqual({
+      gameCoinAmount: 5_000_000,
+      rmbCost: 50
+    });
+  });
+
+  it("reallocates wallet batches when an existing game coin trade changes quantity", () => {
+    const service = createService();
+    service.createGameCoinPurchase({
+      acquiredAt: "2026-06-01T09:00:00.000Z",
+      gameCoinAmount: 20_000_000,
+      rmbCost: 200,
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+    const original = service.createTrade({
+      type: "buy",
+      itemName: "Advanced Combo",
+      quantity: 1,
+      unitPrice: 500,
+      currency: "gameCoin",
+      occurredAt: "2026-06-02T10:00:00.000Z",
+      serverName: "Source Server",
+      characterName: "Buyer"
+    });
+
+    const updated = service.updateTrade(original.id, { quantity: 2 });
+
+    expect(updated).toMatchObject({ accountingMode: "wallet", rmbAmount: 100 });
+    expect(updated.gameCoinAllocations).toEqual([
+      expect.objectContaining({ gameCoinAmount: 10_000_000, rmbCost: 100 })
+    ]);
+    expect(service.getDashboard().gameCoinBalance).toEqual({
+      gameCoinAmount: 10_000_000,
+      rmbCost: 100
+    });
   });
 
   it("keeps cross-server allocations reserved when a later asset consumes game coin", () => {

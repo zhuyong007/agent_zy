@@ -563,6 +563,11 @@ export interface MhxyAssetFlipInput {
   note?: string;
 }
 
+export type MhxyAssetFlipPatch = Partial<Omit<MhxyAssetFlipInput, "sellAt" | "sellPriceRmb">> & {
+  sellAt?: string | null;
+  sellPriceRmb?: number | null;
+};
+
 export interface MhxyAssetFlipRecord extends Omit<MhxyAssetFlipInput, "buyPriceRmb"> {
   id: string;
   buyPriceRmb: number;

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   MhxyAssetFlipCategory,
   MhxyAssetFlipInput,
+  MhxyAssetFlipPatch,
   MhxyAssetFlipRecord,
   MhxyGameCoinCashoutInput,
   MhxyGameCoinCashoutRecord,
@@ -217,10 +218,10 @@ export function MhxyPage() {
     }
   });
   const assetFlipMutation = useMutation({
-    mutationFn: (input: MhxyAssetFlipInput) =>
+    mutationFn: (input: MhxyAssetFlipInput | MhxyAssetFlipPatch) =>
       editingAssetFlipId
-        ? updateMhxyAssetFlip(editingAssetFlipId, input)
-        : createMhxyAssetFlip(input),
+        ? updateMhxyAssetFlip(editingAssetFlipId, input as MhxyAssetFlipPatch)
+        : createMhxyAssetFlip(input as MhxyAssetFlipInput),
     onSuccess: () => {
       setAssetFlip(emptyAssetFlip());
       setEditingAssetFlipId(null);
@@ -358,11 +359,16 @@ export function MhxyPage() {
 
   function submitAssetFlip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    assetFlipMutation.mutate(
-      assetFlip.category === "role"
-        ? { ...assetFlip, characterName: undefined }
-        : assetFlip
-    );
+    const input = assetFlip.category === "role"
+      ? { ...assetFlip, characterName: undefined }
+      : assetFlip;
+    assetFlipMutation.mutate(editingAssetFlipId
+      ? {
+          ...input,
+          sellAt: input.sellAt?.trim() ? input.sellAt : null,
+          sellPriceRmb: input.sellPriceRmb ?? null
+        }
+      : input);
   }
 
   return (
