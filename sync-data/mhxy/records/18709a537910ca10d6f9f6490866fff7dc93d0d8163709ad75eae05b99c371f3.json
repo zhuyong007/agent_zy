@@ -7,12 +7,13 @@
     "quantity": 2,
     "unitPrice": 282,
     "currency": "rmb",
+    "accountingMode": "directRmb",
     "rmbAmount": 564,
     "feeRmb": 0,
     "occurredAt": "2026-06-28T15:17:00.000Z",
-    "serverName": "山东2区-水泊梁山",
+    "serverName": "山东2区 - 水泊梁山",
     "characterName": "一笑赴沧海",
     "createdAt": "2026-06-28T15:35:49.379Z",
-    "updatedAt": "2026-06-28T15:42:25.894Z"
+    "updatedAt": "2026-06-30T03:27:32.803Z"
   }
 }

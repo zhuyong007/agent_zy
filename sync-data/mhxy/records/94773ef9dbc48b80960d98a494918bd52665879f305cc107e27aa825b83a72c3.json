@@ -1,0 +1,19 @@
+{
+  "syncKey": "trade:5e8df89b-a8c5-48ed-9bbe-414f96fb8eff",
+  "value": {
+    "id": "5e8df89b-a8c5-48ed-9bbe-414f96fb8eff",
+    "type": "buy",
+    "itemName": "高级连击",
+    "quantity": 1,
+    "unitPrice": 282,
+    "currency": "rmb",
+    "accountingMode": "directRmb",
+    "rmbAmount": 282,
+    "feeRmb": 0,
+    "occurredAt": "2026-06-30T06:11:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-06-30T06:12:01.262Z",
+    "updatedAt": "2026-06-30T06:12:28.412Z"
+  }
+}

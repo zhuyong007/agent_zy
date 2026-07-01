@@ -1,0 +1,17 @@
+{
+  "syncKey": "asset-flip:ea330aef-a429-4478-a3f6-8d8e63afef18",
+  "value": {
+    "id": "ea330aef-a429-4478-a3f6-8d8e63afef18",
+    "category": "role",
+    "name": "画情",
+    "buyAt": "2026-05-06T03:24:00.000Z",
+    "purchaseCurrency": "rmb",
+    "buyPriceRmb": 14999,
+    "status": "holding",
+    "profitRmb": null,
+    "serverName": "华南区 - 钓鱼岛",
+    "note": "化5女儿村",
+    "createdAt": "2026-06-30T03:30:36.825Z",
+    "updatedAt": "2026-07-01T02:39:39.494Z"
+  }
+}

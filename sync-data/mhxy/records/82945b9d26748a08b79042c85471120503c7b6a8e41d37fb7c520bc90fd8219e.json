@@ -1,0 +1,17 @@
+{
+  "syncKey": "asset-flip:2d25593b-88cf-4dde-9893-4f8013da7763",
+  "value": {
+    "id": "2d25593b-88cf-4dde-9893-4f8013da7763",
+    "category": "equipment",
+    "name": "130不磨法杖",
+    "buyAt": "2026-05-14T03:30:00.000Z",
+    "purchaseCurrency": "rmb",
+    "buyPriceRmb": 1049.3,
+    "status": "holding",
+    "profitRmb": null,
+    "serverName": "钓鱼岛",
+    "characterName": "画情",
+    "createdAt": "2026-06-30T03:31:54.056Z",
+    "updatedAt": "2026-06-30T03:31:54.056Z"
+  }
+}

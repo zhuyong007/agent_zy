@@ -1,0 +1,17 @@
+{
+  "syncKey": "asset-flip:141679f1-7b08-4bf4-bd84-19dafb0509e0",
+  "value": {
+    "id": "141679f1-7b08-4bf4-bd84-19dafb0509e0",
+    "category": "role",
+    "name": "一笑赴沧海",
+    "buyAt": "2026-06-26T03:32:00.000Z",
+    "purchaseCurrency": "rmb",
+    "buyPriceRmb": 18972,
+    "status": "holding",
+    "profitRmb": null,
+    "serverName": "山东2区 - 水泊梁山",
+    "note": "化9狮驼岭",
+    "createdAt": "2026-06-30T03:33:52.475Z",
+    "updatedAt": "2026-07-01T02:39:11.082Z"
+  }
+}

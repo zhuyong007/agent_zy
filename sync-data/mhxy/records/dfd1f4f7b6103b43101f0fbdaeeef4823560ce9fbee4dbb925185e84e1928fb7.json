@@ -1,12 +1,12 @@
 {
   "syncKey": "price-snapshot:30b289d8-ba18-403a-94df-3ac6fbd4fd2a",
   "value": {
-    "note": "根据用户提供的藏宝阁价格表图片整理",
-    "currency": "rmb",
-    "capturedAt": "2026-04-13T04:00:00.000Z",
-    "rmbUnitPrice": 349,
     "itemName": "高级偷袭",
+    "currency": "rmb",
+    "rmbUnitPrice": 349,
+    "capturedAt": "2026-04-13T04:00:00.000Z",
     "serverName": "藏宝阁（兽决）",
+    "note": "根据用户提供的藏宝阁价格表图片整理",
     "id": "30b289d8-ba18-403a-94df-3ac6fbd4fd2a",
     "createdAt": "2026-06-28T14:19:05.770Z",
     "updatedAt": "2026-06-28T14:19:05.770Z"

@@ -1,0 +1,10 @@
+{
+  "syncKey": "inventory-target:[\"高级连击\",\"山东2区-水泊梁山\",\"一笑赴沧海\"]",
+  "value": {
+    "itemName": "高级连击",
+    "serverName": "山东2区-水泊梁山",
+    "characterName": "一笑赴沧海",
+    "expectedSellServerName": "华南区 - 钓鱼岛",
+    "updatedAt": "2026-06-30T03:24:39.462Z"
+  }
+}

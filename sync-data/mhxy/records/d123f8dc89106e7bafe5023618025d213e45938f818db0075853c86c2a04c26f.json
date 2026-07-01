@@ -1,0 +1,16 @@
+{
+  "syncKey": "asset-flip:37fd874b-3eb4-435e-acce-74428da07efe",
+  "value": {
+    "id": "37fd874b-3eb4-435e-acce-74428da07efe",
+    "category": "summon",
+    "name": "120傀儡妖女衣",
+    "buyAt": "2026-05-16T03:31:00.000Z",
+    "purchaseCurrency": "rmb",
+    "buyPriceRmb": 1799,
+    "status": "holding",
+    "profitRmb": null,
+    "characterName": "画情",
+    "createdAt": "2026-06-30T03:32:34.522Z",
+    "updatedAt": "2026-06-30T03:32:34.522Z"
+  }
+}
