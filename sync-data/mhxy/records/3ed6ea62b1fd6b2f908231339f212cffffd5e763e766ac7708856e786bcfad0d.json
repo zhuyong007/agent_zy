@@ -1,0 +1,19 @@
+{
+  "syncKey": "trade:21c8e993-8a34-493e-9404-e246fe0ff64f",
+  "value": {
+    "id": "21c8e993-8a34-493e-9404-e246fe0ff64f",
+    "type": "buy",
+    "itemName": "高级金蝉蜕壳",
+    "quantity": 1,
+    "unitPrice": 385,
+    "currency": "rmb",
+    "accountingMode": "directRmb",
+    "rmbAmount": 385,
+    "feeRmb": 0,
+    "occurredAt": "2026-07-01T10:46:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-01T10:47:45.297Z",
+    "updatedAt": "2026-07-01T10:47:45.297Z"
+  }
+}

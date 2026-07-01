@@ -5,9 +5,9 @@
     "currency": "rmb",
     "rmbUnitPrice": 569,
     "capturedAt": "2026-05-30T04:00:00.000Z",
-    "serverName": "藏宝阁（兽决）",
     "note": "根据用户提供的藏宝阁价格表图片整理",
     "id": "e06c5de4-8685-48f1-99d9-0dda6062a04c",
+    "serverName": "藏宝阁（兽决）",
     "createdAt": "2026-06-28T14:19:06.039Z",
     "updatedAt": "2026-06-30T13:51:09.416Z"
   }
