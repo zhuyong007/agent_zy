@@ -1,0 +1,17 @@
+{
+  "syncKey": "xhs-meta:state",
+  "value": {
+    "id": "state",
+    "overview": {
+      "postCount": 51,
+      "totalViews": 6894,
+      "totalLikes": 398,
+      "totalCollects": 213,
+      "totalComments": 21,
+      "totalShares": 12,
+      "engagementRate": 0.09341456338845373
+    },
+    "lastSyncedAt": "2026-06-25T04:27:17.315Z",
+    "sourceUrl": "笔记列表明细表.xlsx"
+  }
+}
