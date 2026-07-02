@@ -50,7 +50,7 @@ export function HistoryPage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicInput, setTopicInput] = useState("");
-  const [generationMode, setGenerationMode] = useState<"topic" | "dynasty">("topic");
+  const [generationMode, setGenerationMode] = useState<"topic" | "dynasty" | "most">("topic");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedPromptKeys, setCopiedPromptKeys] = useState<Set<string>>(() => new Set());
   const xhsFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -61,7 +61,7 @@ export function HistoryPage() {
     queryFn: fetchDashboard
   });
   const historyGenerateMutation = useMutation({
-    mutationFn: (input: { mode: "topic" | "dynasty"; value?: string }) => {
+    mutationFn: (input: { mode: "topic" | "dynasty" | "most"; value?: string }) => {
       const value = input.value?.trim() || undefined;
 
       return generateHistory(
@@ -71,6 +71,11 @@ export function HistoryPage() {
               mode: "dynasty",
               dynasty: value
             }
+          : input.mode === "most"
+            ? {
+                reason: "manual",
+                mode: "most"
+              }
           : {
               reason: "manual",
               topic: value
@@ -248,7 +253,8 @@ export function HistoryPage() {
                     agentId: "history-agent",
                     details: {
                       hasTopic: generationMode === "topic" && Boolean(topicInput.trim()),
-                      hasDynasty: generationMode === "dynasty" && Boolean(topicInput.trim())
+                      hasDynasty: generationMode === "dynasty" && Boolean(topicInput.trim()),
+                      isMostSeries: generationMode === "most"
                     }
                   }).catch(() => undefined);
                   historyGenerateMutation.mutate({
@@ -274,14 +280,26 @@ export function HistoryPage() {
                   >
                     朝代
                   </button>
+                  <button
+                    type="button"
+                    className={generationMode === "most" ? "is-active" : ""}
+                    aria-selected={generationMode === "most"}
+                    onClick={() => setGenerationMode("most")}
+                  >
+                    最
+                  </button>
                 </div>
-                <input
-                  type="text"
-                  value={topicInput}
-                  onChange={(event) => setTopicInput(event.target.value)}
-                  placeholder={generationMode === "dynasty" ? "输入朝代，例如：东汉" : "输入主题，例如：商鞅变法"}
-                  disabled={historyGenerateMutation.isPending}
-                />
+                {generationMode === "most" ? (
+                  <p className="history-most-hint">自动选择一个有明确比较依据的历史之最</p>
+                ) : (
+                  <input
+                    type="text"
+                    value={topicInput}
+                    onChange={(event) => setTopicInput(event.target.value)}
+                    placeholder={generationMode === "dynasty" ? "输入朝代，例如：东汉" : "输入主题，例如：商鞅变法"}
+                    disabled={historyGenerateMutation.isPending}
+                  />
+                )}
                 <button type="submit" className="history-generate-button" disabled={historyGenerateMutation.isPending}>
                   {historyGenerateMutation.isPending ? "生成中..." : "立即生成"}
                 </button>

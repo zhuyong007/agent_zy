@@ -230,6 +230,7 @@ import {
   deleteHistoryCommentReply,
   extractHistoryCommentScreenshot,
   fetchDashboard,
+  generateHistory,
   importHistoryXhsAnalytics,
   updateHistoryCommentReply
 } from "../api";
@@ -284,6 +285,33 @@ describe("HistoryPage", () => {
   it("shows the history data synchronization control", async () => {
     await renderHistoryPage();
     expect(container.querySelector('[data-sync-module="history"]')).not.toBeNull();
+  });
+
+  it("submits the most series without a topic input", async () => {
+    await renderHistoryPage();
+
+    const mostModeButton = Array.from(container.querySelectorAll(".history-mode-switch button")).find(
+      (button) => button.textContent === "最"
+    ) as HTMLButtonElement | undefined;
+
+    expect(mostModeButton).toBeTruthy();
+
+    await act(async () => {
+      mostModeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("自动选择一个有明确比较依据的历史之最");
+    expect(container.querySelector('.history-topic-form input[type="text"]')).toBeNull();
+
+    const submitButton = container.querySelector(".history-generate-button") as HTMLButtonElement | null;
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(generateHistory).toHaveBeenCalledWith({
+      reason: "manual",
+      mode: "most"
+    });
   });
 
   it("copies caption and image prompt text from the selected history item", async () => {

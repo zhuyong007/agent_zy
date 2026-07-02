@@ -1223,6 +1223,66 @@ describe("control-plane app", () => {
     }
   });
 
+  it("generates a most-series post from the manual generation endpoint", async () => {
+    const topic = "谁是中国历史上最富有的商人？";
+    process.env.HISTORY_POST_FIXTURE_JSON = JSON.stringify({
+      topic,
+      summary: "限定比较范围与财富口径，并说明可考证据和争议。",
+      cover: {
+        title: topic,
+        subtitle: "比较口径决定答案",
+        imageText: `${topic}\n范围 / 指标 / 证据`,
+        prompt: longHistoryImagePrompt(`${topic} 小红书首图封面`)
+      },
+      cardCount: 3,
+      cards: [1, 2, 3].map((index) => ({
+        title: `${topic} 图${index}`,
+        imageText: `第${index}部分`,
+        prompt: longHistoryImagePrompt(`${topic} 图${index}`)
+      })),
+      xiaohongshuCaption: `${topic} 小红书正文`
+    });
+
+    const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-most-test-"));
+    const isolatedApp = createControlPlaneApp({
+      dataDir: isolatedDataDir,
+      startSchedulers: false
+    });
+
+    await isolatedApp.ready();
+
+    try {
+      const response = await isolatedApp.inject({
+        method: "POST",
+        url: "/api/history/generate",
+        payload: {
+          reason: "test",
+          mode: "most"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        notifications: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "history-post",
+            title: `“最”系列：${topic}`,
+            payload: expect.objectContaining({
+              topic,
+              cardCount: 3
+            })
+          })
+        ])
+      });
+    } finally {
+      await isolatedApp.close();
+      rmSync(isolatedDataDir, {
+        recursive: true,
+        force: true
+      });
+    }
+  });
+
   it("imports history xiaohongshu analytics from a workbook upload", async () => {
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-xhs-test-"));
     const workbookFilename = "\u7b14\u8bb0\u5217\u8868\u660e\u7ec6\u8868.xlsx";

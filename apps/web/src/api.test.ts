@@ -455,6 +455,57 @@ describe("generateHistory", () => {
       dynasty: "东汉"
     });
   });
+
+  it("sends a most-series request without topic input", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        notifications: [],
+        recentTasks: []
+      })
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateHistory({
+      reason: "manual",
+      mode: "most"
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      reason: "manual",
+      mode: "most"
+    });
+  });
+
+  it("uses a most-series instruction when the dedicated endpoint is missing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          route: { agentId: "history-agent", confidence: 1, reason: "fallback" },
+          task: { status: "completed" },
+          message: { content: "已生成“最”系列" }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ notifications: [], recentTasks: [] })
+      });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateHistory({ mode: "most" });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      message: expect.stringContaining("历史之最")
+    });
+  });
 });
 
 describe("generateCinematic", () => {

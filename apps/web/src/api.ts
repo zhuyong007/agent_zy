@@ -1144,7 +1144,7 @@ export async function generateTopics(reason = "manual"): Promise<TopicState> {
 
 export type HistoryGenerateInput = {
   reason?: string;
-  mode?: "topic" | "dynasty";
+  mode?: "topic" | "dynasty" | "most";
   topic?: string;
   dynasty?: string;
 };
@@ -1157,7 +1157,7 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
         }
       : {
           reason: input.reason ?? "manual",
-          mode: input.mode === "dynasty" ? "dynasty" : undefined,
+          mode: input.mode === "dynasty" || input.mode === "most" ? input.mode : undefined,
           topic: input.topic?.trim() || undefined,
           dynasty: input.dynasty?.trim() || undefined
         };
@@ -1184,9 +1184,11 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
 
   if (response.status === 404) {
     console.warn("[history-generate] dedicated endpoint missing; falling back to chat route");
-    const chatPrompt = request.topic
-      ? `请围绕「${request.topic}」生成历史知识点小红书推文策划`
-      : "请生成今天的历史知识点小红书推文策划";
+    const chatPrompt = request.mode === "most"
+      ? "请自动选择一个有明确比较依据的历史之最，生成小红书历史知识推文策划"
+      : request.topic
+        ? `请围绕「${request.topic}」生成历史知识点小红书推文策划`
+        : "请生成今天的历史知识点小红书推文策划";
     const chatResponse = await sendChat(chatPrompt);
 
     console.info("[history-generate] fallback:chat-response", {

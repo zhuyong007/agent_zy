@@ -51,6 +51,8 @@ interface HistoryTopicArchiveEntry {
   firstGeneratedAt: string;
   lastGeneratedAt: string;
   generatedCount: number;
+  series?: "most";
+  scope?: "china" | "world";
 }
 
 interface HistoryTopicArchive {
@@ -80,6 +82,8 @@ function parseArchive(value: string): HistoryTopicArchive {
           typeof item?.generatedCount === "number" && Number.isInteger(item.generatedCount)
             ? item.generatedCount
             : 0;
+        const series = item?.series === "most" ? "most" : undefined;
+        const scope = item?.scope === "china" || item?.scope === "world" ? item.scope : undefined;
 
         if (!topic || !firstGeneratedAt || !lastGeneratedAt || generatedCount < 1) {
           return null;
@@ -89,7 +93,9 @@ function parseArchive(value: string): HistoryTopicArchive {
           topic,
           firstGeneratedAt,
           lastGeneratedAt,
-          generatedCount
+          generatedCount,
+          ...(series ? { series } : {}),
+          ...(scope ? { scope } : {})
         };
       })
       .filter((entry): entry is HistoryTopicArchiveEntry => entry !== null)
@@ -156,7 +162,8 @@ function selectTopic(
 function recordGeneratedTopic(
   archive: HistoryTopicArchive,
   topic: string,
-  generatedAt: string
+  generatedAt: string,
+  metadata?: Pick<HistoryTopicArchiveEntry, "series" | "scope">
 ): HistoryTopicArchive {
   const existingEntry = archive.entries.find((entry) => entry.topic === topic);
 
@@ -167,7 +174,8 @@ function recordGeneratedTopic(
           ? {
               ...entry,
               lastGeneratedAt: generatedAt,
-              generatedCount: entry.generatedCount + 1
+              generatedCount: entry.generatedCount + 1,
+              ...metadata
             }
           : entry
       )
@@ -181,10 +189,19 @@ function recordGeneratedTopic(
         topic,
         firstGeneratedAt: generatedAt,
         lastGeneratedAt: generatedAt,
-        generatedCount: 1
+        generatedCount: 1,
+        ...metadata
       }
     ]
   };
+}
+
+function selectMostScope(archive: HistoryTopicArchive): "china" | "world" {
+  const generatedCount = archive.entries
+    .filter((entry) => entry.series === "most")
+    .reduce((count, entry) => count + entry.generatedCount, 0);
+
+  return generatedCount % 5 === 4 ? "world" : "china";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -556,6 +573,86 @@ async function generateWithModelRuntime(
   throw new Error("模型输出校验失败");
 }
 
+function validateMostPayload(value: unknown, generatedAt: string): HistoryPostPayload {
+  const payload = validatePayload(value, generatedAt);
+
+  if (!payload.topic.includes("最")) {
+    throw new Error("“最”系列主题必须保留“最”的核心表达");
+  }
+
+  return payload;
+}
+
+async function generateMostWithModelRuntime(
+  scope: "china" | "world",
+  archivedTopics: string[],
+  requestedAt: string,
+  analyticsPrompt: string
+): Promise<HistoryPostPayload> {
+  const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
+
+  if (fixture) {
+    return validateMostPayload(parseModelJson(fixture), requestedAt);
+  }
+
+  const scopeInstruction = scope === "china"
+    ? "本次只从中国历史中选题。"
+    : "本次只从世界历史中选题，不选择中国历史主题。";
+  const duplicateInstruction = archivedTopics.length > 0
+    ? `已经生成过的“最”系列主题如下：${archivedTopics.join("、")}。不得选择相同或实质重复的主题。`
+    : "当前没有已经生成过的“最”系列主题。";
+  const prompt = `请为历史知识模块的“最”系列自动选择一个主题，并生成一条可直接发布的小红书历史图文策划。${scopeInstruction}${duplicateInstruction}
+
+选题的核心语义必须是“历史上最 + 形容词 + 对象”：第一个变量必须是形容词，例如富有、昂贵、漫长、短命、复杂；第二个变量可以是人、物或事件等明确对象。topic 可以改写成问句、悬念句或反差句以增强传播力，但必须保留“最”字和最高级含义，最长 20 个字。
+
+最高级判断必须严谨：在 summary、cards 和 xiaohongshuCaption 中明确比较范围、评价标准、可核查的史料依据，以及学界或统计口径可能存在的争议。不得把主观判断或无法证实的传说写成无条件事实；证据不足时应明确使用“在某一范围或指标下”的限定。
+
+严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出 JSON 字段。topic、cover.title 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，结尾加入互动提问和 3–5 个相关话题标签，不使用 Markdown 标题语法。
+
+cover 必须包含 title、subtitle、imageText、prompt；cards 根据内容输出 3–10 张，每张包含 title、imageText、prompt。cover.prompt 和 cards[].prompt 必须是中文生图提示词，说明主体、时代场景、构图、光线、色彩、材质、文字留白和小红书历史知识卡片风格，并明确图片文字要展示的具体比较范围、指标、证据、时间节点或争议信息。不要把字数或字符数说明写进 prompt。凡是提到文字留白或预留区域，必须同步写明要填充的具体标题、知识标签或解释文字。只输出严格 JSON 对象，不要输出 Markdown。`;
+
+  console.info("[history-agent] model-runtime:request", {
+    purpose: "vision",
+    mode: "most",
+    scope
+  });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await getModelClient().generateText({
+      purpose: "vision",
+      maxTokens: 9000,
+      timeoutMs: 600_000,
+      responseFormat: "json",
+      systemPrompt: analyticsPrompt
+        ? `你是严谨的中文历史知识编辑，只输出严格 JSON，不要输出 Markdown。${analyticsPrompt}`
+        : "你是严谨的中文历史知识编辑，擅长把有明确比较口径的历史最高级选题拆成小红书图文策划。只输出严格 JSON 对象，不要输出 Markdown。",
+      prompt: attempt === 0
+        ? prompt
+        : `${prompt}\n上一次输出不完整或主题不符合“最”系列要求。请重新生成完整 JSON，topic 必须包含“最”，不要输出解释。`
+    });
+    const rawContent = result.text;
+    const normalizedPayloadInput = normalizePayloadInput(rawContent);
+
+    if (!rawContent) {
+      throw new Error("ModelScope 返回内容为空");
+    }
+
+    try {
+      return validateMostPayload(normalizedPayloadInput, requestedAt);
+    } catch (error) {
+      if (attempt === 1) {
+        throw error;
+      }
+
+      console.warn("[history-agent] model-runtime:retry-most-json", {
+        error: error instanceof Error ? error.message : "模型输出校验失败"
+      });
+    }
+  }
+
+  throw new Error("模型输出校验失败");
+}
+
 async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: string): Promise<HistoryDynastyPayload> {
   const fixture = process.env.HISTORY_POST_FIXTURE_JSON;
 
@@ -706,6 +803,78 @@ export const agent = defineAgent({
 
     const archivePath = getTopicArchivePath();
     const archive = loadTopicArchive(archivePath);
+
+    if (requestedMode === "most") {
+      const scope = selectMostScope(archive);
+      const archivedTopics = archive.entries
+        .filter((entry) => entry.series === "most")
+        .map((entry) => entry.topic);
+
+      console.info("[history-agent] execute:start", {
+        taskId: input.taskId,
+        trigger: input.trigger,
+        localDate,
+        mode: "most",
+        scope,
+        hasFixture: Boolean(process.env.HISTORY_POST_FIXTURE_JSON)
+      });
+
+      try {
+        const payload = await generateMostWithModelRuntime(
+          scope,
+          archivedTopics,
+          input.requestedAt,
+          buildHistoryXhsAnalyticsPrompt(input.state)
+        );
+        const nextArchive = recordGeneratedTopic(archive, payload.topic, input.requestedAt, {
+          series: "most",
+          scope
+        });
+        writeTopicArchive(archivePath, nextArchive);
+
+        console.info("[history-agent] execute:success", {
+          taskId: input.taskId,
+          mode: "most",
+          scope,
+          topic: payload.topic,
+          cardCount: payload.cardCount
+        });
+
+        return {
+          status: "completed",
+          summary: `生成“最”系列：${payload.topic}`,
+          assistantMessage: `已生成“最”系列小红书策划：${payload.topic}`,
+          notifications: [
+            {
+              kind: "history-post",
+              title: `“最”系列：${payload.topic}`,
+              body: payload.summary,
+              persistent: true,
+              payload
+            }
+          ],
+          domainUpdates: {
+            historyPush: {
+              lastTriggeredDate: localDate
+            }
+          }
+        };
+      } catch (error) {
+        console.error("[history-agent] execute:failed", {
+          taskId: input.taskId,
+          mode: "most",
+          scope,
+          error: error instanceof Error ? error.message : String(error)
+        });
+
+        return {
+          status: "failed",
+          summary: error instanceof Error ? error.message : "“最”系列生成失败",
+          assistantMessage: "“最”系列生成失败，请检查模型配置或稍后重试。"
+        };
+      }
+    }
+
     const topic =
       asString(input.meta?.topic) ??
       selectTopic(localDate, archive, getHistoryNotificationTopics(input.state));

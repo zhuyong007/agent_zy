@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -127,6 +127,17 @@ function createHistoryCover(topic: string) {
     subtitle: "被低估的历史转折点",
     imageText: `${topic}\n关键人物 / 时间线 / 长期影响`,
     prompt: `${topic}，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域，中部留出副标题和知识标签，下方保留简短解释文字空间，质感像博物馆展陈海报，适合信息流首屏点击。`
+  };
+}
+
+function createMostPayload(topic = "谁是中国历史上最富有的商人？") {
+  return {
+    topic,
+    summary: "限定在有可靠财富记录的中国古代商人中，比较可考资产、商业规模与时代购买力。",
+    cover: createHistoryCover(topic),
+    cardCount: 3,
+    cards: createHistoryCards(topic),
+    xiaohongshuCaption: `${topic} 正文`
   };
 }
 
@@ -802,6 +813,141 @@ ${JSON.stringify({
 
     expect(result.status).toBe("completed");
     expect(getPostPayload(result).topic).toBe("商鞅变法为什么能改变秦国");
+  });
+
+  it("generates the most series with grounded superlative instructions", async () => {
+    writeFileSync(
+      process.env.HISTORY_TOPIC_ARCHIVE_PATH!,
+      JSON.stringify({
+        entries: [
+          {
+            topic: "玄奘取经为什么重要",
+            firstGeneratedAt: "2026-05-01T00:00:00.000Z",
+            lastGeneratedAt: "2026-05-01T00:00:00.000Z",
+            generatedCount: 1
+          }
+        ]
+      }),
+      "utf8"
+    );
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("“最”系列");
+      expect(prompt).toContain("形容词");
+      expect(prompt).toContain("人、物或事件");
+      expect(prompt).toContain("比较范围");
+      expect(prompt).toContain("评价标准");
+      expect(prompt).toContain("史料依据");
+      expect(prompt).toContain("争议");
+      expect(prompt).toContain("中国历史");
+
+      return JSON.stringify(createMostPayload());
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        localDate: "2026-05-07",
+        mode: "most"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(result.summary).toBe("生成“最”系列：谁是中国历史上最富有的商人？");
+    expect(result.notifications?.[0]).toMatchObject({
+      kind: "history-post",
+      title: "“最”系列：谁是中国历史上最富有的商人？",
+      payload: expect.objectContaining({
+        topic: "谁是中国历史上最富有的商人？"
+      })
+    });
+    expect(JSON.parse(readFileSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!, "utf8"))).toEqual({
+      entries: [
+        expect.objectContaining({
+          topic: "玄奘取经为什么重要"
+        }),
+        expect.objectContaining({
+          topic: "谁是中国历史上最富有的商人？",
+          series: "most",
+          scope: "china",
+          generatedCount: 1
+        })
+      ]
+    });
+  });
+
+  it("uses world history for every fifth successful most-series generation", async () => {
+    writeFileSync(
+      process.env.HISTORY_TOPIC_ARCHIVE_PATH!,
+      JSON.stringify({
+        entries: Array.from({ length: 4 }, (_, index) => ({
+          topic: `中国历史最系列${index + 1}`,
+          firstGeneratedAt: `2026-05-0${index + 1}T00:00:00.000Z`,
+          lastGeneratedAt: `2026-05-0${index + 1}T00:00:00.000Z`,
+          generatedCount: 1,
+          series: "most",
+          scope: "china"
+        }))
+      }),
+      "utf8"
+    );
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("世界历史");
+      expect(prompt).toContain("中国历史最系列1");
+      expect(prompt).toContain("中国历史最系列4");
+
+      return JSON.stringify(createMostPayload("历史上最昂贵的战争是哪一场？"));
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "most" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    const archive = JSON.parse(readFileSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!, "utf8"));
+    expect(archive.entries.at(-1)).toMatchObject({
+      series: "most",
+      scope: "world"
+    });
+  });
+
+  it("retries most-series generation when the topic omits the superlative", async () => {
+    let attempts = 0;
+    const restore = mockModelRuntimeText(() => {
+      attempts += 1;
+      return JSON.stringify(
+        attempts === 1
+          ? createMostPayload("中国古代富有的商人是谁？")
+          : createMostPayload("谁是中国历史上最富有的商人？")
+      );
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "most" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(attempts).toBe(2);
+    expect(getPostPayload(result).topic).toContain("最");
+  });
+
+  it("fails most-series generation without archiving when both topics omit the superlative", async () => {
+    const restore = mockModelResponse(createMostPayload("中国古代富有的商人是谁？"));
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "most" }
+    });
+    restore();
+
+    expect(result.status).toBe("failed");
+    expect(result.notifications).toBeUndefined();
+    expect(result.summary).toContain("必须保留“最”");
+    expect(existsSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!)).toBe(false);
   });
 
   it("generates a dynasty four-module payload from dynasty metadata", async () => {
