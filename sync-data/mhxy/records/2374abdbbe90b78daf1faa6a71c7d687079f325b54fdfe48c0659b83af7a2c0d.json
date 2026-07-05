@@ -1,0 +1,28 @@
+{
+  "syncKey": "trade:833da036-3b85-4e11-99f1-2279172705de",
+  "value": {
+    "id": "833da036-3b85-4e11-99f1-2279172705de",
+    "type": "buy",
+    "itemName": "彩果",
+    "quantity": 3,
+    "unitPrice": 24.6,
+    "currency": "gameCoin",
+    "accountingMode": "wallet",
+    "rmbAmount": 5.07,
+    "feeRmb": 0,
+    "gameCoinAmountWan": 73.80000000000001,
+    "occurredAt": "2026-07-05T16:18:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-05T16:19:16.773Z",
+    "updatedAt": "2026-07-05T16:19:16.773Z",
+    "effectiveRmbPerGameCoinWan": 0.068699,
+    "gameCoinAllocations": [
+      {
+        "gameCoinPurchaseId": "765ff60b-948b-4597-95e1-42473e22c3aa",
+        "gameCoinAmount": 738000,
+        "rmbCost": 5.07
+      }
+    ]
+  }
+}

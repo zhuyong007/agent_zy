@@ -1,0 +1,19 @@
+{
+  "syncKey": "trade:ee1d760e-7807-4c35-930d-4026e8c53197",
+  "value": {
+    "id": "ee1d760e-7807-4c35-930d-4026e8c53197",
+    "type": "buy",
+    "itemName": "高级连击",
+    "quantity": 1,
+    "unitPrice": 316,
+    "currency": "rmb",
+    "accountingMode": "directRmb",
+    "rmbAmount": 316,
+    "feeRmb": 0,
+    "occurredAt": "2026-07-04T13:31:00.000Z",
+    "serverName": "北京1区 - 五道口",
+    "characterName": "堰无师5",
+    "createdAt": "2026-07-04T13:34:49.140Z",
+    "updatedAt": "2026-07-04T13:34:49.140Z"
+  }
+}

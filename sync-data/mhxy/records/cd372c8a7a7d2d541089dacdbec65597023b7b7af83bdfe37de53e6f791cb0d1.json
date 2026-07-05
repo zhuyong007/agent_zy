@@ -1,0 +1,19 @@
+{
+  "syncKey": "trade:b40283e4-d46e-42bc-b823-99fff3bd6a1a",
+  "value": {
+    "id": "b40283e4-d46e-42bc-b823-99fff3bd6a1a",
+    "type": "buy",
+    "itemName": "高级金蝉蜕壳",
+    "quantity": 2,
+    "unitPrice": 385,
+    "currency": "rmb",
+    "accountingMode": "directRmb",
+    "rmbAmount": 770,
+    "feeRmb": 0,
+    "occurredAt": "2026-07-04T13:41:00.000Z",
+    "serverName": "北京1区 - 五道口",
+    "characterName": "堰无师5",
+    "createdAt": "2026-07-04T13:41:48.567Z",
+    "updatedAt": "2026-07-04T13:41:48.567Z"
+  }
+}

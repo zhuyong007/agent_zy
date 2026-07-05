@@ -1,0 +1,28 @@
+{
+  "syncKey": "trade:379518ec-1885-4a3e-8ed3-8f65af8d2eea",
+  "value": {
+    "id": "379518ec-1885-4a3e-8ed3-8f65af8d2eea",
+    "type": "buy",
+    "itemName": "高8",
+    "quantity": 1,
+    "unitPrice": 905,
+    "currency": "gameCoin",
+    "accountingMode": "wallet",
+    "rmbAmount": 62.18,
+    "feeRmb": 0,
+    "gameCoinAmountWan": 905,
+    "occurredAt": "2026-07-05T16:17:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-05T16:18:32.925Z",
+    "updatedAt": "2026-07-05T16:18:32.925Z",
+    "effectiveRmbPerGameCoinWan": 0.068707,
+    "gameCoinAllocations": [
+      {
+        "gameCoinPurchaseId": "765ff60b-948b-4597-95e1-42473e22c3aa",
+        "gameCoinAmount": 9050000,
+        "rmbCost": 62.18
+      }
+    ]
+  }
+}
