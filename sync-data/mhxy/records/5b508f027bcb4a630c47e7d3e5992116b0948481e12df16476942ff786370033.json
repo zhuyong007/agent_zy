@@ -1,0 +1,14 @@
+{
+  "syncKey": "game-coin-purchase:4e3dc64a-dcff-4df8-a3f4-7e811a1dff0b",
+  "value": {
+    "id": "4e3dc64a-dcff-4df8-a3f4-7e811a1dff0b",
+    "acquiredAt": "2026-07-12T03:17:00.000Z",
+    "gameCoinAmount": 75015000,
+    "rmbCost": 500,
+    "rmbPerGameCoinWan": 0.066653,
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-12T03:18:15.797Z",
+    "updatedAt": "2026-07-12T03:18:15.797Z"
+  }
+}

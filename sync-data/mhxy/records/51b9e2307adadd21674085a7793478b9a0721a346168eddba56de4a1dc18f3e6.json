@@ -2,9 +2,9 @@
   "syncKey": "price-snapshot:f9d4bd16-c3d6-438d-9045-a7aeb8f5ff19",
   "value": {
     "itemName": "高级连击",
-    "capturedAt": "2026-07-04T13:43:00.000Z",
     "currency": "rmb",
     "rmbUnitPrice": 298.88,
+    "capturedAt": "2026-07-04T13:43:00.000Z",
     "id": "f9d4bd16-c3d6-438d-9045-a7aeb8f5ff19",
     "serverName": "藏宝阁（兽决）",
     "createdAt": "2026-07-04T13:43:38.879Z",

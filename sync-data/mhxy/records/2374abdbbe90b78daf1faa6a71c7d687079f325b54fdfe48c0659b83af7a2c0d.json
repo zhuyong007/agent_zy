@@ -11,11 +11,6 @@
     "rmbAmount": 5.07,
     "feeRmb": 0,
     "gameCoinAmountWan": 73.80000000000001,
-    "occurredAt": "2026-07-05T16:18:00.000Z",
-    "serverName": "山东2区 - 水泊梁山",
-    "characterName": "一笑赴沧海",
-    "createdAt": "2026-07-05T16:19:16.773Z",
-    "updatedAt": "2026-07-05T16:19:16.773Z",
     "effectiveRmbPerGameCoinWan": 0.068699,
     "gameCoinAllocations": [
       {
@@ -23,6 +18,11 @@
         "gameCoinAmount": 738000,
         "rmbCost": 5.07
       }
-    ]
+    ],
+    "occurredAt": "2026-07-05T16:18:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-05T16:19:16.773Z",
+    "updatedAt": "2026-07-05T16:19:16.773Z"
   }
 }
