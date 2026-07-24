@@ -10438,7 +10438,11 @@ body[data-theme="day"] .cinematic-project-controls input {
 /* Structured event log operations page */
 .logs-shell {
   display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   gap: 16px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   padding: 24px;
 }
 
@@ -10481,13 +10485,18 @@ body[data-theme="day"] .cinematic-project-controls input {
 
 .logs-board {
   align-items: flex-start;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .logs-list {
   display: grid;
+  align-content: start;
   gap: 8px;
   flex: 1 1 62%;
-  max-height: 68vh;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
   overflow: auto;
 }
 
@@ -10520,6 +10529,9 @@ body[data-theme="day"] .cinematic-project-controls input {
 .logs-detail {
   flex: 1 1 38%;
   min-width: 320px;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
   border: 1px solid var(--manage-line, rgba(255, 255, 255, 0.16));
   border-radius: 12px;
   background: var(--manage-surface, rgba(255, 255, 255, 0.06));
@@ -10527,10 +10539,16 @@ body[data-theme="day"] .cinematic-project-controls input {
 }
 
 .logs-detail pre {
-  max-height: 56vh;
+  max-height: none;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.logs-warnings {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
 }
 
 .logs-warning {

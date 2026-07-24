@@ -100,7 +100,9 @@ export function LogsPage() {
           <input placeholder="requestId" value={filters.requestId ?? ""} onChange={(event) => updateFilter("requestId", event.target.value)} />
           <input placeholder="关键词" value={filters.q ?? ""} onChange={(event) => updateFilter("q", event.target.value)} />
         </section>
-        {data?.warnings.map((warning) => <p className="logs-warning" key={warning}>{warning}</p>)}
+        <section className="logs-warnings">
+          {data?.warnings.map((warning) => <p className="logs-warning" key={warning}>{warning}</p>)}
+        </section>
         <section className="logs-board">
           <div className="logs-list">
             {logsQuery.isLoading ? <p>正在读取日志...</p> : null}
