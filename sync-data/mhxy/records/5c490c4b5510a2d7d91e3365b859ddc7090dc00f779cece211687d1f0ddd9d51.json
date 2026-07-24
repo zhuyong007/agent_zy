@@ -1,0 +1,17 @@
+{
+  "syncKey": "asset-flip:f7ae066b-e28e-4d88-972d-a0433ae87f85",
+  "value": {
+    "id": "f7ae066b-e28e-4d88-972d-a0433ae87f85",
+    "category": "equipment",
+    "name": "80耳饰",
+    "buyAt": "2026-07-24T02:59:00.000Z",
+    "purchaseCurrency": "rmb",
+    "buyPriceRmb": 390,
+    "status": "holding",
+    "profitRmb": null,
+    "serverName": "华南区 - 钓鱼岛",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-24T03:11:14.708Z",
+    "updatedAt": "2026-07-24T03:11:55.704Z"
+  }
+}
