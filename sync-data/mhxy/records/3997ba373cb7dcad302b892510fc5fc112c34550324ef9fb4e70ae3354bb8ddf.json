@@ -1,0 +1,14 @@
+{
+  "syncKey": "inventory-transfer:66d70f7b-2ded-49d6-af00-37f07b20089c",
+  "value": {
+    "scope": "role",
+    "characterName": "一笑赴沧海",
+    "sourceServerName": "山东2区 - 水泊梁山",
+    "targetServerName": "华南区 - 钓鱼岛",
+    "transferCostRmb": 2100,
+    "occurredAt": "2026-07-16T02:22:00.000Z",
+    "id": "66d70f7b-2ded-49d6-af00-37f07b20089c",
+    "createdAt": "2026-07-24T02:33:33.646Z",
+    "updatedAt": "2026-07-24T02:37:15.121Z"
+  }
+}

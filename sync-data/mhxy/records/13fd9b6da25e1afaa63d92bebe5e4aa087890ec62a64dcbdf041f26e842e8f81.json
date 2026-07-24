@@ -1,0 +1,10 @@
+{
+  "syncKey": "inventory-target:[\"高级连击\",\"华南区 - 钓鱼岛\",\"堰无师5\"]",
+  "value": {
+    "itemName": "高级连击",
+    "serverName": "华南区 - 钓鱼岛",
+    "characterName": "堰无师5",
+    "expectedSellServerName": "华南区 - 钓鱼岛",
+    "updatedAt": "2026-07-09T03:40:20.368Z"
+  }
+}

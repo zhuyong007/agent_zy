@@ -1,0 +1,14 @@
+{
+  "syncKey": "inventory-transfer:bff1031e-13c0-4d03-97c2-e9958dc0906e",
+  "value": {
+    "scope": "role",
+    "characterName": "堰无师5",
+    "sourceServerName": "北京1区 - 五道口",
+    "targetServerName": "华南区 - 钓鱼岛",
+    "transferCostRmb": 0,
+    "occurredAt": "2026-07-24T02:37:00.000Z",
+    "id": "bff1031e-13c0-4d03-97c2-e9958dc0906e",
+    "createdAt": "2026-07-24T02:37:55.267Z",
+    "updatedAt": "2026-07-24T02:37:55.267Z"
+  }
+}
