@@ -531,14 +531,79 @@ textarea {
     inset 0 0 0 1px rgba(var(--accent-rgb), 0.04);
 }
 
+.command-rail__menu {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+
+.command-rail__menu::-webkit-scrollbar {
+  display: none;
+}
+
+.command-rail__menu.ant-menu-horizontal {
+  display: flex;
+  flex-wrap: nowrap;
+  line-height: 1;
+}
+
+.command-rail__menu.ant-menu-horizontal > .ant-menu-item {
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 max-content;
+  min-width: max-content;
+  max-width: none;
+  margin: 0;
+}
+
+.command-rail:not(.is-expanded) .command-rail__menu.ant-menu-horizontal > .command-link.is-hidden {
+  display: none !important;
+  flex: 0 0 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  width: 0 !important;
+  padding-inline: 0 !important;
+}
+
+.command-rail.is-expanded .command-rail__menu.ant-menu-horizontal > .command-link:not(.is-hidden) {
+  flex: 1 1 0;
+  min-width: max-content;
+}
+
+.command-rail__menu.ant-menu-horizontal > .ant-menu-item::after {
+  display: none;
+}
+
+.command-rail__menu .ant-menu-title-content,
+.command-rail__menu .ant-menu-title-content a {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  color: inherit;
+}
+
 .command-link {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  flex: 1 1 140px;
-  min-width: 0;
+  flex: 0 0 max-content;
+  min-width: max-content;
+  max-width: none;
   height: 100%;
   padding: 0 18px;
   color: rgba(209, 216, 231, 0.72);
@@ -575,13 +640,13 @@ textarea {
 }
 
 .command-link strong {
-  overflow: hidden;
-  width: 100%;
+  overflow: visible;
+  width: auto;
   font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-align: center;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -593,6 +658,8 @@ textarea {
 
 .command-link.is-hidden {
   flex: 0 0 0;
+  min-width: 0;
+  max-width: 0;
   width: 0;
   padding-inline: 0;
   opacity: 0;
@@ -601,11 +668,14 @@ textarea {
 }
 
 .command-rail.is-expanded .command-rail__nav {
-  width: min(1080px, calc(100vw - 280px));
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
 }
 
 .command-rail.is-expanded .command-link {
-  flex-basis: 0;
+  flex: 1 1 0;
+  min-width: max-content;
 }
 
 .command-route__toggle {
@@ -622,6 +692,13 @@ textarea {
   background: rgba(var(--accent-rgb), 0.04);
   cursor: pointer;
   z-index: 1;
+}
+
+.command-route__toggle.ant-btn,
+.command-restart.ant-btn,
+.theme-switcher__button.ant-btn {
+  color: inherit;
+  box-shadow: none;
 }
 
 .command-route__toggle span {
@@ -7513,6 +7590,76 @@ body[data-theme="day"] .manage-group__header {
   font-size: 0.7rem;
 }
 
+.manage-field .ant-input,
+.manage-field .ant-input-number,
+.manage-field .ant-select,
+.manage-field .ant-select-content {
+  width: 100%;
+}
+
+.manage-field .ant-input,
+.manage-field .ant-input-number,
+.manage-field .ant-select-selector,
+.manage-field .ant-select-content {
+  border-color: var(--manage-line) !important;
+  background: var(--manage-control) !important;
+  color: var(--manage-text) !important;
+}
+
+.manage-field .ant-select-selection-item,
+.manage-field .ant-select-content,
+.manage-field .ant-input-number-input {
+  color: var(--manage-text);
+}
+
+.ant-select-dropdown {
+  border: 1px solid var(--manage-line);
+  background: rgba(11, 18, 32, 0.98);
+  box-shadow: var(--manage-shadow);
+}
+
+.ant-select-dropdown .ant-select-item {
+  color: var(--manage-text);
+}
+
+.ant-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled),
+.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--manage-text);
+}
+
+body[data-theme="day"] .manage-field .ant-input,
+body[data-theme="day"] .manage-field .ant-input-number,
+body[data-theme="day"] .manage-field .ant-select-selector,
+body[data-theme="day"] .manage-field .ant-select-content {
+  border-color: rgba(19, 38, 61, 0.14) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--manage-text) !important;
+}
+
+body[data-theme="day"] .manage-field .ant-select-selection-item,
+body[data-theme="day"] .manage-field .ant-select-content,
+body[data-theme="day"] .manage-field .ant-input-number-input {
+  color: var(--manage-text);
+}
+
+body[data-theme="day"] .ant-select-dropdown {
+  border-color: rgba(19, 38, 61, 0.14);
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--manage-text);
+  box-shadow: 0 16px 42px rgba(17, 24, 39, 0.16);
+}
+
+body[data-theme="day"] .ant-select-dropdown .ant-select-item {
+  color: var(--manage-text);
+}
+
+body[data-theme="day"] .ant-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled),
+body[data-theme="day"] .ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(20, 184, 122, 0.12);
+  color: var(--manage-text);
+}
+
 .manage-field--toggle {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -9590,10 +9737,11 @@ body[data-theme="day"] .todo-scene-hero p {
   overflow: auto;
 }
 
-.model-profile-card__chips span,
-.model-check-grid label {
+.model-profile-card__chips .ant-tag,
+.model-check-grid .ant-checkbox-wrapper {
   padding: 6px 9px;
   border-radius: 999px;
+  border-color: transparent;
   background: rgba(255, 255, 255, 0.07);
   color: rgba(234, 240, 255, 0.72);
   font-size: 0.78rem;
@@ -9632,17 +9780,27 @@ body[data-theme="day"] .todo-scene-hero p {
   color: #ff9b9b;
 }
 
-.model-drawer {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  justify-content: flex-end;
-  background: rgba(3, 7, 18, 0.54);
+.model-drawer .ant-drawer-content {
+  background: rgba(11, 18, 32, 0.98);
+  color: var(--manage-text);
+}
+
+.model-drawer .ant-drawer-header {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(11, 18, 32, 0.98);
+}
+
+.model-drawer .ant-drawer-title,
+.model-drawer .ant-drawer-close {
+  color: var(--manage-text);
+}
+
+.model-drawer .ant-drawer-body {
+  padding: 0;
 }
 
 .model-drawer__panel {
-  width: min(520px, 100vw);
+  width: 100%;
   height: 100%;
   overflow: auto;
   display: grid;
@@ -9673,6 +9831,8 @@ body[data-theme="day"] .todo-scene-hero p {
   flex: 1;
 }
 
+body[data-theme="day"] .model-drawer .ant-drawer-content,
+body[data-theme="day"] .model-drawer .ant-drawer-header,
 body[data-theme="day"] .model-drawer__panel {
   background: rgba(255, 255, 255, 0.9);
   border-color: rgba(17, 24, 39, 0.1);
@@ -9681,8 +9841,8 @@ body[data-theme="day"] .model-drawer__panel {
 body[data-theme="day"] .model-profile-card .manage-card__header p,
 body[data-theme="day"] .model-profile-card__endpoint span,
 body[data-theme="day"] .model-profile-card__status-grid span,
-body[data-theme="day"] .model-profile-card__chips span,
-body[data-theme="day"] .model-check-grid label {
+body[data-theme="day"] .model-profile-card__chips .ant-tag,
+body[data-theme="day"] .model-check-grid .ant-checkbox-wrapper {
   color: rgba(41, 52, 74, 0.72);
 }
 
@@ -9691,9 +9851,9 @@ body[data-theme="day"] .model-profile-card__status-grid strong {
   color: rgba(17, 24, 39, 0.86);
 }
 
-body[data-theme="day"] .model-profile-card__chips span,
+body[data-theme="day"] .model-profile-card__chips .ant-tag,
 body[data-theme="day"] .model-profile-card__status-grid div,
-body[data-theme="day"] .model-check-grid label {
+body[data-theme="day"] .model-check-grid .ant-checkbox-wrapper {
   background: rgba(17, 24, 39, 0.06);
 }
 
@@ -10591,15 +10751,29 @@ body[data-theme="day"] .cinematic-project-controls input {
 .tools-card {
   display: grid;
   gap: 6px;
-  border: 1px solid var(--manage-line);
-  border-radius: 14px;
-  background: var(--manage-surface);
   color: var(--manage-text);
-  padding: 18px;
   text-decoration: none;
 }
 
+.tools-card .ant-card {
+  height: 100%;
+  border-color: var(--manage-line);
+  background: var(--manage-surface);
+}
+
+.tools-card .ant-card-body {
+  display: grid;
+  gap: 6px;
+  height: 100%;
+  padding: 18px;
+  color: var(--manage-text);
+}
+
 .tools-card:hover {
+  color: var(--manage-text);
+}
+
+.tools-card:hover .ant-card {
   border-color: var(--manage-line-strong);
   background: var(--manage-surface-hover);
 }
@@ -13402,7 +13576,8 @@ body[data-theme="day"] .interview-score-edit input {
 }
 
 .mhxy-cross-form h3,
-.mhxy-asset-add .mhxy-asset-editor h3 {
+.mhxy-asset-add .mhxy-asset-editor h3,
+.mhxy-edit-dialog .mhxy-asset-editor h3 {
   margin: 0;
   color: var(--ledger-paper);
   font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
@@ -13410,7 +13585,8 @@ body[data-theme="day"] .interview-score-edit input {
 }
 
 .mhxy-cross-form label,
-.mhxy-asset-add .mhxy-asset-editor label {
+.mhxy-asset-add .mhxy-asset-editor label,
+.mhxy-edit-dialog .mhxy-asset-editor label {
   color: var(--ledger-mist);
   font-size: 0.76rem;
 }
@@ -13418,7 +13594,9 @@ body[data-theme="day"] .interview-score-edit input {
 .mhxy-cross-form input,
 .mhxy-cross-form select,
 .mhxy-asset-add .mhxy-asset-editor input,
-.mhxy-asset-add .mhxy-asset-editor select {
+.mhxy-asset-add .mhxy-asset-editor select,
+.mhxy-edit-dialog .mhxy-asset-editor input,
+.mhxy-edit-dialog .mhxy-asset-editor select {
   border-color: var(--ledger-line);
   background: var(--ledger-ink);
   color: var(--ledger-paper);
@@ -13427,7 +13605,9 @@ body[data-theme="day"] .interview-score-edit input {
 .mhxy-cross-form input:focus,
 .mhxy-cross-form select:focus,
 .mhxy-asset-add .mhxy-asset-editor input:focus,
-.mhxy-asset-add .mhxy-asset-editor select:focus {
+.mhxy-asset-add .mhxy-asset-editor select:focus,
+.mhxy-edit-dialog .mhxy-asset-editor input:focus,
+.mhxy-edit-dialog .mhxy-asset-editor select:focus {
   border-color: var(--ledger-route);
   outline: 2px solid rgba(101, 181, 255, 0.16);
 }
@@ -13440,6 +13620,91 @@ body[data-theme="day"] .interview-score-edit input {
   background: var(--ledger-route);
   color: #071321;
   font-weight: 750;
+}
+
+.mhxy-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(4, 10, 18, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.mhxy-edit-dialog {
+  width: min(620px, 100%);
+  max-height: min(780px, calc(100vh - 44px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(101, 181, 255, 0.34);
+  border-radius: 20px;
+  background:
+    linear-gradient(90deg, rgba(101, 181, 255, 0.07), transparent 62%),
+    #101d2e;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.52);
+}
+
+.mhxy-edit-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(146, 165, 186, 0.18);
+}
+
+.mhxy-edit-dialog > header h2 {
+  margin: 3px 0 0;
+  color: var(--ledger-paper);
+  font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
+  font-size: 1.45rem;
+}
+
+.mhxy-edit-dialog > header button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(146, 165, 186, 0.22);
+  border-radius: 10px;
+  background: rgba(12, 23, 39, 0.72);
+  color: var(--ledger-mist);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mhxy-edit-dialog > header button:hover,
+.mhxy-edit-dialog > header button:focus-visible {
+  border-color: rgba(101, 181, 255, 0.48);
+  color: var(--ledger-paper);
+  outline: 0;
+}
+
+.mhxy-edit-dialog .mhxy-cross-form,
+.mhxy-edit-dialog .mhxy-asset-editor {
+  position: static;
+  width: 100%;
+  max-height: none;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mhxy-edit-dialog .mhxy-asset-editor {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.mhxy-edit-dialog--asset {
+  border-color: rgba(242, 179, 93, 0.34);
+  background:
+    linear-gradient(90deg, rgba(242, 179, 93, 0.07), transparent 62%),
+    #101d2e;
 }
 
 .mhxy-ledger-metrics,
@@ -13483,6 +13748,96 @@ body[data-theme="day"] .interview-score-edit input {
 
 .mhxy-cross-inventory {
   padding: 18px;
+}
+
+.mhxy-inventory-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.mhxy-inventory-group {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(101, 181, 255, 0.2);
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, rgba(101, 181, 255, 0.075), transparent 54%),
+    rgba(12, 23, 39, 0.5);
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.mhxy-inventory-group:hover {
+  border-color: rgba(101, 181, 255, 0.38);
+  background:
+    linear-gradient(90deg, rgba(101, 181, 255, 0.105), transparent 56%),
+    rgba(12, 23, 39, 0.66);
+  transform: translateY(-1px);
+}
+
+.mhxy-inventory-group > header {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.9fr) minmax(0, 1.8fr);
+  gap: 18px;
+  align-items: center;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--ledger-line);
+}
+
+.mhxy-inventory-group > header small {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ledger-route);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.66rem;
+}
+
+.mhxy-inventory-group h4 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  color: var(--ledger-paper);
+  font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
+  font-size: clamp(1.08rem, 1.7vw, 1.34rem);
+  font-weight: 650;
+}
+
+.mhxy-inventory-group h4 span {
+  color: var(--ledger-mist);
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.mhxy-inventory-group__totals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(146, 165, 186, 0.14);
+  border-radius: 11px;
+  background: rgba(146, 165, 186, 0.14);
+}
+
+.mhxy-inventory-group__totals span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  background: rgba(17, 31, 49, 0.72);
+  color: var(--ledger-mist);
+  font-size: 0.66rem;
+}
+
+.mhxy-inventory-group__totals strong {
+  overflow: hidden;
+  color: var(--ledger-paper);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mhxy-coin-ledger {
@@ -13716,8 +14071,8 @@ body[data-theme="day"] .interview-score-edit input {
   gap: 0;
   margin-top: 0;
   overflow: hidden;
-  border: 1px solid var(--ledger-line);
-  border-radius: 13px;
+  border: 0;
+  border-radius: 0;
 }
 
 .mhxy-cross-server .mhxy-row {
@@ -13847,7 +14202,8 @@ body[data-theme="day"] .interview-score-edit input {
   border-color: rgba(242, 179, 93, 0.34);
 }
 
-.mhxy-asset-add .mhxy-asset-editor button[type="submit"] {
+.mhxy-asset-add .mhxy-asset-editor button[type="submit"],
+.mhxy-edit-dialog .mhxy-asset-editor button[type="submit"] {
   background: var(--ledger-amber);
   color: #211508;
 }
@@ -13862,6 +14218,95 @@ body[data-theme="day"] .interview-score-edit input {
 
 .mhxy-assets .mhxy-asset-list > section + section {
   border-top-color: var(--ledger-line);
+}
+
+.mhxy-asset-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.mhxy-asset-group {
+  overflow: hidden;
+  border: 1px solid rgba(242, 179, 93, 0.2);
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, rgba(242, 179, 93, 0.07), transparent 54%),
+    rgba(12, 23, 39, 0.5);
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.mhxy-asset-group:hover {
+  border-color: rgba(242, 179, 93, 0.38);
+  background:
+    linear-gradient(90deg, rgba(242, 179, 93, 0.1), transparent 56%),
+    rgba(12, 23, 39, 0.66);
+  transform: translateY(-1px);
+}
+
+.mhxy-asset-group > header {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(220px, 0.75fr);
+  gap: 16px;
+  align-items: center;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--ledger-line);
+}
+
+.mhxy-asset-group > header small {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ledger-amber);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.66rem;
+}
+
+.mhxy-asset-group h4 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  color: var(--ledger-paper);
+  font-family: "Bahnschrift SemiCondensed", "Microsoft YaHei UI", sans-serif;
+  font-size: clamp(1.08rem, 1.7vw, 1.34rem);
+  font-weight: 650;
+}
+
+.mhxy-asset-group h4 span {
+  color: var(--ledger-mist);
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.mhxy-asset-group__totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(146, 165, 186, 0.14);
+  border-radius: 11px;
+  background: rgba(146, 165, 186, 0.14);
+}
+
+.mhxy-asset-group__totals span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  background: rgba(17, 31, 49, 0.72);
+  color: var(--ledger-mist);
+  font-size: 0.66rem;
+}
+
+.mhxy-asset-group__totals strong {
+  overflow: hidden;
+  color: var(--ledger-paper);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mhxy-assets .mhxy-asset-toolbar h3 {
@@ -13880,8 +14325,8 @@ body[data-theme="day"] .interview-score-edit input {
 .mhxy-assets .mhxy-asset-table {
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--ledger-line);
-  border-radius: 13px;
+  border: 0;
+  border-radius: 0;
 }
 
 .mhxy-assets .mhxy-asset-row {
@@ -13978,7 +14423,19 @@ body[data-theme="day"] .interview-score-edit input {
     padding: 13px;
   }
 
-  .mhxy-cross-server .mhxy-table,
+  .mhxy-inventory-group > header {
+    grid-template-columns: 1fr;
+  }
+
+  .mhxy-asset-group > header {
+    grid-template-columns: 1fr;
+  }
+
+  .mhxy-inventory-group__totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mhxy-inventory-group .mhxy-table,
   .mhxy-assets .mhxy-asset-table {
     overflow-x: auto;
   }
@@ -13996,6 +14453,8 @@ body[data-theme="day"] .interview-score-edit input {
 @media (prefers-reduced-motion: reduce) {
   .mhxy-cross-action summary,
   .mhxy-asset-add summary,
+  .mhxy-inventory-group,
+  .mhxy-asset-group,
   .mhxy-cross-server,
   .mhxy-assets {
     animation: none;

@@ -621,8 +621,8 @@ describe("mhxy service", () => {
     service.createTrade({ type: "buy", itemName: "无行情", quantity: 1, unitPrice: 50, currency: "rmb", occurredAt: "2026-06-01T11:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
     service.createPriceSnapshot({ itemName: "有行情", currency: "rmb", rmbUnitPrice: 140, capturedAt: "2026-06-02T10:00:00.000Z", serverName: "长安城" });
     service.createGameCoinPurchase({ acquiredAt: "2026-06-01T09:00:00.000Z", gameCoinAmount: 1_000_000, rmbCost: 100, serverName: "长安城", characterName: "商人甲" });
-    service.createAssetFlip({ category: "role", name: "持有角色", buyAt: "2026-06-01T08:00:00.000Z", buyPriceRmb: 500 });
-    service.createAssetFlip({ category: "equipment", name: "已售装备", buyAt: "2026-06-01T07:00:00.000Z", buyPriceRmb: 200, sellAt: "2026-06-03T10:00:00.000Z", sellPriceRmb: 250 });
+    service.createAssetFlip({ category: "role", name: "持有角色", buyAt: "2026-06-01T08:00:00.000Z", buyPriceRmb: 500, serverName: "长安城" });
+    service.createAssetFlip({ category: "equipment", name: "已售装备", buyAt: "2026-06-01T07:00:00.000Z", buyPriceRmb: 200, sellAt: "2026-06-03T10:00:00.000Z", sellPriceRmb: 250, serverName: "长安城", characterName: "商人甲" });
 
     expect(service.getDashboard().overviewSummary).toEqual({
       crossServer: {
@@ -760,7 +760,9 @@ describe("mhxy service", () => {
       buyAt: "2026-06-02T10:00:00.000Z",
       buyPriceRmb: 3000,
       sellAt: "2026-06-04T10:00:00.000Z",
-      sellPriceRmb: 2800
+      sellPriceRmb: 2800,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
 
     const dashboard = service.getDashboard();
@@ -780,6 +782,24 @@ describe("mhxy service", () => {
       holdingCostRmb: 1200,
       realizedProfitRmb: -200
     });
+  });
+
+  it("requires located asset flips and owners for summons or equipment", () => {
+    const service = createService();
+
+    expect(() => service.createAssetFlip({
+      category: "role",
+      name: "无区服角色",
+      buyAt: "2026-06-01T10:00:00.000Z",
+      buyPriceRmb: 100
+    })).toThrow("区服不能为空");
+    expect(() => service.createAssetFlip({
+      category: "summon",
+      name: "无归属召唤兽",
+      buyAt: "2026-06-01T10:00:00.000Z",
+      buyPriceRmb: 100,
+      serverName: "长安城"
+    })).toThrow("装备和召唤兽必须填写归属角色");
   });
 
   it("imports role asset flips and reports generic asset errors", () => {
@@ -831,7 +851,9 @@ describe("mhxy service", () => {
       category: "summon",
       name: "力劈童子",
       buyAt: "2026-06-01T10:00:00.000Z",
-      buyPriceRmb: 800
+      buyPriceRmb: 800,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
 
     expect(() => service.updateAssetFlip(record.id, { sellPriceRmb: 950 })).toThrow(
@@ -873,7 +895,9 @@ describe("mhxy service", () => {
       name: "测试装备",
       buyAt: "2026-06-02T10:00:00.000Z",
       purchaseCurrency: "gameCoin",
-      gameCoinCost: 666_666
+      gameCoinCost: 666_666,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
 
     expect(asset).toMatchObject({
@@ -921,7 +945,9 @@ describe("mhxy service", () => {
       name: "跨批次召唤兽",
       buyAt: "2026-06-03T10:00:00.000Z",
       purchaseCurrency: "gameCoin",
-      gameCoinCost: 1_500_000
+      gameCoinCost: 1_500_000,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
     expect(asset.buyPriceRmb).toBe(20);
     expect(asset.gameCoinAllocations).toEqual([
@@ -935,7 +961,9 @@ describe("mhxy service", () => {
         name: "余额不足装备",
         buyAt: "2026-06-04T10:00:00.000Z",
         purchaseCurrency: "gameCoin",
-        gameCoinCost: 600_000
+        gameCoinCost: 600_000,
+        serverName: "长安城",
+        characterName: "商人甲"
       })
     ).toThrow("游戏币余额不足");
     expect(service.getDashboard().assetFlips).toHaveLength(1);
@@ -954,7 +982,9 @@ describe("mhxy service", () => {
         name: `批次物品 ${index}`,
         buyAt: new Date(Date.UTC(2026, 5, 2, 10, 0, index)).toISOString(),
         purchaseCurrency: "gameCoin",
-        gameCoinCost: 666_666
+        gameCoinCost: 666_666,
+        serverName: "长安城",
+        characterName: "商人甲"
       });
     }
 
@@ -977,7 +1007,9 @@ describe("mhxy service", () => {
       purchaseCurrency: "gameCoin",
       gameCoinCost: 100,
       sellAt: "2026-06-04T10:00:00.000Z",
-      sellPriceRmb: 30
+      sellPriceRmb: 30,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
     service.createGameCoinPurchase({
       acquiredAt: "2026-05-01T10:00:00.000Z",
@@ -1005,7 +1037,9 @@ describe("mhxy service", () => {
       name: "编辑后仍冻结成本",
       buyAt: "2026-06-03T10:00:00.000Z",
       purchaseCurrency: "gameCoin",
-      gameCoinCost: 100
+      gameCoinCost: 100,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
     service.createGameCoinPurchase({
       acquiredAt: "2026-05-01T10:00:00.000Z",
@@ -1043,7 +1077,9 @@ describe("mhxy service", () => {
       name: "引用批次",
       buyAt: "2026-06-02T10:00:00.000Z",
       purchaseCurrency: "gameCoin",
-      gameCoinCost: 100
+      gameCoinCost: 100,
+      serverName: "长安城",
+      characterName: "商人甲"
     });
     expect(() => service.deleteGameCoinPurchase(purchase.id)).toThrow("游戏币批次不存在");
     service.deleteAssetFlip(asset.id);
@@ -1234,7 +1270,9 @@ describe("mhxy service", () => {
       name: "Asset Item",
       buyAt: "2026-06-03T10:00:00.000Z",
       purchaseCurrency: "gameCoin",
-      gameCoinCost: 100
+      gameCoinCost: 100,
+      serverName: "Target Server",
+      characterName: "Buyer"
     });
 
     expect(trade.gameCoinAllocations).toEqual([

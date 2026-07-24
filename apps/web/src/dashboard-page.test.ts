@@ -21,6 +21,57 @@ vi.mock("@tanstack/react-router", async () => {
 
 import { CinematicPanel, CommandRail, ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
 
+class TestResizeObserver {
+  observe() {
+    return undefined;
+  }
+
+  unobserve() {
+    return undefined;
+  }
+
+  disconnect() {
+    return undefined;
+  }
+}
+
+globalThis.ResizeObserver = TestResizeObserver as typeof ResizeObserver;
+Object.defineProperty(window, "getComputedStyle", {
+  value: () => ({
+    getPropertyValue: () => "",
+    width: "0px",
+    height: "0px",
+    overflowX: "hidden",
+    overflowY: "hidden"
+  }),
+  configurable: true
+});
+
+async function chooseAntSelectOption(selectRoot: Element, optionText: string) {
+  const selector = selectRoot.matches(".ant-select-selector")
+    ? selectRoot
+    : selectRoot.matches(".ant-select-content")
+      ? selectRoot
+      : selectRoot.querySelector(".ant-select-selector, .ant-select-content") ??
+      selectRoot.closest(".ant-select")?.querySelector(".ant-select-selector, .ant-select-content");
+
+  expect(selector).not.toBeNull();
+
+  await act(async () => {
+    selector?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  });
+
+  const option = Array.from(document.body.querySelectorAll(".ant-select-item-option")).find((item) =>
+    item.textContent?.includes(optionText)
+  );
+
+  expect(option).not.toBeNull();
+
+  await act(async () => {
+    option?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+}
+
 const sampleItems: NewsFeedItem[] = [
   {
     id: "news-1",
@@ -509,18 +560,16 @@ describe("ModelManagementSection", () => {
       addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const providerSelect = Array.from(container.querySelectorAll("select")).find(
-      (select) => (select as HTMLSelectElement).value === "modelscope"
-    ) as HTMLSelectElement;
-    providerSelect.value = "openai";
+    const providerSelect = document.body.querySelector(".model-drawer .ant-select");
+    expect(providerSelect).not.toBeNull();
 
-    await act(async () => {
-      providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await chooseAntSelectOption(providerSelect!, "OpenAI");
 
     const inputs = Array.from(container.querySelectorAll("input")) as HTMLInputElement[];
-    expect(inputs.some((input) => input.value === "gpt-test")).toBe(true);
-    expect(inputs.some((input) => input.value === "https://api.openai.com/v1")).toBe(true);
+    const drawerInputs = Array.from(document.body.querySelectorAll(".model-drawer input")) as HTMLInputElement[];
+    const allInputs = [...inputs, ...drawerInputs];
+    expect(allInputs.some((input) => input.value === "gpt-test")).toBe(true);
+    expect(allInputs.some((input) => input.value === "https://api.openai.com/v1")).toBe(true);
   });
 });
 
@@ -588,22 +637,16 @@ describe("ManageModuleCard", () => {
     expect(container.textContent).toContain("配置模型");
     expect(container.querySelector(".manage-card--interactive")).not.toBeNull();
 
-    const sizeSelect = Array.from(container.querySelectorAll("select")).find(
-      (select) => (select as HTMLSelectElement).value === "smaller"
-    ) as HTMLSelectElement;
+    const selectRoots = Array.from(container.querySelectorAll(".ant-select"));
+    const sizeSelect = selectRoots.find((select) => select.textContent?.includes("较小"));
 
     expect(sizeSelect).toBeTruthy();
 
-    const modelSelect = Array.from(container.querySelectorAll("select")).find((select) =>
-      Array.from(select.options).some((option) => option.value === "profile-1")
-    ) as HTMLSelectElement;
+    const modelSelect = selectRoots.find((select) => select.textContent?.includes("继承默认"));
 
     expect(modelSelect).toBeTruthy();
-    modelSelect.value = "profile-1";
 
-    await act(async () => {
-      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await chooseAntSelectOption(modelSelect!, "DeepSeek History");
 
     expect(onAgentDefaultModelChange).toHaveBeenCalledWith("profile-1");
   });

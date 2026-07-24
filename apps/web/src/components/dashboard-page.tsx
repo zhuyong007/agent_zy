@@ -2,6 +2,15 @@ import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Button from "antd/es/button";
+import Checkbox from "antd/es/checkbox";
+import Drawer from "antd/es/drawer";
+import Input from "antd/es/input";
+import InputNumber from "antd/es/input-number";
+import Menu from "antd/es/menu";
+import Select from "antd/es/select";
+import Switch from "antd/es/switch";
+import Tag from "antd/es/tag";
 import {
   DndContext,
   DragOverlay,
@@ -537,29 +546,34 @@ export function CommandRail({
     <header className={`command-rail${showNavigation ? "" : " command-rail--compact"}${expanded ? " is-expanded" : ""}`}>
       {showNavigation ? (
         <nav className="command-rail__nav" aria-label="主导航">
-          {visibleRailItems.map((item) => {
-            const active = activeSection === item.key;
-            const label = item.moduleId ? getModuleDisplayName(item.moduleId, navigationPreferences) : item.label;
+          <Menu
+            className="command-rail__menu"
+            disabledOverflow
+            mode="horizontal"
+            selectedKeys={[activeSection]}
+            items={visibleRailItems.map((item) => {
+              const active = activeSection === item.key;
+              const label = item.moduleId ? getModuleDisplayName(item.moduleId, navigationPreferences) : item.label;
 
-            return (
-              <Link
-                key={item.key}
-                className={`command-link${active ? " is-active" : ""}${expanded || active ? "" : " is-hidden"}`}
-                to={item.to}
-              >
-                <strong>{label}</strong>
-              </Link>
-            );
-          })}
-          <button
-            type="button"
+              return {
+                key: item.key,
+                className: `command-link${active ? " is-active" : ""}${expanded || active ? "" : " is-hidden"}`,
+                label: (
+                  <Link to={item.to}>
+                    <strong>{label}</strong>
+                  </Link>
+                )
+              };
+            })}
+          />
+          <Button
             className="command-route__toggle"
             onClick={onToggle}
             aria-label={expanded ? "收回顶栏路由" : "展开顶栏路由"}
             aria-expanded={expanded}
           >
             <span aria-hidden="true" />
-          </button>
+          </Button>
         </nav>
       ) : null}
       <div className="command-rail__tools">
@@ -568,24 +582,24 @@ export function CommandRail({
           <span>{dateLabel}</span>
         </div>
         {onRestartProject ? (
-          <button
-            type="button"
+          <Button
             className="command-restart"
             onClick={onRestartProject}
             disabled={isRestarting}
+            loading={isRestarting}
             aria-label="重启项目"
           >
             {isRestarting ? "重启中" : "重启"}
-          </button>
+          </Button>
         ) : null}
         <div className="theme-switcher theme-switcher--inline" role="group" aria-label="切换主题">
           {themeOptions.map((theme) => (
-            <button
+            <Button
               key={theme.key}
-              type="button"
               className={`theme-switcher__button theme-switcher__button--${theme.key}${themeKey === theme.key ? " is-active" : ""
                 }`}
               aria-label={theme.label}
+              title={theme.label}
               aria-pressed={themeKey === theme.key}
               onClick={() => {
                 if (isThemeKey(theme.key)) {
@@ -594,7 +608,7 @@ export function CommandRail({
               }}
             >
               <span className="theme-switcher__icon" aria-hidden="true" />
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -2084,27 +2098,24 @@ export function ManageModuleCard({
       <div className="manage-card__controls">
         <label className="manage-field manage-field--toggle">
           <span>首页展示</span>
-          <input
-            type="checkbox"
+          <Switch
             checked={preference.visible}
-            onChange={(event) => onVisibleChange(event.target.checked)}
+            onChange={onVisibleChange}
           />
         </label>
 
         <label className={`manage-field manage-field--toggle${supportsNavigation ? "" : " is-disabled"}`}>
           <span>顶部导航</span>
-          <input
-            type="checkbox"
+          <Switch
             checked={supportsNavigation && preference.showInNavigation}
             disabled={!supportsNavigation}
-            onChange={(event) => onNavigationChange(event.target.checked)}
+            onChange={onNavigationChange}
           />
         </label>
 
         <label className="manage-field">
           <span>模块名称</span>
-          <input
-            type="text"
+          <Input
             value={displayName}
             onChange={(event) => onNameChange(event.target.value)}
           />
@@ -2112,32 +2123,30 @@ export function ManageModuleCard({
 
         <label className="manage-field">
           <span>模块尺寸</span>
-          <select
+          <Select
             value={preference.size}
-            onChange={(event) => onSizeChange(event.target.value as HomeModuleSize)}
-          >
-            {HOME_MODULE_SIZE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => onSizeChange(value)}
+            options={HOME_MODULE_SIZE_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label
+            }))}
+          />
         </label>
 
         {canConfigureModel ? (
           <label className="manage-field">
             <span>配置模型</span>
-            <select
+            <Select
               value={agentDefaultProfileId ?? ""}
-              onChange={(event) => onAgentDefaultModelChange?.(event.target.value || null)}
-            >
-              <option value="">继承默认</option>
-              {(modelProfiles ?? []).map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.displayName} · {profile.provider}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => onAgentDefaultModelChange?.(value || null)}
+              options={[
+                { value: "", label: "继承默认" },
+                ...(modelProfiles ?? []).map((profile) => ({
+                  value: profile.id,
+                  label: `${profile.displayName} · ${profile.provider}`
+                }))
+              ]}
+            />
           </label>
         ) : null}
       </div>
@@ -2258,9 +2267,9 @@ export function ModelManagementSection({
           <h2 id="manage-model-heading">模型管理</h2>
           <p>统一配置模型实例、密钥状态与用途绑定，agent 只通过后端运行时调用模型。</p>
         </div>
-        <button type="button" onClick={openCreate}>
+        <Button type="primary" onClick={openCreate}>
           添加模型
-        </button>
+        </Button>
       </div>
 
       <div className="manage-card-grid manage-card-grid--models">
@@ -2300,7 +2309,7 @@ export function ModelManagementSection({
 
             <div className="model-profile-card__chips" aria-label="模型能力">
               {profile.capabilities.map((capability) => (
-                <span key={capability}>{capability}</span>
+                <Tag key={capability}>{capability}</Tag>
               ))}
             </div>
 
@@ -2310,15 +2319,15 @@ export function ModelManagementSection({
             </div>
 
             <div className="model-profile-card__actions">
-              <button type="button" onClick={() => onTest(profile.id)}>
+              <Button onClick={() => onTest(profile.id)}>
                 测试
-              </button>
-              <button type="button" onClick={() => openEdit(profile)}>
+              </Button>
+              <Button onClick={() => openEdit(profile)}>
                 编辑
-              </button>
-              <button type="button" onClick={() => onDelete(profile.id)}>
+              </Button>
+              <Button danger onClick={() => onDelete(profile.id)}>
                 删除
-              </button>
+              </Button>
             </div>
 
             {testResult?.profileId === profile.id ? (
@@ -2330,104 +2339,108 @@ export function ModelManagementSection({
         ))}
       </div>
 
-      {drawerOpen ? (
-        <div className="model-drawer" role="dialog" aria-label="编辑模型配置">
+      <Drawer
+        className="model-drawer"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        size="default"
+        title={editingProfile ? "编辑模型" : "添加模型"}
+      >
           <form className="model-drawer__panel" onSubmit={submitForm}>
             <div className="model-drawer__header">
               <div>
                 <p className="eyebrow">Model Instance</p>
                 <h3>{editingProfile ? "编辑模型" : "添加模型"}</h3>
               </div>
-              <button type="button" onClick={() => setDrawerOpen(false)}>
+              <Button onClick={() => setDrawerOpen(false)}>
                 关闭
-              </button>
+              </Button>
             </div>
 
             <label className="manage-field">
               <span>Provider</span>
-              <select value={form.provider} onChange={(event) => handleProviderChange(event.target.value as ModelProviderId)}>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={form.provider}
+                onChange={(value) => handleProviderChange(value)}
+                options={providers.map((provider) => ({
+                  value: provider.id,
+                  label: provider.name
+                }))}
+              />
             </label>
             <label className="manage-field">
               <span>显示名称</span>
-              <input value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
+              <Input value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
             </label>
             <label className="manage-field">
               <span>模型 ID</span>
-              <input value={form.modelName} onChange={(event) => setForm((current) => ({ ...current, modelName: event.target.value }))} />
+              <Input value={form.modelName} onChange={(event) => setForm((current) => ({ ...current, modelName: event.target.value }))} />
             </label>
             <label className="manage-field">
               <span>Base URL</span>
-              <input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} />
+              <Input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} />
             </label>
             <label className="manage-field">
               <span>API Key {editingProfile?.maskedKey ? `(${editingProfile.maskedKey})` : ""}</span>
               <div className="model-key-input">
-                <input
+                <Input.Password
                   type={showApiKey ? "text" : "password"}
                   value={form.apiKey ?? ""}
                   placeholder={editingProfile?.hasApiKey ? "留空则不修改" : "输入后由后端保存"}
+                  visibilityToggle={false}
                   onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
                 />
-                <button type="button" onClick={() => setShowApiKey((value) => !value)}>
+                <Button onClick={() => setShowApiKey((value) => !value)}>
                   {showApiKey ? "隐藏" : "显示"}
-                </button>
+                </Button>
               </div>
             </label>
 
             <div className="model-check-grid" aria-label="能力选择">
               {MODEL_CAPABILITIES.map((capability) => (
-                <label key={capability}>
-                  <input
-                    type="checkbox"
+                <Checkbox
+                  key={capability}
                     checked={form.capabilities.includes(capability)}
                     disabled={selectedProvider ? !selectedProvider.supportedCapabilities.includes(capability) : false}
                     onChange={() => setForm((current) => ({ ...current, capabilities: toggleListValue(current.capabilities, capability) }))}
-                  />
-                  <span>{capability}</span>
-                </label>
+                >
+                  {capability}
+                </Checkbox>
               ))}
             </div>
             <div className="model-check-grid" aria-label="用途选择">
               {MODEL_PURPOSES.map((purpose) => (
-                <label key={purpose}>
-                  <input
-                    type="checkbox"
+                <Checkbox
+                  key={purpose}
                     checked={form.purpose.includes(purpose)}
                     onChange={() => setForm((current) => ({ ...current, purpose: toggleListValue(current.purpose, purpose) }))}
-                  />
-                  <span>{purpose}</span>
-                </label>
+                >
+                  {purpose}
+                </Checkbox>
               ))}
             </div>
 
             <div className="model-drawer__numbers">
               <label className="manage-field">
                 <span>Temperature</span>
-                <input type="number" step="0.1" value={form.temperature ?? ""} onChange={(event) => setForm((current) => ({ ...current, temperature: event.target.value ? Number(event.target.value) : null }))} />
+                <InputNumber step={0.1} value={form.temperature} onChange={(value) => setForm((current) => ({ ...current, temperature: value }))} />
               </label>
               <label className="manage-field">
                 <span>Max Tokens</span>
-                <input type="number" value={form.maxTokens ?? ""} onChange={(event) => setForm((current) => ({ ...current, maxTokens: event.target.value ? Number(event.target.value) : null }))} />
+                <InputNumber value={form.maxTokens} onChange={(value) => setForm((current) => ({ ...current, maxTokens: value }))} />
               </label>
             </div>
             <label className="manage-field manage-field--toggle">
               <span>启用</span>
-              <input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} />
+              <Switch checked={form.enabled} onChange={(checked) => setForm((current) => ({ ...current, enabled: checked }))} />
             </label>
             <label className="manage-field manage-field--toggle">
               <span>设为默认</span>
-              <input type="checkbox" checked={form.isDefault} onChange={(event) => setForm((current) => ({ ...current, isDefault: event.target.checked }))} />
+              <Switch checked={form.isDefault} onChange={(checked) => setForm((current) => ({ ...current, isDefault: checked }))} />
             </label>
-            <button type="submit">保存模型</button>
+            <Button type="primary" htmlType="submit">保存模型</Button>
           </form>
-        </div>
-      ) : null}
+      </Drawer>
     </section>
   );
 }
@@ -2558,11 +2571,10 @@ export function HomeManagePage() {
             <p>按子智能体拆分首页展示、模型绑定与视觉背景，便于继续增加新的配置项。</p>
           </div>
           <div className="manage-shell__actions">
-            <button type="button" onClick={resetLayout}>
+            <Button onClick={resetLayout}>
               重置首页布局
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => {
                 setActiveBackground(null);
                 if (fileInputRef.current) {
@@ -2571,7 +2583,7 @@ export function HomeManagePage() {
               }}
             >
               清空背景图
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -2671,12 +2683,12 @@ export function HomeManagePage() {
 
                 <div className="theme-switcher" role="group" aria-label="切换主题">
                   {themeOptions.map((theme) => (
-                    <button
+                    <Button
                       key={theme.key}
-                      type="button"
                       className={`theme-switcher__button theme-switcher__button--${theme.key}${themeKey === theme.key ? " is-active" : ""
                         }`}
                       aria-label={theme.label}
+                      title={theme.label}
                       aria-pressed={themeKey === theme.key}
                       onClick={() => {
                         if (isThemeKey(theme.key)) {
@@ -2686,7 +2698,7 @@ export function HomeManagePage() {
                     >
                       <span className="theme-switcher__icon" />
                       <span className="theme-switcher__label">{theme.label}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
@@ -2752,9 +2764,9 @@ export function HomeManagePage() {
                             void handleBackgroundUpload(event);
                           }}
                         />
-                        <button type="button" onClick={() => fileInputRef.current?.click()}>
+                        <Button onClick={() => fileInputRef.current?.click()}>
                           选择图片
-                        </button>
+                        </Button>
                         <span>不压缩原图</span>
                       </div>
                       {backgroundUploadError ? <p className="manage-upload__error">{backgroundUploadError}</p> : null}
@@ -2774,10 +2786,9 @@ export function HomeManagePage() {
                       </div>
                       <label className="manage-field manage-field--toggle background-visibility-toggle">
                         <span>隐藏背景图</span>
-                        <input
-                          type="checkbox"
+                        <Switch
                           checked={!backgroundVisible}
-                          onChange={(event) => setBackgroundVisible(!event.target.checked)}
+                          onChange={(checked) => setBackgroundVisible(!checked)}
                         />
                       </label>
                     </div>
@@ -2811,21 +2822,20 @@ export function HomeManagePage() {
                             <p>{formatDateTime(background.createdAt)}</p>
                           </div>
                           <div className="background-history__actions">
-                            <button
-                              type="button"
+                            <Button
                               disabled={activeBackgroundId === background.id}
                               onClick={() => setActiveBackground(background.id)}
                             >
                               {activeBackgroundId === background.id ? "当前选择" : "设为当前"}
-                            </button>
-                            <button
-                              type="button"
+                            </Button>
+                            <Button
+                              danger
                               onClick={() => {
                                 void removeBackground(background.id);
                               }}
                             >
                               删除
-                            </button>
+                            </Button>
                           </div>
                         </article>
                       ))}
@@ -3063,9 +3073,9 @@ export function DashboardPage() {
             <span>{restartNotice.message}</span>
           </div>
           {restartNotice.tone !== "pending" ? (
-            <button type="button" onClick={() => setRestartNotice(null)} aria-label="关闭重启提示">
+            <Button onClick={() => setRestartNotice(null)} aria-label="关闭重启提示">
               关闭
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}

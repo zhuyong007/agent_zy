@@ -93,6 +93,12 @@ function normalizeAssetFlip(
     throw new Error("卖出时间和卖出价格必须同时填写");
   }
   if (hasSellPrice) assertFiniteNonNegative(input.sellPriceRmb as number, "卖出价格");
+  const serverName = normalizeLabel(input.serverName);
+  if (!serverName) throw new Error("区服不能为空");
+  const characterName = normalizeLabel(input.characterName);
+  if (input.category !== "role" && !characterName) {
+    throw new Error("装备和召唤兽必须填写归属角色");
+  }
   const buyAt = new Date(input.buyAt).toISOString();
   const sellAt = hasSellAt ? normalizeOptionalDate(input.sellAt, "卖出时间") : undefined;
   if (sellAt && sellAt < buyAt) throw new Error("卖出时间不能早于买入时间");
@@ -124,9 +130,9 @@ function normalizeAssetFlip(
     ...(sellPriceRmb !== undefined ? { sellPriceRmb } : {}),
     status,
     profitRmb: sellPriceRmb === undefined ? null : roundRmb(sellPriceRmb - buyPriceRmb),
-    ...(normalizeLabel(input.serverName) ? { serverName: normalizeLabel(input.serverName) } : {}),
-    ...(input.category !== "role" && normalizeLabel(input.characterName)
-      ? { characterName: normalizeLabel(input.characterName) }
+    serverName,
+    ...(input.category !== "role" && characterName
+      ? { characterName }
       : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     createdAt: existing?.createdAt ?? timestamp,

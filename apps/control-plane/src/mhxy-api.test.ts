@@ -307,13 +307,16 @@ describe("mhxy API", () => {
           name: "160 项链",
           buyAt: "2026-06-01T10:00:00.000Z",
           buyPriceRmb: 3000.236,
-          serverName: "长安城"
+          serverName: "长安城",
+          characterName: "商人甲"
         }
       });
       expect(created.statusCode).toBe(200);
       expect(created.json()).toMatchObject({
         name: "160 项链",
         buyPriceRmb: 3000.24,
+        serverName: "长安城",
+        characterName: "商人甲",
         status: "holding",
         profitRmb: null
       });
@@ -500,14 +503,18 @@ describe("mhxy API", () => {
           buyAt: "2026-06-02T10:00:00.000Z",
           purchaseCurrency: "gameCoin",
           gameCoinCost: 666_666,
-          buyPriceRmb: 999
+          buyPriceRmb: 999,
+          serverName: "长安城",
+          characterName: "商人甲"
         }
       });
       expect(asset.statusCode).toBe(200);
       expect(asset.json()).toMatchObject({
         buyPriceRmb: 5.11,
         purchaseCurrency: "gameCoin",
-        gameCoinCost: 666_666
+        gameCoinCost: 666_666,
+        serverName: "长安城",
+        characterName: "商人甲"
       });
 
       const insufficient = await app.inject({
@@ -518,7 +525,9 @@ describe("mhxy API", () => {
           name: "余额不足召唤兽",
           buyAt: "2026-06-02T11:00:00.000Z",
           purchaseCurrency: "gameCoin",
-          gameCoinCost: 30_000_000
+          gameCoinCost: 30_000_000,
+          serverName: "长安城",
+          characterName: "商人甲"
         }
       });
       expect(insufficient.statusCode).toBe(409);

@@ -276,6 +276,7 @@ import {
   createMhxyTrade,
   deleteMhxyAssetFlip,
   fetchMhxyDashboard,
+  updateMhxyInventoryTransfer,
   updateMhxyPriceSeries,
   updateMhxyTrade,
   updateMhxyAssetFlip
@@ -409,17 +410,22 @@ describe("MhxyPage", () => {
     const transferDetails = Array.from(container.querySelectorAll(".mhxy-cross-action"))[1] as HTMLDetailsElement;
     await setDetailsOpen(transferDetails, true);
     const form = transferDetails.querySelector('[data-form="inventory-transfer"]') as HTMLFormElement;
-    const role = form.querySelector('[name="roleLocation"]') as HTMLSelectElement;
+    const sourceServer = form.querySelector('[name="sourceServerName"]') as HTMLInputElement;
+    const role = form.querySelector('[name="characterName"]') as HTMLInputElement;
 
-    expect(Array.from(role.options).map((option) => option.textContent)).toEqual([
-      "商人甲 · 山东2区-水泊梁山"
-    ]);
+    expect(sourceServer.getAttribute("list")).toBe("mhxy-transfer-source-server-options");
+    expect(role.getAttribute("list")).toBe("mhxy-transfer-role-options");
+    expect(Array.from(form.querySelectorAll("#mhxy-transfer-source-server-options option")).map((option) => option.getAttribute("value")))
+      .toContain("山东2区-水泊梁山");
+    expect(Array.from(form.querySelectorAll("#mhxy-transfer-role-options option")).map((option) => option.getAttribute("value")))
+      .toContain("商人甲");
     expect(form.querySelector('[name="itemName"]')).toBeNull();
     expect(form.querySelector('[name="quantity"]')).toBeNull();
     expect(form.querySelector('[name="targetCharacterName"]')).toBeNull();
 
     await act(async () => {
-      change(role, JSON.stringify(["山东2区-水泊梁山", "商人甲"]));
+      change(sourceServer, "山东2区-水泊梁山");
+      change(role, "商人甲");
       change(form.querySelector('[name="targetServerName"]') as HTMLInputElement, "紫禁城");
       change(form.querySelector('[name="transferCostRmb"]') as HTMLInputElement, "20");
       change(form.querySelector('[name="note"]') as HTMLInputElement, "整号转服");
@@ -433,6 +439,44 @@ describe("MhxyPage", () => {
       targetServerName: "紫禁城",
       transferCostRmb: 20,
       note: "整号转服"
+    }));
+  });
+
+  it("uses editable dropdown suggestions for cross-server and asset locations", async () => {
+    const container = await renderPage();
+    const tradeForm = container.querySelector('[data-form="trade"]') as HTMLFormElement;
+    const tradeServer = tradeForm.querySelector('[name="serverName"]') as HTMLInputElement;
+    const tradeRole = tradeForm.querySelector('[name="characterName"]') as HTMLInputElement;
+    expect(tradeServer.getAttribute("list")).toBe("mhxy-trade-server-options");
+    expect(tradeRole.getAttribute("list")).toBe("mhxy-trade-role-options");
+    expect(Array.from(tradeForm.querySelectorAll("#mhxy-trade-server-options option")).map((option) => option.getAttribute("value")))
+      .toContain("长安城");
+    expect(Array.from(tradeForm.querySelectorAll("#mhxy-trade-role-options option")).map((option) => option.getAttribute("value")))
+      .toContain("商人甲");
+
+    await switchTab(container, "资产交易记录");
+    const assetForm = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    const assetServer = assetForm.querySelector('[name="serverName"]') as HTMLInputElement;
+    const assetRole = assetForm.querySelector('[name="characterName"]') as HTMLInputElement;
+    expect(assetServer.getAttribute("list")).toBe("mhxy-asset-server-options");
+    expect(assetRole.getAttribute("list")).toBe("mhxy-asset-role-options");
+    expect(Array.from(assetForm.querySelectorAll("#mhxy-asset-server-options option")).map((option) => option.getAttribute("value")))
+      .toContain("长安城");
+    expect(Array.from(assetForm.querySelectorAll("#mhxy-asset-role-options option")).map((option) => option.getAttribute("value")))
+      .toContain("商人甲");
+
+    await act(async () => {
+      change(assetForm.querySelector('[name="name"]') as HTMLInputElement, "新召唤兽");
+      change(assetForm.querySelector('[name="buyPriceRmb"]') as HTMLInputElement, "100");
+      change(assetServer, "新大区");
+      change(assetRole, "新角色");
+      assetForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(createMhxyAssetFlip).toHaveBeenCalledWith(expect.objectContaining({
+      name: "新召唤兽",
+      serverName: "新大区",
+      characterName: "新角色"
     }));
   });
 
@@ -464,6 +508,44 @@ describe("MhxyPage", () => {
     expect(inventory.textContent).toContain("¥680.00");
     expect((inventory.querySelector('input[aria-label="高级连击目标区"]') as HTMLInputElement).value)
       .toBe("山东2区-水泊梁山");
+  });
+
+  it("splits cross-server inventory by server and character", async () => {
+    const baseDashboard = await vi.mocked(fetchMhxyDashboard).getMockImplementation()?.();
+    expect(baseDashboard).toBeDefined();
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...baseDashboard!,
+      inventory: [
+        ...baseDashboard!.inventory,
+        {
+          itemName: "高级偷袭",
+          serverName: "山东2区-水泊梁山",
+          characterName: "商人乙",
+          quantity: 3,
+          inventoryCostRmb: 900,
+          averageUnitCostRmb: 300,
+          expectedSellServerName: "紫禁城",
+          latestRmbUnitPrice: 320,
+          valuationSourceName: "藏宝阁（兽决）",
+          marketValueRmb: 960,
+          unrealizedProfitRmb: 60
+        }
+      ]
+    });
+
+    const container = await renderPage();
+    const groups = Array.from(container.querySelectorAll("[data-inventory-group]")) as HTMLElement[];
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].textContent).toContain("商人甲");
+    expect(groups[0].textContent).toContain("高级连击");
+    expect(groups[0].textContent).toContain("高级必杀");
+    expect(groups[0].textContent).not.toContain("高级偷袭");
+    expect(groups[1].textContent).toContain("商人乙");
+    expect(groups[1].textContent).toContain("高级偷袭");
+    expect(groups[1].textContent).not.toContain("高级连击");
+    expect(groups[1].textContent).toContain("成本¥900.00");
+    expect(groups[1].textContent).toContain("估值¥960.00");
   });
 
   it("keeps asset holdings and sold history primary while the asset editor stays collapsed", async () => {
@@ -541,7 +623,11 @@ describe("MhxyPage", () => {
       .find((button) => button.textContent === "编辑");
 
     await act(async () => edit?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    const form = container.querySelector('[data-form="trade"]') as HTMLFormElement;
+    const dialog = container.querySelector('[role="dialog"][aria-label="编辑交易"]') as HTMLElement;
+    const addTrade = Array.from(container.querySelectorAll(".mhxy-cross-action"))[0] as HTMLDetailsElement;
+    expect(dialog).not.toBeNull();
+    expect(addTrade.open).toBe(false);
+    const form = dialog.querySelector('[data-form="trade"]') as HTMLFormElement;
     await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
 
     expect(updateMhxyTrade).toHaveBeenCalledWith("wallet-trade", expect.objectContaining({
@@ -553,6 +639,69 @@ describe("MhxyPage", () => {
     expect(submitted).not.toHaveProperty("accountingMode");
     expect(submitted).not.toHaveProperty("rmbAmount");
     expect(submitted).not.toHaveProperty("id");
+  });
+
+  it("opens role transfer edits in a centered dialog instead of the header action", async () => {
+    const container = await renderPage();
+    const edit = Array.from(container.querySelectorAll("[data-cross-transfers] button"))
+      .find((button) => button.textContent === "编辑");
+
+    await act(async () => edit?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const dialog = container.querySelector('[role="dialog"][aria-label="编辑角色转服"]') as HTMLElement;
+    const transferAction = Array.from(container.querySelectorAll(".mhxy-cross-action"))[1] as HTMLDetailsElement;
+    expect(dialog).not.toBeNull();
+    expect(transferAction.open).toBe(false);
+    expect(dialog.textContent).toContain("商人甲 · 山东2区-水泊梁山");
+
+    const form = dialog.querySelector('[data-form="inventory-transfer"]') as HTMLFormElement;
+    await act(async () => {
+      change(form.querySelector('[name="targetServerName"]') as HTMLInputElement, "生日快乐");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(updateMhxyInventoryTransfer).toHaveBeenCalledWith("transfer-role-1", expect.objectContaining({
+      targetServerName: "生日快乐",
+      transferCostRmb: 12
+    }));
+  });
+
+  it("closes centered edit dialogs when clicking outside the dialog", async () => {
+    const dashboard = await fetchMhxyDashboard();
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...dashboard,
+      trades: [{
+        id: "wallet-trade",
+        type: "buy",
+        itemName: "高级连击",
+        quantity: 1,
+        unitPrice: 1000,
+        currency: "gameCoin",
+        accountingMode: "wallet",
+        rmbAmount: 100,
+        feeRmb: 0,
+        gameCoinAmountWan: 1000,
+        effectiveRmbPerGameCoinWan: 0.1,
+        occurredAt: "2026-06-02T10:00:00.000Z",
+        serverName: "长安城",
+        characterName: "采购号",
+        createdAt: "2026-06-02T10:00:00.000Z",
+        updatedAt: "2026-06-02T10:00:00.000Z"
+      }]
+    });
+    const container = await renderPage();
+    const edit = Array.from(container.querySelectorAll("[data-cross-trades] button"))
+      .find((button) => button.textContent === "编辑") as HTMLButtonElement;
+
+    await act(async () => edit.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const dialog = container.querySelector('[role="dialog"][aria-label="编辑交易"]') as HTMLElement;
+    const backdrop = container.querySelector(".mhxy-edit-backdrop") as HTMLElement;
+    expect(dialog).not.toBeNull();
+
+    await act(async () => dialog.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.querySelector('[role="dialog"][aria-label="编辑交易"]')).toBe(dialog);
+
+    await act(async () => backdrop.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.querySelector('[role="dialog"][aria-label="编辑交易"]')).toBeNull();
   });
 
   it("shows two located game coin wallets and keeps funding actions secondary", async () => {
@@ -1163,6 +1312,24 @@ describe("MhxyPage", () => {
       expect(container.querySelector(".mhxy-price-merge-backdrop")).not.toBeNull();
 
       await act(async () => {
+        dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(container.querySelector('[role="dialog"]')).toBe(dialog);
+
+      await act(async () => {
+        (container.querySelector(".mhxy-price-merge-backdrop") as HTMLElement)
+          .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+      expect(itemName.value).toBe("高级必杀");
+      expect(editor.open).toBe(true);
+
+      await act(async () => {
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+      dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+
+      await act(async () => {
         Array.from(dialog.querySelectorAll("button"))
           .find((button) => button.textContent === "取消")
           ?.click();
@@ -1474,7 +1641,16 @@ describe("MhxyPage", () => {
     const records = container.querySelector('[aria-label="资产记录"]') as HTMLElement;
     const inventory = container.querySelector('[aria-label="资产当前库存"]') as HTMLElement;
     const history = container.querySelector('[aria-label="资产交易历史"]') as HTMLElement;
+    const groups = Array.from(inventory.querySelectorAll("[data-asset-group]")) as HTMLElement[];
     expect(records).not.toBeNull();
+    expect(groups).toHaveLength(2);
+    expect(groups[0].textContent).toContain("长安城");
+    expect(groups[0].textContent).toContain("商人甲");
+    expect(groups[0].textContent).toContain("须弥画魂");
+    expect(groups[0].textContent).not.toContain("175 大唐官府");
+    expect(groups[1].textContent).toContain("长安城");
+    expect(groups[1].textContent).toContain("175 大唐官府");
+    expect(groups[1].textContent).not.toContain("须弥画魂");
     expect(inventory.textContent).toContain("须弥画魂");
     expect(inventory.textContent).toContain("175 大唐官府");
     expect(inventory.textContent).toContain("角色 · 长安城");
@@ -1492,6 +1668,8 @@ describe("MhxyPage", () => {
     ]);
     expect((container.querySelector('[name="characterName"]') as HTMLInputElement).parentElement?.textContent)
       .toContain("归属角色");
+    expect((container.querySelector('[name="serverName"]') as HTMLInputElement).required).toBe(true);
+    expect((container.querySelector('[name="characterName"]') as HTMLInputElement).required).toBe(true);
   });
 
   it("uses generic empty states for asset records", async () => {
@@ -1527,6 +1705,8 @@ describe("MhxyPage", () => {
       change(form.querySelector('[name="category"]') as HTMLSelectElement, "equipment");
       change(form.querySelector('[name="name"]') as HTMLInputElement, "140 鞋子");
       change(form.querySelector('[name="buyPriceRmb"]') as HTMLInputElement, "800");
+      change(form.querySelector('[name="serverName"]') as HTMLInputElement, "长安城");
+      change(form.querySelector('[name="characterName"]') as HTMLInputElement, "商人甲");
       change(form.querySelector('[name="sellPriceRmb"]') as HTMLInputElement, "950");
       change(form.querySelector('[name="sellAt"]') as HTMLInputElement, "2026-06-08T10:00");
     });
@@ -1543,6 +1723,8 @@ describe("MhxyPage", () => {
         name: "140 鞋子",
         purchaseCurrency: "rmb",
         buyPriceRmb: 800,
+        serverName: "长安城",
+        characterName: "商人甲",
         sellPriceRmb: 950,
         sellAt: "2026-06-08T10:00"
       })
@@ -1567,6 +1749,7 @@ describe("MhxyPage", () => {
     await act(async () => {
       change(form.querySelector('[name="name"]') as HTMLInputElement, "175 大唐官府");
       change(form.querySelector('[name="buyPriceRmb"]') as HTMLInputElement, "5000");
+      change(form.querySelector('[name="serverName"]') as HTMLInputElement, "长安城");
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
@@ -1575,6 +1758,7 @@ describe("MhxyPage", () => {
         category: "role",
         name: "175 大唐官府",
         characterName: undefined,
+        serverName: "长安城",
         purchaseCurrency: "rmb",
         buyPriceRmb: 5000
       })
@@ -1622,7 +1806,11 @@ describe("MhxyPage", () => {
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
+    const dialog = container.querySelector('[role="dialog"][aria-label="编辑资产"]') as HTMLElement;
+    const addAsset = container.querySelector(".mhxy-asset-add") as HTMLDetailsElement;
+    expect(dialog).not.toBeNull();
+    expect(addAsset.open).toBe(false);
+    const form = dialog.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
     await act(async () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
