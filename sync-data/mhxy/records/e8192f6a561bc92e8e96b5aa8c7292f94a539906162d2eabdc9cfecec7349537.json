@@ -1,0 +1,33 @@
+{
+  "syncKey": "trade:a913185c-0792-465a-ac5c-426103c45985",
+  "value": {
+    "id": "a913185c-0792-465a-ac5c-426103c45985",
+    "type": "buy",
+    "itemName": "高宝图",
+    "quantity": 28,
+    "unitPrice": 337.5,
+    "currency": "gameCoin",
+    "accountingMode": "wallet",
+    "rmbAmount": 645.92,
+    "feeRmb": 0,
+    "gameCoinAmountWan": 9450,
+    "occurredAt": "2026-07-15T01:04:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-15T01:06:02.099Z",
+    "updatedAt": "2026-07-15T01:06:02.099Z",
+    "effectiveRmbPerGameCoinWan": 0.068351,
+    "gameCoinAllocations": [
+      {
+        "gameCoinPurchaseId": "765ff60b-948b-4597-95e1-42473e22c3aa",
+        "gameCoinAmount": 62114300,
+        "rmbCost": 426.79
+      },
+      {
+        "gameCoinPurchaseId": "ff25c0fc-0b93-4fc0-9fb3-bb13499de0da",
+        "gameCoinAmount": 32385700,
+        "rmbCost": 219.13
+      }
+    ]
+  }
+}

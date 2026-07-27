@@ -1,0 +1,28 @@
+{
+  "syncKey": "trade:4ded0141-784e-4607-87a0-ae9bae3a8b80",
+  "value": {
+    "id": "4ded0141-784e-4607-87a0-ae9bae3a8b80",
+    "type": "buy",
+    "itemName": "特赦令牌",
+    "quantity": 8,
+    "unitPrice": 333.8,
+    "currency": "gameCoin",
+    "accountingMode": "wallet",
+    "rmbAmount": 180.69,
+    "feeRmb": 0,
+    "gameCoinAmountWan": 2670.4,
+    "occurredAt": "2026-07-15T01:06:00.000Z",
+    "serverName": "山东2区 - 水泊梁山",
+    "characterName": "一笑赴沧海",
+    "createdAt": "2026-07-15T01:06:56.327Z",
+    "updatedAt": "2026-07-15T01:06:56.327Z",
+    "effectiveRmbPerGameCoinWan": 0.067664,
+    "gameCoinAllocations": [
+      {
+        "gameCoinPurchaseId": "ff25c0fc-0b93-4fc0-9fb3-bb13499de0da",
+        "gameCoinAmount": 26704000,
+        "rmbCost": 180.69
+      }
+    ]
+  }
+}
