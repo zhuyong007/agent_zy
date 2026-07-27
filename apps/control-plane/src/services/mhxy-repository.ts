@@ -3,8 +3,6 @@ import { resolve } from "node:path";
 
 import type {
   MhxyAssetFlipRecord,
-  MhxyGameCoinCashoutRecord,
-  MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
@@ -23,10 +21,6 @@ export interface MhxyRepository {
   writeInventoryTargets(records: MhxyInventoryTarget[]): void;
   readAssetFlips(): MhxyAssetFlipRecord[];
   writeAssetFlips(records: MhxyAssetFlipRecord[]): void;
-  readGameCoinPurchases(): MhxyGameCoinPurchaseRecord[];
-  writeGameCoinPurchases(records: MhxyGameCoinPurchaseRecord[]): void;
-  readGameCoinCashouts(): MhxyGameCoinCashoutRecord[];
-  writeGameCoinCashouts(records: MhxyGameCoinCashoutRecord[]): void;
 }
 
 function ensureArrayFile(path: string) {
@@ -64,9 +58,7 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
   const transfers = resolve(dir, "inventory-transfers.json");
   const targets = resolve(dir, "inventory-targets.json");
   const assetFlips = resolve(dir, "asset-flips.json");
-  const gameCoinPurchases = resolve(dir, "game-coin-purchases.json");
-  const gameCoinCashouts = resolve(dir, "game-coin-cashouts.json");
-  const paths = [trades, snapshots, transfers, targets, assetFlips, gameCoinPurchases, gameCoinCashouts];
+  const paths = [trades, snapshots, transfers, targets, assetFlips];
   paths.forEach(ensureArrayFile);
 
   return {
@@ -98,10 +90,6 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
     readInventoryTargets: () => readArray(targets),
     writeInventoryTargets: (records) => writeArray(targets, records),
     readAssetFlips: () => readArray(assetFlips),
-    writeAssetFlips: (records) => writeArray(assetFlips, records),
-    readGameCoinPurchases: () => readArray(gameCoinPurchases),
-    writeGameCoinPurchases: (records) => writeArray(gameCoinPurchases, records),
-    readGameCoinCashouts: () => readArray(gameCoinCashouts),
-    writeGameCoinCashouts: (records) => writeArray(gameCoinCashouts, records)
+    writeAssetFlips: (records) => writeArray(assetFlips, records)
   };
 }

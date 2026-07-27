@@ -77,9 +77,8 @@ const assetFlipShape = {
   category: z.enum(["role", "summon", "equipment"]),
   name: z.string(),
   buyAt: dateTime,
-  purchaseCurrency: z.enum(["rmb", "gameCoin"]).optional(),
+  purchaseCurrency: z.literal("rmb").optional(),
   buyPriceRmb: finiteNonNegative.optional(),
-  gameCoinCost: positiveSafeInteger.optional(),
   sellAt: z.union([dateTime, z.literal("")]).optional(),
   sellPriceRmb: finiteNonNegative.optional(),
   serverName: z.string().optional(),
@@ -93,30 +92,6 @@ export const mhxyAssetFlipPatchSchema = z.object({
   sellAt: z.union([dateTime, z.literal(""), z.null()]).optional(),
   sellPriceRmb: finiteNonNegative.nullable().optional()
 }).partial().strict();
-
-const gameCoinPurchaseShape = {
-  acquiredAt: dateTime,
-  gameCoinAmount: positiveSafeInteger,
-  rmbCost: z.number().finite().positive(),
-  serverName: z.string().trim().min(1),
-  characterName: z.string().trim().min(1),
-  note: z.string().optional()
-};
-
-export const mhxyGameCoinPurchaseInputSchema = z.object(gameCoinPurchaseShape).strict();
-export const mhxyGameCoinPurchasePatchSchema = z.object(gameCoinPurchaseShape).partial().strict();
-
-const gameCoinCashoutShape = {
-  occurredAt: dateTime,
-  serverName: z.string().min(1),
-  characterName: z.string().min(1),
-  gameCoinAmount: positiveSafeInteger,
-  rmbReceived: z.number().finite().positive(),
-  note: z.string().optional()
-};
-
-export const mhxyGameCoinCashoutInputSchema = z.object(gameCoinCashoutShape).strict();
-export const mhxyGameCoinCashoutPatchSchema = z.object(gameCoinCashoutShape).partial().strict();
 
 export const mhxyInventoryTargetSchema = z.object({
   itemName: z.string(),

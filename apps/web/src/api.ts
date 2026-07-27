@@ -53,10 +53,6 @@ import type {
   MhxyAssetFlipPatch,
   MhxyAssetFlipRecord,
   MhxyDashboard,
-  MhxyGameCoinPurchaseInput,
-  MhxyGameCoinPurchaseRecord,
-  MhxyGameCoinCashoutInput,
-  MhxyGameCoinCashoutRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferPatch,
@@ -1525,22 +1521,6 @@ export const updateMhxyAssetFlip = (id: string, input: MhxyAssetFlipPatch) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>(`/api/mhxy/asset-flips/${id}`, "PATCH", input);
 export const deleteMhxyAssetFlip = (id: string) =>
   mhxyJsonRequest<{ id: string }>(`/api/mhxy/asset-flips/${id}`, "DELETE");
-export const createMhxyGameCoinPurchase = (input: MhxyGameCoinPurchaseInput) =>
-  mhxyJsonRequest<MhxyGameCoinPurchaseRecord>("/api/mhxy/game-coin-purchases", "POST", input);
-export const updateMhxyGameCoinPurchase = (id: string, input: Partial<MhxyGameCoinPurchaseInput>) =>
-  mhxyJsonRequest<MhxyGameCoinPurchaseRecord>(
-    `/api/mhxy/game-coin-purchases/${id}`,
-    "PATCH",
-    input
-  );
-export const deleteMhxyGameCoinPurchase = (id: string) =>
-  mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-purchases/${id}`, "DELETE");
-export const createMhxyGameCoinCashout = (input: MhxyGameCoinCashoutInput) =>
-  mhxyJsonRequest<MhxyGameCoinCashoutRecord>("/api/mhxy/game-coin-cashouts", "POST", input);
-export const updateMhxyGameCoinCashout = (id: string, input: Partial<MhxyGameCoinCashoutInput>) =>
-  mhxyJsonRequest<MhxyGameCoinCashoutRecord>(`/api/mhxy/game-coin-cashouts/${id}`, "PATCH", input);
-export const deleteMhxyGameCoinCashout = (id: string) =>
-  mhxyJsonRequest<{ id: string }>(`/api/mhxy/game-coin-cashouts/${id}`, "DELETE");
 export const createMhxyTrade = (input: MhxyTradeInput) =>
   mhxyJsonRequest<MhxyTradeRecord>("/api/mhxy/trades", "POST", input);
 export const updateMhxyTrade = (id: string, input: Partial<MhxyTradeInput>) =>

@@ -7,11 +7,6 @@ import type {
   MhxyAssetFlipInput,
   MhxyAssetFlipPatch,
   MhxyAssetFlipRecord,
-  MhxyGameCoinCashoutInput,
-  MhxyGameCoinCashoutRecord,
-  MhxyGameCoinPurchaseInput,
-  MhxyGameCoinPurchasePosition,
-  MhxyGameCoinWalletPosition,
   MhxyInventoryPosition,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
@@ -26,14 +21,10 @@ import type {
 
 import {
   createMhxyAssetFlip,
-  createMhxyGameCoinCashout,
-  createMhxyGameCoinPurchase,
   createMhxyInventoryTransfer,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
-  deleteMhxyGameCoinCashout,
-  deleteMhxyGameCoinPurchase,
   deleteMhxyInventoryTransfer,
   deleteMhxyPriceSnapshot,
   deleteMhxyTrade,
@@ -64,21 +55,6 @@ const money = (value: number | null) =>
   value === null ? "待估值" : `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const rateMoney = (value: number) =>
   `¥${value.toLocaleString("zh-CN", { maximumFractionDigits: 6 })}`;
-const gameCoinWan = (value: number) =>
-  `${(value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 4 })} 万`;
-const walletValue = (wallet: MhxyGameCoinWalletPosition) =>
-  JSON.stringify([wallet.serverName, wallet.characterName]);
-const parseWalletValue = (value: FormDataEntryValue | null): [string, string] => {
-  try {
-    const parsed = JSON.parse(String(value ?? ""));
-    if (Array.isArray(parsed) && parsed.length === 2 && parsed.every((item) => typeof item === "string")) {
-      return [parsed[0], parsed[1]];
-    }
-  } catch {
-    // The required select prevents an empty value; keep a defensive server-side-friendly fallback.
-  }
-  return ["", ""];
-};
 
 const assetFlipCategoryLabels: Record<MhxyAssetFlipCategory, string> = {
   role: "角色",
@@ -148,9 +124,6 @@ function buildLocationOptions(dashboard: Awaited<ReturnType<typeof fetchMhxyDash
   return compactOptions([
     ...(dashboard?.inventory ?? []).flatMap((item) => [item.serverName, item.expectedSellServerName]),
     ...(dashboard?.trades ?? []).map((item) => item.serverName),
-    ...(dashboard?.gameCoinWallets ?? []).map((item) => item.serverName),
-    ...(dashboard?.gameCoinPurchases ?? []).map((item) => item.serverName),
-    ...(dashboard?.gameCoinCashouts ?? []).map((item) => item.serverName),
     ...(dashboard?.inventoryTransfers ?? []).flatMap((item) => isRoleTransfer(item)
       ? [item.sourceServerName, item.targetServerName]
       : [item.sourceServerName, item.targetServerName]
@@ -163,9 +136,6 @@ function buildRoleOptions(dashboard: Awaited<ReturnType<typeof fetchMhxyDashboar
   return compactOptions([
     ...(dashboard?.inventory ?? []).map((item) => item.characterName),
     ...(dashboard?.trades ?? []).map((item) => item.characterName),
-    ...(dashboard?.gameCoinWallets ?? []).map((item) => item.characterName),
-    ...(dashboard?.gameCoinPurchases ?? []).map((item) => item.characterName),
-    ...(dashboard?.gameCoinCashouts ?? []).map((item) => item.characterName),
     ...(dashboard?.inventoryTransfers ?? []).flatMap((item) => isRoleTransfer(item)
       ? [item.characterName]
       : [item.sourceCharacterName, item.targetCharacterName]
@@ -289,7 +259,6 @@ const emptyAssetFlip = (): MhxyAssetFlipInput => ({
   buyAt: localDateTime(),
   purchaseCurrency: "rmb",
   buyPriceRmb: 0,
-  gameCoinCost: undefined,
   sellAt: "",
   sellPriceRmb: undefined,
   serverName: "",
@@ -303,7 +272,6 @@ const editableAssetFlip = (record: MhxyAssetFlipRecord): MhxyAssetFlipInput => (
   buyAt: toLocalDateTimeInput(record.buyAt),
   purchaseCurrency: "rmb",
   buyPriceRmb: record.buyPriceRmb,
-  gameCoinCost: undefined,
   sellAt: record.sellAt ? toLocalDateTimeInput(record.sellAt) : "",
   sellPriceRmb: record.sellPriceRmb,
   serverName: record.serverName ?? "",
@@ -349,8 +317,6 @@ export function MhxyPage() {
   const [trade, setTrade] = useState<MhxyTradeInput>(emptyTrade);
   const [editingTradeId, setEditingTradeId] = useState<string | null>(null);
   const [tradeFormOpen, setTradeFormOpen] = useState(false);
-  const [coinPurchaseFormOpen, setCoinPurchaseFormOpen] = useState(false);
-  const [coinCashoutFormOpen, setCoinCashoutFormOpen] = useState(false);
   const [workspace, setWorkspace] = useState<"crossServer" | "roleAssets" | "prices">("crossServer");
   const [assetFlip, setAssetFlip] = useState<MhxyAssetFlipInput>(emptyAssetFlip);
   const [editingAssetFlipId, setEditingAssetFlipId] = useState<string | null>(null);
@@ -366,20 +332,6 @@ export function MhxyPage() {
       setTrade(emptyTrade());
       setEditingTradeId(null);
       setTradeFormOpen(false);
-      void refresh();
-    }
-  });
-  const gameCoinPurchaseMutation = useMutation({
-    mutationFn: (input: MhxyGameCoinPurchaseInput) => createMhxyGameCoinPurchase(input),
-    onSuccess: () => {
-      setCoinPurchaseFormOpen(false);
-      void refresh();
-    }
-  });
-  const gameCoinCashoutMutation = useMutation({
-    mutationFn: (input: MhxyGameCoinCashoutInput) => createMhxyGameCoinCashout(input),
-    onSuccess: () => {
-      setCoinCashoutFormOpen(false);
       void refresh();
     }
   });
@@ -454,12 +406,10 @@ export function MhxyPage() {
     onSuccess: () => void refresh()
   });
   const deleteMutation = useMutation({
-    mutationFn: ({ kind, id }: { kind: "trade" | "snapshot" | "transfer" | "asset" | "coinPurchase" | "coinCashout"; id: string }) => {
+    mutationFn: ({ kind, id }: { kind: "trade" | "snapshot" | "transfer" | "asset"; id: string }) => {
       if (kind === "trade") return deleteMhxyTrade(id);
       if (kind === "snapshot") return deleteMhxyPriceSnapshot(id);
       if (kind === "transfer") return deleteMhxyInventoryTransfer(id);
-      if (kind === "coinPurchase") return deleteMhxyGameCoinPurchase(id);
-      if (kind === "coinCashout") return deleteMhxyGameCoinCashout(id);
       return deleteMhxyAssetFlip(id);
     },
     onSuccess: () => void refresh()
@@ -474,12 +424,7 @@ export function MhxyPage() {
   const assetRoleOptions = compactOptions([...roleOptions, assetFlip.characterName]);
   const inventoryGroups = groupInventoryByRole(dashboard?.inventory ?? []);
   const gameCoinAmount = trade.quantity * trade.unitPrice;
-  const matchingProcurementWallet = (dashboard?.gameCoinWallets ?? []).find((wallet) =>
-    wallet.purpose === "procurement" &&
-    wallet.serverName === (trade.serverName ?? "").trim() &&
-    wallet.characterName === (trade.characterName ?? "").trim()
-  );
-  const estimatedWalletCost = gameCoinAmount * (matchingProcurementWallet?.averageRmbPerGameCoinWan ?? 0);
+  const estimatedGameCoinRmb = gameCoinAmount * (trade.rmbPerGameCoinWan ?? 0);
   const holdingAssetFlips = (dashboard?.assetFlips ?? []).filter((item) => item.status === "holding");
   const soldAssetFlips = (dashboard?.assetFlips ?? []).filter((item) => item.status === "sold");
   const holdingAssetGroups = groupAssetHoldingsByRole(holdingAssetFlips);
@@ -490,8 +435,6 @@ export function MhxyPage() {
       : assetFlip.sellPriceRmb - previewAssetBuyPrice;
   const error = [
     tradeMutation.error,
-    gameCoinPurchaseMutation.error,
-    gameCoinCashoutMutation.error,
     assetFlipMutation.error,
     snapshotMutation.error,
     priceSeriesMutation.error,
@@ -560,14 +503,15 @@ export function MhxyPage() {
         <label>道具名<input name="itemName" required value={trade.itemName} onChange={(e) => field("itemName", e.target.value)} /></label>
         <label>数量<input name="quantity" required type="number" min="1" step="1" value={trade.quantity} onChange={(e) => field("quantity", Number(e.target.value))} /></label>
         <label>{trade.currency === "rmb" ? "人民币单价" : "游戏币单价（万）"}<input name="unitPrice" required type="number" min="0" step="any" value={trade.unitPrice} onChange={(e) => field("unitPrice", Number(e.target.value))} /></label>
-        {trade.currency === "gameCoin" ? <div className="mhxy-wallet-hint"><span>钱包自动计价</span><small>按同区服、同角色的购币批次 FIFO 扣减</small></div> : <label>人民币手续费<input name="feeRmb" type="number" min="0" step="any" value={trade.feeRmb ?? 0} onChange={(e) => field("feeRmb", Number(e.target.value))} /></label>}
+        {trade.currency === "gameCoin" ? <label>当时兑换比例<input name="rmbPerGameCoinWan" required type="number" min="0.000001" step="any" value={trade.rmbPerGameCoinWan ?? ""} onChange={(e) => field("rmbPerGameCoinWan", Number(e.target.value))} /></label> : null}
+        <label>人民币手续费<input name="feeRmb" type="number" min="0" step="any" value={trade.feeRmb ?? 0} onChange={(e) => field("feeRmb", Number(e.target.value))} /></label>
         <label>发生时间<input name="occurredAt" type="datetime-local" required value={toLocalDateTimeInput(trade.occurredAt)} onChange={(e) => field("occurredAt", e.target.value)} /></label>
         <label>区服<ComboInput listId="mhxy-trade-server-options" name="serverName" value={trade.serverName ?? ""} options={tradeServerOptions} onChange={(value) => field("serverName", value)} /></label>
         <label>角色<ComboInput listId="mhxy-trade-role-options" name="characterName" value={trade.characterName ?? ""} options={tradeRoleOptions} onChange={(value) => field("characterName", value)} /></label>
         <label className="mhxy-wide">备注<input name="note" value={trade.note ?? ""} onChange={(e) => field("note", e.target.value)} /></label>
       </div>
-      {trade.currency === "gameCoin" ? <div className="mhxy-conversion"><strong>本次交易：{gameCoinAmount} 万游戏币</strong>{trade.type === "buy" ? <><span>可用余额：{matchingProcurementWallet ? gameCoinWan(matchingProcurementWallet.gameCoinAmount) : "未找到对应钱包"}</span><span>按当前钱包均价预估成本：{money(estimatedWalletCost)}</span></> : <span>卖出后按转服状态进入“准备卖出”或“用于买货”钱包，人民币利润等待变现确认。</span>}</div> : null}
-      {trade.currency === "gameCoin" ? <p className="mhxy-accounting-note">服务端按历史批次重新核算，表单预估只用于录入确认。</p> : null}
+      {trade.currency === "gameCoin" ? <div className="mhxy-conversion"><strong>本次交易：{gameCoinAmount} 万游戏币</strong><span>按本次比例折算：{money(estimatedGameCoinRmb)}</span></div> : null}
+      {trade.currency === "gameCoin" ? <p className="mhxy-accounting-note">游戏币只作为成交标价单位，本次兑换比例会固定折算后的人民币成本或收入。</p> : null}
       <button type="submit" disabled={tradeMutation.isPending}>{editingTradeId ? "保存并重新推导" : "记录交易"}</button>
     </form>
   );
@@ -694,19 +638,6 @@ export function MhxyPage() {
                     />
                   )}
                 </details>
-                <details className="mhxy-cross-action" open={coinPurchaseFormOpen} onToggle={(event) => setCoinPurchaseFormOpen(event.currentTarget.open)}>
-                  <summary>＋ 人民币购币</summary>
-                  <GameCoinPurchaseForm
-                    submit={(input) => gameCoinPurchaseMutation.mutateAsync(input)}
-                    pending={gameCoinPurchaseMutation.isPending}
-                    serverOptions={serverOptions}
-                    roleOptions={roleOptions}
-                  />
-                </details>
-                <details className="mhxy-cross-action" open={coinCashoutFormOpen} onToggle={(event) => setCoinCashoutFormOpen(event.currentTarget.open)}>
-                  <summary>↗ 游戏币变现</summary>
-                  <GameCoinCashoutForm wallets={(dashboard?.gameCoinWallets ?? []).filter((wallet) => wallet.purpose === "liquidation")} submit={(input) => gameCoinCashoutMutation.mutateAsync(input)} pending={gameCoinCashoutMutation.isPending} />
-                </details>
               </div>
             </header>
 
@@ -716,14 +647,6 @@ export function MhxyPage() {
               <span>未实现浮盈<strong>{money(dashboard?.summary.unrealizedProfitRmb ?? 0)}</strong></span>
               <span>已实现收益<strong>{money(dashboard?.summary.realizedProfitRmb ?? 0)}</strong></span>
             </div>
-
-            <GameCoinWallets
-              wallets={dashboard?.gameCoinWallets ?? []}
-              purchases={dashboard?.gameCoinPurchases ?? []}
-              cashouts={dashboard?.gameCoinCashouts ?? []}
-              pendingDelete={deleteMutation.isPending}
-              remove={(kind, id) => deleteMutation.mutate({ kind, id })}
-            />
 
             <section className="mhxy-cross-inventory" data-cross-inventory>
               <div className="mhxy-ledger-section-heading"><div><h3>当前库存</h3><p>按大区和角色拆分货位，成本、估值与下一站只在本角色内汇总。</p></div><span>{inventoryGroups.length} 个货位 · {dashboard?.inventory.length ?? 0} 项持仓</span></div>
@@ -757,11 +680,7 @@ export function MhxyPage() {
                 <div className="mhxy-ledger-section-heading"><div><h3>交易流水</h3><p>买入、卖出及已实现收益。</p></div><span>{dashboard?.trades.length ?? 0} 笔</span></div>
                 <div className="mhxy-history">{(dashboard?.trades ?? []).map((item) => {
                   const result = dashboard?.tradeResults.find((entry) => entry.tradeId === item.id);
-                  const gameCoinLine = item.accountingMode === "wallet"
-                    ? item.type === "buy"
-                      ? `${item.gameCoinAmountWan} 万游戏币｜实际成本 ${money(item.rmbAmount)}｜综合比例 ${item.effectiveRmbPerGameCoinWan ?? 0} 元/万`
-                      : `${item.gameCoinAmountWan} 万游戏币｜已收币，等待变现确认利润`
-                    : `${item.gameCoinAmountWan} 万游戏币｜历史比例 ${item.rmbPerGameCoinWan} 元/万｜折合 ${money(item.rmbAmount)}`;
+                  const gameCoinLine = `${item.gameCoinAmountWan} 万游戏币｜兑换比例 ${item.rmbPerGameCoinWan} 元/万｜折合 ${money(item.rmbAmount)}`;
                   return <article key={item.id}><div><strong>{item.type === "buy" ? "买入" : "卖出"}｜{item.itemName}｜{item.quantity} 个</strong><p>{item.currency === "gameCoin" ? gameCoinLine : `人民币 ${money(item.rmbAmount)}`}｜手续费 {money(item.feeRmb)}{result ? `｜已实现收益 ${money(result.realizedProfitRmb)}` : ""}</p></div><div className="mhxy-row-actions"><button type="button" onClick={() => { setEditingTradeId(item.id); setTrade(editableTrade(item)); setTradeFormOpen(false); }}>编辑</button><ConfirmDeleteButton pending={deleteMutation.isPending} onConfirm={() => deleteMutation.mutate({ kind: "trade", id: item.id })} /></div></article>;
                 })}{(dashboard?.trades ?? []).length === 0 ? <p className="mhxy-ledger-empty">暂无交易流水。</p> : null}</div>
               </section>
@@ -977,129 +896,6 @@ const priceSnapshotStableKey = (record: MhxyPriceSnapshot) => JSON.stringify([
 function signedMoney(value: number) {
   const prefix = value > 0 ? "+" : value < 0 ? "−" : "";
   return `${prefix}¥${Math.abs(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function GameCoinPurchaseForm({
-  submit,
-  pending,
-  serverOptions,
-  roleOptions
-}: {
-  submit: (input: MhxyGameCoinPurchaseInput) => Promise<unknown>;
-  pending: boolean;
-  serverOptions: string[];
-  roleOptions: string[];
-}) {
-  const [amountWan, setAmountWan] = useState(0);
-  const [rmbCost, setRmbCost] = useState(0);
-  const rate = amountWan > 0 ? rmbCost / amountWan : 0;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    await submit({
-      acquiredAt: String(data.get("acquiredAt")),
-      serverName: String(data.get("serverName")),
-      characterName: String(data.get("characterName")),
-      gameCoinAmount: Math.round(Number(data.get("gameCoinAmountWan")) * 10_000),
-      rmbCost: Number(data.get("rmbCost")),
-      note: String(data.get("note") ?? "")
-    });
-  }
-
-  return <form className="mhxy-form mhxy-cross-form mhxy-coin-form" data-form="game-coin-purchase" onSubmit={handleSubmit}>
-    <div><p className="eyebrow">PROCUREMENT WALLET</p><h3>人民币兑换游戏币</h3></div>
-    <div className="mhxy-form-grid">
-      <label>区服<ComboInput listId="mhxy-coin-purchase-server-options" name="serverName" required options={serverOptions} /></label>
-      <label>角色<ComboInput listId="mhxy-coin-purchase-role-options" name="characterName" required options={roleOptions} /></label>
-      <label>游戏币数量（万）<input name="gameCoinAmountWan" type="number" min="0.0001" step="0.0001" required value={amountWan || ""} onChange={(event) => setAmountWan(Number(event.target.value))} /></label>
-      <label>实际人民币总额<input name="rmbCost" type="number" min="0.01" step="any" required value={rmbCost || ""} onChange={(event) => setRmbCost(Number(event.target.value))} /></label>
-      <label>购币时间<input name="acquiredAt" type="datetime-local" defaultValue={localDateTime()} required /></label>
-      <label>备注<input name="note" placeholder="例如：藏宝阁购币" /></label>
-    </div>
-    <div className="mhxy-coin-preview"><span>入账 {amountWan.toLocaleString("zh-CN")} 万游戏币</span><strong>1 万 = {rateMoney(rate)}</strong></div>
-    <button type="submit" disabled={pending}>存入“用于买货”</button>
-  </form>;
-}
-
-function GameCoinCashoutForm({
-  wallets,
-  submit,
-  pending
-}: {
-  wallets: MhxyGameCoinWalletPosition[];
-  submit: (input: MhxyGameCoinCashoutInput) => Promise<unknown>;
-  pending: boolean;
-}) {
-  const [amountWan, setAmountWan] = useState(0);
-  const [rmbReceived, setRmbReceived] = useState(0);
-  const rate = amountWan > 0 ? rmbReceived / amountWan : 0;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const [serverName, characterName] = parseWalletValue(data.get("wallet"));
-    await submit({
-      occurredAt: String(data.get("occurredAt")),
-      serverName,
-      characterName,
-      gameCoinAmount: Math.round(Number(data.get("gameCoinAmountWan")) * 10_000),
-      rmbReceived: Number(data.get("rmbReceived")),
-      note: String(data.get("note") ?? "")
-    });
-  }
-
-  return <form className="mhxy-form mhxy-cross-form mhxy-coin-form" data-form="game-coin-cashout" onSubmit={handleSubmit}>
-    <div><p className="eyebrow">LIQUIDATION WALLET</p><h3>游戏币变现</h3></div>
-    <label>准备卖出的钱包<select name="wallet" required defaultValue=""><option value="" disabled>选择区服与角色</option>{wallets.map((wallet) => <option key={walletValue(wallet)} value={walletValue(wallet)}>{wallet.serverName} / {wallet.characterName} · {gameCoinWan(wallet.gameCoinAmount)}</option>)}</select></label>
-    <div className="mhxy-form-grid">
-      <label>卖出数量（万）<input name="gameCoinAmountWan" type="number" min="0.0001" step="0.0001" required value={amountWan || ""} onChange={(event) => setAmountWan(Number(event.target.value))} /></label>
-      <label>实际人民币回款<input name="rmbReceived" type="number" min="0.01" step="any" required value={rmbReceived || ""} onChange={(event) => setRmbReceived(Number(event.target.value))} /></label>
-      <label>变现时间<input name="occurredAt" type="datetime-local" defaultValue={localDateTime()} required /></label>
-      <label>备注<input name="note" placeholder="填写平台或订单" /></label>
-    </div>
-    <div className="mhxy-coin-preview"><span>变现 {amountWan.toLocaleString("zh-CN")} 万游戏币</span><strong>实际比例 1 万 = {rateMoney(rate)}</strong></div>
-    <button type="submit" disabled={pending || wallets.length === 0}>确认回款并扣减</button>
-  </form>;
-}
-
-function GameCoinWallets({
-  wallets,
-  purchases,
-  cashouts,
-  pendingDelete,
-  remove
-}: {
-  wallets: MhxyGameCoinWalletPosition[];
-  purchases: MhxyGameCoinPurchasePosition[];
-  cashouts: MhxyGameCoinCashoutRecord[];
-  pendingDelete: boolean;
-  remove: (kind: "coinPurchase" | "coinCashout", id: string) => void;
-}) {
-  const groups = [
-    { purpose: "procurement" as const, title: "用于买货", caption: "人民币购币与源服回款，只用于继续收货。" },
-    { purpose: "liquidation" as const, title: "准备卖出", caption: "目标服售货回款，等待换回人民币。" }
-  ];
-
-  return <section className="mhxy-coin-ledger" data-game-coin-wallets>
-    <div className="mhxy-ledger-section-heading"><div><h3>游戏币资金轨道</h3><p>同一区服和角色内流转，两个资金池互不挪用。</p></div><span>{wallets.length} 个钱包</span></div>
-    <div className="mhxy-coin-rails">
-      {groups.map((group) => <article className={`mhxy-coin-rail mhxy-coin-rail--${group.purpose}`} key={group.purpose}>
-        <header><div><span>{group.purpose === "procurement" ? "IN" : "OUT"}</span><h4>{group.title}</h4></div><p>{group.caption}</p></header>
-        <div className="mhxy-coin-wallet-list">
-          {wallets.filter((wallet) => wallet.purpose === group.purpose).map((wallet) => <div className="mhxy-coin-wallet" key={walletValue(wallet)}>
-            <span><strong>{wallet.serverName} / {wallet.characterName}</strong><small>人民币成本 {money(wallet.rmbCostBasis)}</small></span>
-            <span><strong>{gameCoinWan(wallet.gameCoinAmount)}</strong><small>均价 {rateMoney(wallet.averageRmbPerGameCoinWan)} / 万</small></span>
-          </div>)}
-          {wallets.every((wallet) => wallet.purpose !== group.purpose) ? <p className="mhxy-ledger-empty">暂无{group.title}游戏币。</p> : null}
-        </div>
-      </article>)}
-    </div>
-    <div className="mhxy-coin-journal">
-      <details><summary>购币批次 · {purchases.length}</summary>{purchases.map((purchase) => <div key={purchase.id}><span><strong>{gameCoinWan(purchase.gameCoinAmount)}</strong><small>{purchase.serverName || "历史未归属"} / {purchase.characterName || "历史未归属"} · {money(purchase.rmbCost)}</small></span><ConfirmDeleteButton pending={pendingDelete} onConfirm={() => remove("coinPurchase", purchase.id)} /></div>)}</details>
-      <details><summary>变现记录 · {cashouts.length}</summary>{cashouts.map((cashout) => <div key={cashout.id}><span><strong>{gameCoinWan(cashout.gameCoinAmount)} → {money(cashout.rmbReceived)}</strong><small>{cashout.serverName} / {cashout.characterName} · 已实现 {money(cashout.realizedProfitRmb)}</small></span><ConfirmDeleteButton pending={pendingDelete} onConfirm={() => remove("coinCashout", cashout.id)} /></div>)}</details>
-    </div>
-  </section>;
 }
 
 function PriceTrendWorkspace({

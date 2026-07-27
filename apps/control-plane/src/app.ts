@@ -34,10 +34,6 @@ import { createMhxyService, type MhxyService } from "./services/mhxy-service";
 import {
   mhxyAssetFlipInputSchema,
   mhxyAssetFlipPatchSchema,
-  mhxyGameCoinPurchaseInputSchema,
-  mhxyGameCoinPurchasePatchSchema,
-  mhxyGameCoinCashoutInputSchema,
-  mhxyGameCoinCashoutPatchSchema,
   mhxyInventoryTargetSchema,
   mhxyInventoryTransferInputSchema,
   mhxyInventoryTransferPatchSchema,
@@ -1592,8 +1588,8 @@ export function createControlPlaneApp(options?: {
       if (!(error instanceof Error)) {
         return reply.code(500).send({ message: "梦幻西游账本操作失败" });
       }
-      const conflict = /库存不足|余额不足|没有可转移库存|批次分配不完整|不能使用交易时间|资产不能使用|准备卖出的游戏币|目标价格序列已存在|历史单道具转移不支持编辑|游戏币批次不存在：/u;
-      const notFound = /(?:交易记录|价格快照|价格序列|库存转移记录|资产记录|游戏币购入批次|游戏币变现记录)不存在/u;
+      const conflict = /库存不足|余额不足|没有可转移库存|目标价格序列已存在|历史单道具转移不支持编辑/u;
+      const notFound = /(?:交易记录|价格快照|价格序列|库存转移记录|资产记录)不存在/u;
       const validation = /必须|不能为空|无效|不能小于|不能大于|不能早于|不能相同|超出有效范围|不是有效|缺少有效|不匹配|未知记录类型/u;
       const statusCode = error instanceof MhxyInputError
         ? 400
@@ -1648,52 +1644,6 @@ export function createControlPlaneApp(options?: {
 
   app.delete("/api/mhxy/asset-flips/:id", async (request, reply) =>
     mhxyAction(reply, () => mhxyService.deleteAssetFlip((request.params as { id: string }).id))
-  );
-
-  app.post("/api/mhxy/game-coin-purchases", async (request, reply) =>
-    mhxyAction(reply, () =>
-      mhxyService.createGameCoinPurchase(
-        parseMhxyInput(mhxyGameCoinPurchaseInputSchema, request.body ?? {})
-      )
-    )
-  );
-
-  app.patch("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
-    mhxyAction(reply, () =>
-      mhxyService.updateGameCoinPurchase(
-        (request.params as { id: string }).id,
-        parseMhxyInput(mhxyGameCoinPurchasePatchSchema, request.body ?? {})
-      )
-    )
-  );
-
-  app.delete("/api/mhxy/game-coin-purchases/:id", async (request, reply) =>
-    mhxyAction(reply, () =>
-      mhxyService.deleteGameCoinPurchase((request.params as { id: string }).id)
-    )
-  );
-
-  app.post("/api/mhxy/game-coin-cashouts", async (request, reply) =>
-    mhxyAction(reply, () =>
-      mhxyService.createGameCoinCashout(
-        parseMhxyInput(mhxyGameCoinCashoutInputSchema, request.body ?? {})
-      )
-    )
-  );
-
-  app.patch("/api/mhxy/game-coin-cashouts/:id", async (request, reply) =>
-    mhxyAction(reply, () =>
-      mhxyService.updateGameCoinCashout(
-        (request.params as { id: string }).id,
-        parseMhxyInput(mhxyGameCoinCashoutPatchSchema, request.body ?? {})
-      )
-    )
-  );
-
-  app.delete("/api/mhxy/game-coin-cashouts/:id", async (request, reply) =>
-    mhxyAction(reply, () =>
-      mhxyService.deleteGameCoinCashout((request.params as { id: string }).id)
-    )
   );
 
   app.post("/api/mhxy/price-snapshots", async (request, reply) =>

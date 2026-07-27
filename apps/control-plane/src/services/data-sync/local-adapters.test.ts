@@ -82,25 +82,36 @@ describe("local data sync adapters", () => {
     const { dataDir, adapters } = fixture();
     const repository = createMhxyRepository(dataDir);
     const service = createMhxyService(dataDir);
-    const purchase = service.createGameCoinPurchase({ acquiredAt: "2026-01-01", gameCoinAmount: 100, rmbCost: 10 });
     service.createTrade({ type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 10, currency: "rmb", occurredAt: "2026-01-01", serverName: "Source", characterName: "Buyer" });
     service.createInventoryTransfer({ scope: "role", characterName: "Buyer", sourceServerName: "Source", targetServerName: "Server", transferCostRmb: 0, occurredAt: "2026-01-02" });
-    service.createTrade({ type: "sell", itemName: "金刚石", quantity: 1, unitPrice: 0.01, currency: "gameCoin", occurredAt: "2026-01-03", serverName: "Server", characterName: "Buyer" });
-    const cashout = service.createGameCoinCashout({ occurredAt: "2026-01-04", serverName: "Server", characterName: "Buyer", gameCoinAmount: 100, rmbReceived: 12 });
+    service.createTrade({ type: "sell", itemName: "金刚石", quantity: 1, unitPrice: 0.01, currency: "gameCoin", rmbPerGameCoinWan: 1, occurredAt: "2026-01-03", serverName: "Server", characterName: "Buyer" });
 
     const records = adapters.mhxy.read();
-    expect(records.has(`game-coin-purchase:${purchase.id}`)).toBe(true);
-    expect(records.has(`game-coin-cashout:${cashout.id}`)).toBe(true);
+    expect([...records.keys()].some((key) => key.startsWith("game-coin-"))).toBe(false);
+    records.set("game-coin-purchase:legacy", {
+      id: "legacy",
+      acquiredAt: "2026-01-01",
+      gameCoinAmount: 100,
+      rmbCost: 10,
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-01"
+    });
+    records.set("game-coin-cashout:legacy", {
+      id: "legacy",
+      occurredAt: "2026-01-02",
+      serverName: "Server",
+      characterName: "Buyer",
+      gameCoinAmount: 100,
+      rmbReceived: 12,
+      createdAt: "2026-01-02",
+      updatedAt: "2026-01-02"
+    });
 
     repository.writeTrades([]);
     repository.writeInventoryTransfers([]);
-    repository.writeGameCoinPurchases([]);
-    repository.writeGameCoinCashouts([]);
     adapters.mhxy.write(records);
 
     expect(repository.readTrades()).toHaveLength(2);
-    expect(repository.readGameCoinPurchases()).toHaveLength(1);
-    expect(repository.readGameCoinCashouts()).toHaveLength(1);
   });
 
   it("rejects duplicate mhxy record IDs instead of silently dropping data", () => {

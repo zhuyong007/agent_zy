@@ -32,19 +32,21 @@ describe("mhxy repository transactions", () => {
       updatedAt: "2026-06-01T00:00:00.000Z"
     };
     repository.writeTrades([originalTrade]);
+    repository.writeAssetFlips([]);
 
     expect(() => repository.transaction(() => {
       repository.writeTrades([]);
-      repository.writeGameCoinCashouts([{
-        id: "cashout-1",
-        occurredAt: "2026-06-02T00:00:00.000Z",
+      repository.writeAssetFlips([{
+        id: "asset-1",
+        category: "summon",
+        name: "Test Asset",
+        buyAt: "2026-06-02T00:00:00.000Z",
+        purchaseCurrency: "rmb",
+        buyPriceRmb: 100,
+        status: "holding",
+        profitRmb: null,
         serverName: "Server",
-        characterName: "Seller",
-        gameCoinAmount: 1,
-        rmbReceived: 1,
-        rmbPerGameCoinWan: 10_000,
-        costBasisRmb: 0,
-        realizedProfitRmb: 1,
+        characterName: "Owner",
         createdAt: "2026-06-02T00:00:00.000Z",
         updatedAt: "2026-06-02T00:00:00.000Z"
       }]);
@@ -52,6 +54,6 @@ describe("mhxy repository transactions", () => {
     })).toThrow("simulated disk failure");
 
     expect(repository.readTrades()).toEqual([originalTrade]);
-    expect(repository.readGameCoinCashouts()).toEqual([]);
+    expect(repository.readAssetFlips()).toEqual([]);
   });
 });

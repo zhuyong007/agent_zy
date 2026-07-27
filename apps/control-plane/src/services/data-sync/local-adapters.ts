@@ -6,8 +6,6 @@ import type {
   DataSyncModule,
   HistoryXhsState,
   MhxyAssetFlipRecord,
-  MhxyGameCoinCashoutRecord,
-  MhxyGameCoinPurchaseRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
@@ -218,8 +216,6 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         setUniqueRecord(records, `inventory-target:${identity}`, item, "库存目标");
       }
       for (const item of repository.readAssetFlips()) setUniqueRecord(records, `asset-flip:${item.id}`, item, "召唤兽装备记录");
-      for (const item of repository.readGameCoinPurchases()) setUniqueRecord(records, `game-coin-purchase:${item.id}`, item, "游戏币购入记录");
-      for (const item of repository.readGameCoinCashouts()) setUniqueRecord(records, `game-coin-cashout:${item.id}`, item, "游戏币变现记录");
       return records;
     },
     write(records) {
@@ -233,7 +229,12 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         "game-coin-cashout:"
       ];
       assertKnownPrefixes(records, prefixes, "梦幻西游");
-      for (const prefix of prefixes.filter((item) => item !== "inventory-target:")) {
+      const persistedPrefixes = prefixes.filter((item) =>
+        item !== "inventory-target:" &&
+        item !== "game-coin-purchase:" &&
+        item !== "game-coin-cashout:"
+      );
+      for (const prefix of persistedPrefixes) {
         assertRecordIds(records, prefix, "梦幻西游");
       }
       for (const [key, value] of records) {
@@ -249,18 +250,14 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
         snapshots: recordsWithPrefix(records, "price-snapshot:") as unknown as MhxyPriceSnapshot[],
         transfers: recordsWithPrefix(records, "inventory-transfer:") as unknown as MhxyInventoryTransferRecord[],
         targets: recordsWithPrefix(records, "inventory-target:") as unknown as MhxyInventoryTarget[],
-        assetFlips: recordsWithPrefix(records, "asset-flip:") as unknown as MhxyAssetFlipRecord[],
-        gameCoinPurchases: recordsWithPrefix(records, "game-coin-purchase:") as unknown as MhxyGameCoinPurchaseRecord[],
-        gameCoinCashouts: recordsWithPrefix(records, "game-coin-cashout:") as unknown as MhxyGameCoinCashoutRecord[]
+        assetFlips: recordsWithPrefix(records, "asset-flip:") as unknown as MhxyAssetFlipRecord[]
       };
       service.replaceAllData({
         trades: next.trades,
         priceSnapshots: next.snapshots,
         inventoryTransfers: next.transfers,
         inventoryTargets: next.targets,
-        assetFlips: next.assetFlips,
-        gameCoinPurchases: next.gameCoinPurchases,
-        gameCoinCashouts: next.gameCoinCashouts
+        assetFlips: next.assetFlips
       });
     }
   };

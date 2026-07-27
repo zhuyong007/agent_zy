@@ -165,57 +165,16 @@ vi.mock("../api", () => ({
       realizedProfitRmb: 300,
       realizedRevenueRmb: 3300
     },
-    gameCoinPurchases: [
-      {
-        id: "coin-1",
-        acquiredAt: "2026-06-01T09:00:00.000Z",
-        gameCoinAmount: 30_000_000,
-        rmbCost: 230,
-        remainingGameCoinAmount: 30_000_000,
-        remainingRmbCost: 230,
-        createdAt: "2026-06-01T09:00:00.000Z",
-        updatedAt: "2026-06-01T09:00:00.000Z"
-      }
-    ],
-    gameCoinCashouts: [],
-    gameCoinWallets: [
-      {
-        purpose: "procurement",
-        serverName: "长安城",
-        characterName: "采购号",
-        gameCoinAmount: 30_000_000,
-        rmbCostBasis: 230,
-        averageRmbPerGameCoinWan: 0.076667
-      },
-      {
-        purpose: "liquidation",
-        serverName: "紫禁城",
-        characterName: "销售号",
-        gameCoinAmount: 12_000_000,
-        rmbCostBasis: 120,
-        averageRmbPerGameCoinWan: 0.1
-      }
-    ],
-    gameCoinCashoutSummary: {
-      gameCoinAmount: 0,
-      rmbReceived: 0,
-      realizedProfitRmb: 0
-    },
-    gameCoinBalance: {
-      gameCoinAmount: 30_000_000,
-      rmbCost: 230
-    },
     combinedSummary: {
-      holdingCostRmb: 6994,
+      holdingCostRmb: 6764,
       realizedProfitRmb: 288,
-      gameCoinBalanceCostRmb: 230,
       mainLedgerMarketValueRmb: 0,
       mainLedgerUnrealizedProfitRmb: 0
     },
     overviewSummary: {
       crossServer: {
-        holdingCostRmb: 794,
-        expectedValueRmb: 910,
+        holdingCostRmb: 564,
+        expectedValueRmb: 680,
         realizedProfitRmb: -12,
         transferExpenseRmb: 12
       },
@@ -225,8 +184,8 @@ vi.mock("../api", () => ({
         realizedProfitRmb: 300
       },
       total: {
-        holdingCostRmb: 6994,
-        expectedValueRmb: 7110,
+        holdingCostRmb: 6764,
+        expectedValueRmb: 6880,
         realizedProfitRmb: 288
       }
     }
@@ -234,12 +193,6 @@ vi.mock("../api", () => ({
   createMhxyAssetFlip: vi.fn(async (input) => ({ id: "asset-new", ...input })),
   updateMhxyAssetFlip: vi.fn(),
   deleteMhxyAssetFlip: vi.fn(async (id) => ({ id })),
-  createMhxyGameCoinPurchase: vi.fn(async (input) => ({ id: "coin-new", ...input })),
-  updateMhxyGameCoinPurchase: vi.fn(),
-  deleteMhxyGameCoinPurchase: vi.fn(),
-  createMhxyGameCoinCashout: vi.fn(async (input) => ({ id: "cashout-new", ...input })),
-  updateMhxyGameCoinCashout: vi.fn(),
-  deleteMhxyGameCoinCashout: vi.fn(),
   createMhxyTrade: vi.fn(async (input) => ({ id: "trade-1", ...input })),
   updateMhxyTrade: vi.fn(),
   deleteMhxyTrade: vi.fn(),
@@ -269,8 +222,6 @@ vi.mock("./data-sync-control", async () => {
 
 import {
   createMhxyAssetFlip,
-  createMhxyGameCoinCashout,
-  createMhxyGameCoinPurchase,
   createMhxyInventoryTransfer,
   createMhxyPriceSnapshot,
   createMhxyTrade,
@@ -329,8 +280,8 @@ describe("MhxyPage", () => {
       "assetTrading"
     ]);
     expect(groups[0].textContent).toContain("全部");
-    expect(groups[0].textContent).toContain("¥6,994.00");
-    expect(groups[0].textContent).toContain("¥7,110.00");
+    expect(groups[0].textContent).toContain("¥6,764.00");
+    expect(groups[0].textContent).toContain("¥6,880.00");
     expect(groups[0].textContent).toContain("¥288.00");
     expect(groups[1].textContent).toContain("跨服交易");
     expect(groups[1].textContent).toContain("转服费用 ¥12.00");
@@ -396,7 +347,7 @@ describe("MhxyPage", () => {
     const workspace = container.querySelector("[data-cross-server-workspace]") as HTMLElement;
     expect(workspace).not.toBeNull();
     const actions = Array.from(workspace.querySelectorAll(".mhxy-cross-action")) as HTMLDetailsElement[];
-    expect(actions).toHaveLength(4);
+    expect(actions).toHaveLength(2);
     expect(actions.every((details) => details.open === false)).toBe(true);
     expect(actions[0].querySelector('[data-form="trade"]')).not.toBeNull();
     expect(actions[1].querySelector('[data-form="inventory-transfer"]')).not.toBeNull();
@@ -561,7 +512,7 @@ describe("MhxyPage", () => {
     expect(workspace.querySelector('[aria-label="资产交易历史"]')).not.toBeNull();
   });
 
-  it("uses wallet pricing for game coin trades without asking for a manual rate", async () => {
+  it("requires and submits a manual exchange rate for game coin trades", async () => {
     const container = await renderPage();
     const form = container.querySelector('[data-form="trade"]') as HTMLFormElement;
 
@@ -571,11 +522,14 @@ describe("MhxyPage", () => {
       change(form.querySelector('[name="itemName"]') as HTMLInputElement, "金刚石");
       change(form.querySelector('[name="quantity"]') as HTMLInputElement, "2");
       change(form.querySelector('[name="unitPrice"]') as HTMLInputElement, "1000");
+      change(form.querySelector('[name="rmbPerGameCoinWan"]') as HTMLInputElement, "0.08");
     });
 
-    expect(form.querySelector('[name="rmbPerGameCoinWan"]')).toBeNull();
-    expect(form.textContent).toContain("FIFO");
+    const rate = form.querySelector('[name="rmbPerGameCoinWan"]') as HTMLInputElement;
+    expect(rate).not.toBeNull();
+    expect(rate.required).toBe(true);
     expect(form.textContent).toContain("2000 万游戏币");
+    expect(form.textContent).toContain("¥160.00");
 
     await act(async () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -587,7 +541,8 @@ describe("MhxyPage", () => {
         currency: "gameCoin",
         itemName: "金刚石",
         quantity: 2,
-        unitPrice: 1000
+        unitPrice: 1000,
+        rmbPerGameCoinWan: 0.08
       })
     );
     expect(createMhxyTrade).not.toHaveBeenCalledWith(
@@ -595,7 +550,7 @@ describe("MhxyPage", () => {
     );
   });
 
-  it("submits a clean editable input for persisted wallet trades", async () => {
+  it("submits a clean editable input for persisted game coin trades", async () => {
     const dashboard = await fetchMhxyDashboard();
     vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
       ...dashboard,
@@ -606,11 +561,11 @@ describe("MhxyPage", () => {
         quantity: 1,
         unitPrice: 1000,
         currency: "gameCoin",
-        accountingMode: "wallet",
+        accountingMode: "legacyRate",
         rmbAmount: 100,
         feeRmb: 0,
         gameCoinAmountWan: 1000,
-        effectiveRmbPerGameCoinWan: 0.1,
+        rmbPerGameCoinWan: 0.1,
         occurredAt: "2026-06-02T10:00:00.000Z",
         serverName: "长安城",
         characterName: "采购号",
@@ -676,11 +631,11 @@ describe("MhxyPage", () => {
         quantity: 1,
         unitPrice: 1000,
         currency: "gameCoin",
-        accountingMode: "wallet",
+        accountingMode: "legacyRate",
         rmbAmount: 100,
         feeRmb: 0,
         gameCoinAmountWan: 1000,
-        effectiveRmbPerGameCoinWan: 0.1,
+        rmbPerGameCoinWan: 0.1,
         occurredAt: "2026-06-02T10:00:00.000Z",
         serverName: "长安城",
         characterName: "采购号",
@@ -702,58 +657,6 @@ describe("MhxyPage", () => {
 
     await act(async () => backdrop.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(container.querySelector('[role="dialog"][aria-label="编辑交易"]')).toBeNull();
-  });
-
-  it("shows two located game coin wallets and keeps funding actions secondary", async () => {
-    const container = await renderPage();
-    const wallets = container.querySelector("[data-game-coin-wallets]") as HTMLElement;
-
-    expect(wallets).not.toBeNull();
-    expect(wallets.textContent).toContain("用于买货");
-    expect(wallets.textContent).toContain("准备卖出");
-    expect(wallets.textContent).toContain("长安城 / 采购号");
-    expect(wallets.textContent).toContain("紫禁城 / 销售号");
-    expect(wallets.textContent).toContain("3,000 万");
-    expect(wallets.textContent).toContain("1,200 万");
-    expect(wallets.textContent).toContain("¥0.076667");
-    expect(container.querySelector('[data-form="game-coin-purchase"]')).not.toBeNull();
-    expect(container.querySelector('[data-form="game-coin-cashout"]')).not.toBeNull();
-  });
-
-  it("submits game coin funding and cashout amounts from ten-thousand units", async () => {
-    const container = await renderPage();
-    const purchaseForm = container.querySelector('[data-form="game-coin-purchase"]') as HTMLFormElement;
-    const cashoutForm = container.querySelector('[data-form="game-coin-cashout"]') as HTMLFormElement;
-
-    await act(async () => {
-      change(purchaseForm.querySelector('[name="serverName"]') as HTMLInputElement, "长安城");
-      change(purchaseForm.querySelector('[name="characterName"]') as HTMLInputElement, "采购号");
-      change(purchaseForm.querySelector('[name="gameCoinAmountWan"]') as HTMLInputElement, "3000");
-      change(purchaseForm.querySelector('[name="rmbCost"]') as HTMLInputElement, "230");
-      purchaseForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(createMhxyGameCoinPurchase).toHaveBeenCalledWith(expect.objectContaining({
-      serverName: "长安城",
-      characterName: "采购号",
-      gameCoinAmount: 30_000_000,
-      rmbCost: 230
-    }));
-
-    await act(async () => {
-      change(
-        cashoutForm.querySelector('[name="wallet"]') as HTMLSelectElement,
-        JSON.stringify(["紫禁城", "销售号"])
-      );
-      change(cashoutForm.querySelector('[name="gameCoinAmountWan"]') as HTMLInputElement, "600");
-      change(cashoutForm.querySelector('[name="rmbReceived"]') as HTMLInputElement, "90");
-      cashoutForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(createMhxyGameCoinCashout).toHaveBeenCalledWith(expect.objectContaining({
-      serverName: "紫禁城",
-      characterName: "销售号",
-      gameCoinAmount: 6_000_000,
-      rmbReceived: 90
-    }));
   });
 
   it("uses the page content area as the scroll container", async () => {
@@ -1875,60 +1778,6 @@ describe("MhxyPage", () => {
       "2026-06-01T18:00"
     );
     timezone.mockRestore();
-  });
-
-  it("shows the frozen RMB cost when editing a legacy game coin asset", async () => {
-    const dashboard = await fetchMhxyDashboard();
-    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
-      ...dashboard,
-      assetFlips: [
-        {
-          ...dashboard.assetFlips[0],
-          purchaseCurrency: "gameCoin",
-          gameCoinCost: 100,
-          buyPriceRmb: 10,
-          gameCoinAllocations: [
-            { gameCoinPurchaseId: "original", gameCoinAmount: 100, rmbCost: 10 }
-          ]
-        }
-      ],
-      gameCoinPurchases: [
-        {
-          id: "earlier",
-          acquiredAt: "2026-05-01T10:00:00.000Z",
-          gameCoinAmount: 100,
-          rmbCost: 20,
-          remainingGameCoinAmount: 100,
-          remainingRmbCost: 20,
-          createdAt: "2026-06-04T10:00:00.000Z",
-          updatedAt: "2026-06-04T10:00:00.000Z"
-        },
-        {
-          id: "original",
-          acquiredAt: "2026-06-01T10:00:00.000Z",
-          gameCoinAmount: 100,
-          rmbCost: 10,
-          remainingGameCoinAmount: 0,
-          remainingRmbCost: 0,
-          createdAt: "2026-06-01T10:00:00.000Z",
-          updatedAt: "2026-06-01T10:00:00.000Z"
-        }
-      ]
-    });
-    const container = await renderPage();
-    await switchTab(container, "资产交易记录");
-    const row = Array.from(container.querySelectorAll(".mhxy-asset-row"))
-      .find((item) => item.textContent?.includes("须弥画魂")) as HTMLElement;
-
-    await act(async () => {
-      Array.from(row.querySelectorAll("button"))
-        .find((button) => button.textContent === "编辑")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    const form = container.querySelector('[data-form="asset-flip"]') as HTMLFormElement;
-    expect((form.querySelector('[name="buyPriceRmb"]') as HTMLInputElement).value).toBe("10");
-    expect(form.querySelector('[name="purchaseCurrency"]')).toBeNull();
   });
 
   it("requires a second click before deleting an asset record", async () => {

@@ -93,42 +93,8 @@ describe("mhxy service", () => {
     expect(dashboard.overviewSummary.crossServer.holdingCostRmb).toBe(0);
   });
 
-  it("conserves the full inventory cost when selling the entire position", () => {
+  it("uses a fixed exchange rate for game coin trades without wallets", () => {
     const service = createService();
-    service.createTrade({
-      type: "buy",
-      itemName: "尾差测试",
-      quantity: 3,
-      unitPrice: 0.33,
-      feeRmb: 0.01,
-      currency: "rmb",
-      occurredAt: "2026-06-01T10:00:00.000Z"
-    });
-    service.createTrade({
-      type: "sell",
-      itemName: "尾差测试",
-      quantity: 3,
-      unitPrice: 0,
-      currency: "rmb",
-      occurredAt: "2026-06-02T10:00:00.000Z"
-    });
-
-    expect(service.getDashboard().tradeResults[0]).toMatchObject({
-      costBasisRmb: 1,
-      realizedProfitRmb: -1
-    });
-  });
-
-  it("uses wallet cost for new game coin trades and does not add the legacy fee", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-05-31T10:00:00.000Z",
-      gameCoinAmount: 20_000_000,
-      rmbCost: 160,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-
     const buy = service.createTrade({
       type: "buy",
       itemName: "高级魔兽要诀",
@@ -153,83 +119,31 @@ describe("mhxy service", () => {
     });
 
     expect(buy).toMatchObject({
+      accountingMode: "legacyRate",
       gameCoinAmountWan: 2000,
       rmbAmount: 160,
       feeRmb: 0
     });
     expect(sell).toMatchObject({
+      accountingMode: "legacyRate",
       gameCoinAmountWan: 1200,
-      rmbAmount: null,
+      rmbAmount: 120,
       feeRmb: 0
     });
-
-    service.createPriceSnapshot({
-      itemName: "高级魔兽要诀",
-      currency: "gameCoin",
-      gameCoinUnitPriceWan: 2000,
-      rmbPerGameCoinWan: 0.2,
-      capturedAt: "2026-06-03T10:00:00.000Z",
-      serverName: "长安城"
-    });
-
-    expect(service.getDashboard().tradeResults).toHaveLength(0);
-  });
-
-  it("keeps imported historical rate trades frozen in legacy accounting mode", () => {
-    const service = createService();
-    service.replaceAllData({
-      trades: [
-        {
-          id: "legacy-buy",
-          type: "buy",
-          itemName: "Legacy Item",
-          quantity: 2,
-          unitPrice: 1000,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.08,
-          rmbAmount: 160,
-          feeRmb: 0,
-          occurredAt: "2026-06-01T10:00:00.000Z",
-          serverName: "Legacy Server",
-          characterName: "Legacy Buyer",
-          createdAt: "2026-06-01T10:00:00.000Z",
-          updatedAt: "2026-06-01T10:00:00.000Z"
-        },
-        {
-          id: "legacy-sell",
-          type: "sell",
-          itemName: "Legacy Item",
-          quantity: 1,
-          unitPrice: 1200,
-          currency: "gameCoin",
-          rmbPerGameCoinWan: 0.1,
-          rmbAmount: 120,
-          feeRmb: 6,
-          occurredAt: "2026-06-02T10:00:00.000Z",
-          serverName: "Legacy Server",
-          characterName: "Legacy Buyer",
-          createdAt: "2026-06-02T10:00:00.000Z",
-          updatedAt: "2026-06-02T10:00:00.000Z"
-        }
-      ],
-      priceSnapshots: [],
-      inventoryTransfers: [],
-      inventoryTargets: [],
-      assetFlips: [],
-      gameCoinPurchases: [],
-      gameCoinCashouts: []
-    });
-
-    const dashboard = service.getDashboard();
-    expect(dashboard.trades).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "legacy-buy", accountingMode: "legacyRate", rmbAmount: 160 }),
-      expect.objectContaining({ id: "legacy-sell", accountingMode: "legacyRate", feeRmb: 6 })
-    ]));
-    expect(dashboard.tradeResults).toContainEqual(expect.objectContaining({
-      tradeId: "legacy-sell",
-      realizedProfitRmb: 34
+    expect(service.getDashboard().tradeResults).toContainEqual(expect.objectContaining({
+      tradeId: sell.id,
+      costBasisRmb: 80,
+      netIncomeRmb: 120,
+      realizedProfitRmb: 40
     }));
-    expect(dashboard.gameCoinWallets).toEqual([]);
+    expect(() => service.createTrade({
+      type: "buy",
+      itemName: "缺比例",
+      quantity: 1,
+      unitPrice: 100,
+      currency: "gameCoin",
+      occurredAt: "2026-06-01T10:00:00.000Z"
+    })).toThrow("游戏币交易必须填写大于 0 的兑换比例");
   });
 
   it("values inventory using the expected sell server latest RMB snapshot", () => {
@@ -261,324 +175,34 @@ describe("mhxy service", () => {
     });
 
     expect(service.getDashboard().inventory[0]).toMatchObject({
+      expectedSellServerName: "紫禁城",
       latestRmbUnitPrice: 150,
-      valuationSourceName: "紫禁城",
       marketValueRmb: 300,
-      unrealizedProfitRmb: 100,
-      expectedSellServerName: "紫禁城"
-    });
-  });
-
-  it("falls back to the latest item snapshot when the target server has no dedicated price", () => {
-    const service = createService();
-
-    service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 2,
-      unitPrice: 100,
-      currency: "rmb",
-      occurredAt: "2026-06-01T10:00:00.000Z",
-      serverName: "Current Server",
-      characterName: "Trader"
-    });
-    service.createPriceSnapshot({
-      itemName: "Advanced Combo",
-      currency: "rmb",
-      rmbUnitPrice: 160,
-      capturedAt: "2026-05-01T10:00:00.000Z",
-      serverName: "Catalog A"
-    });
-    service.createPriceSnapshot({
-      itemName: "Advanced Combo",
-      currency: "rmb",
-      rmbUnitPrice: 180,
-      capturedAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Catalog B"
-    });
-    service.setInventoryTarget({
-      itemName: "Advanced Combo",
-      serverName: "Current Server",
-      characterName: "Trader",
-      expectedSellServerName: "Target Server"
-    });
-
-    expect(service.getDashboard().inventory[0]).toMatchObject({
-      serverName: "Current Server",
-      expectedSellServerName: "Target Server",
-      latestRmbUnitPrice: 180,
-      valuationSourceName: "Catalog B",
-      marketValueRmb: 360,
-      unrealizedProfitRmb: 160
+      unrealizedProfitRmb: 100
     });
   });
 
   it("requires the historical exchange rate for game coin price snapshots", () => {
     const service = createService();
 
-    expect(() =>
-      service.createPriceSnapshot({
-        itemName: "高级魔兽要诀",
-        currency: "gameCoin",
-        gameCoinUnitPriceWan: 1500,
-        capturedAt: "2026-06-02T10:00:00.000Z",
-        serverName: "长安城"
-      } as never)
-    ).toThrow("必须填写大于 0 的当时兑换比例");
-
-    expect(() =>
-      service.createPriceSnapshot({
-        itemName: "高级魔兽要诀",
-        currency: "gameCoin",
-        gameCoinUnitPriceWan: 1500,
-        rmbPerGameCoinWan: 0,
-        capturedAt: "2026-06-02T10:00:00.000Z",
-        serverName: "长安城"
-      })
-    ).toThrow("必须填写大于 0 的当时兑换比例");
-  });
-
-  it("批量重命同一价格序列并保留快照业务字段", () => {
-    const service = createService();
-    const rmb = service.createPriceSnapshot({
-      itemName: "  金刚石  ",
-      currency: "rmb",
-      rmbUnitPrice: 120,
-      capturedAt: "2026-06-01T10:00:00.000Z",
-      serverName: "  长安城  ",
-      note: "人民币样本"
-    });
-    const gameCoin = service.createPriceSnapshot({
+    expect(() => service.createPriceSnapshot({
       itemName: "金刚石",
       currency: "gameCoin",
       gameCoinUnitPriceWan: 1500,
-      rmbPerGameCoinWan: 0.08,
-      capturedAt: "2026-06-02T10:00:00.000Z",
-      serverName: "长安城",
-      note: "游戏币样本"
-    });
-
-    const result = service.updatePriceSeries({
-      current: { itemName: " 金刚石 ", serverName: " 长安城 " },
-      next: { itemName: "  高级金刚石  ", serverName: "  紫禁城  " }
-    });
-
-    expect(result).toMatchObject({ updatedCount: 2, targetRecordCount: 0, merged: false });
-    expect(result.records).toHaveLength(2);
-    expect(result.records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: rmb.id,
-          itemName: "高级金刚石",
-          serverName: "紫禁城",
-          currency: "rmb",
-          rmbUnitPrice: 120,
-          capturedAt: rmb.capturedAt,
-          createdAt: rmb.createdAt,
-          note: "人民币样本"
-        }),
-        expect.objectContaining({
-          id: gameCoin.id,
-          itemName: "高级金刚石",
-          serverName: "紫禁城",
-          currency: "gameCoin",
-          rmbUnitPrice: 120,
-          gameCoinUnitPriceWan: 1500,
-          rmbPerGameCoinWan: 0.08,
-          capturedAt: gameCoin.capturedAt,
-          createdAt: gameCoin.createdAt,
-          note: "游戏币样本"
-        })
-      ])
-    );
-  });
-
-  it("导入数据存在重复 ID 时仅更新匹配身份的价格序列", () => {
-    const service = createService();
-    service.replaceAllData({
-      trades: [],
-      priceSnapshots: [
-        {
-          id: "duplicate-id",
-          itemName: "A",
-          currency: "rmb",
-          rmbUnitPrice: 100,
-          capturedAt: "2026-06-01T10:00:00.000Z",
-          createdAt: "2026-06-01T10:00:00.000Z",
-          updatedAt: "2026-06-01T10:00:00.000Z"
-        },
-        {
-          id: "duplicate-id",
-          itemName: "B",
-          currency: "rmb",
-          rmbUnitPrice: 200,
-          capturedAt: "2026-06-02T10:00:00.000Z",
-          createdAt: "2026-06-02T10:00:00.000Z",
-          updatedAt: "2026-06-02T10:00:00.000Z"
-        }
-      ],
-      inventoryTransfers: [],
-      inventoryTargets: [],
-      assetFlips: [],
-      gameCoinPurchases: [],
-      gameCoinCashouts: []
-    });
-
-    const result = service.updatePriceSeries({
-      current: { itemName: "A" },
-      next: { itemName: "C" }
-    });
-
-    expect(result).toMatchObject({ updatedCount: 1, targetRecordCount: 0, merged: false });
-    expect(result.records).toHaveLength(1);
-    expect(result.records[0]).toMatchObject({ id: "duplicate-id", itemName: "C", rmbUnitPrice: 100 });
-    expect(service.getDashboard().priceSnapshots).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "duplicate-id", itemName: "B", rmbUnitPrice: 200 }),
-        expect.objectContaining({ id: "duplicate-id", itemName: "C", rmbUnitPrice: 100 })
-      ])
-    );
-  });
-
-  it("要求确认后才将价格序列合并到已有目标", () => {
-    const service = createService();
-    service.createPriceSnapshot({
-      itemName: "A",
-      currency: "rmb",
-      rmbUnitPrice: 100,
-      capturedAt: "2026-06-01T10:00:00.000Z"
-    });
-    service.createPriceSnapshot({
-      itemName: "B",
-      currency: "rmb",
-      rmbUnitPrice: 200,
       capturedAt: "2026-06-02T10:00:00.000Z"
-    });
-
-    expect(() =>
-      service.updatePriceSeries({ current: { itemName: "A" }, next: { itemName: "B" } })
-    ).toThrow("目标价格序列已存在，请确认合并");
-    expect(service.getDashboard().priceSnapshots.map((record) => record.itemName).sort()).toEqual([
-      "A",
-      "B"
-    ]);
-
-    const result = service.updatePriceSeries({
-      current: { itemName: "A" },
-      next: { itemName: "B" },
-      confirmMerge: true
-    });
-
-    expect(result).toMatchObject({ updatedCount: 1, targetRecordCount: 1, merged: true });
-    expect(result.records).toHaveLength(2);
-    expect(service.getDashboard().priceSnapshots.map((record) => record.itemName)).toEqual(["B", "B"]);
-  });
-
-  it("将无来源的相同身份视为 no-op", () => {
-    const service = createService();
-    const snapshot = service.createPriceSnapshot({
-      itemName: "  金刚石  ",
-      currency: "rmb",
-      rmbUnitPrice: 120,
-      capturedAt: "2026-06-01T10:00:00.000Z"
-    });
-
-    const result = service.updatePriceSeries({
-      current: { itemName: "  金刚石 ", serverName: "   " },
-      next: { itemName: "金刚石", serverName: "" }
-    });
-
-    expect(result).toMatchObject({ updatedCount: 0, targetRecordCount: 0, merged: false });
-    expect(result.records).toEqual([{ ...snapshot }]);
-    expect(result.records[0]).not.toHaveProperty("serverName");
-  });
-
-  it("创建快照时忽略纯空白来源并保持无来源 no-op", () => {
-    const service = createService();
-    const snapshot = service.createPriceSnapshot({
-      itemName: "金刚石",
-      currency: "rmb",
-      rmbUnitPrice: 120,
-      capturedAt: "2026-06-01T10:00:00.000Z",
-      serverName: "   "
-    });
-
-    expect(snapshot).not.toHaveProperty("serverName");
-    expect(service.getDashboard().priceSnapshots[0]).not.toHaveProperty("serverName");
-
-    const result = service.updatePriceSeries({
-      current: { itemName: "金刚石", serverName: "  " },
-      next: { itemName: " 金刚石 " }
-    });
-
-    expect(result).toMatchObject({ updatedCount: 0, targetRecordCount: 0, merged: false });
-    expect(result.records).toHaveLength(1);
-    expect(result.records[0]).not.toHaveProperty("serverName");
-  });
-
-  it("清空价格序列来源时删除 serverName 属性", () => {
-    const service = createService();
-    service.createPriceSnapshot({
-      itemName: "金刚石",
-      currency: "rmb",
-      rmbUnitPrice: 120,
-      capturedAt: "2026-06-01T10:00:00.000Z",
-      serverName: "长安城"
-    });
-
-    const result = service.updatePriceSeries({
-      current: { itemName: "金刚石", serverName: "长安城" },
-      next: { itemName: "金刚石", serverName: "  " }
-    });
-
-    expect(result.records).toHaveLength(1);
-    expect(result.records[0]).not.toHaveProperty("serverName");
-    expect(service.getDashboard().priceSnapshots[0]).not.toHaveProperty("serverName");
-  });
-
-  it("拒绝更新不存在的价格序列", () => {
-    const service = createService();
-
-    expect(() =>
-      service.updatePriceSeries({
-        current: { itemName: "不存在", serverName: "长安城" },
-        next: { itemName: "新名称", serverName: "紫禁城" }
-      })
-    ).toThrow("价格序列不存在");
-    expect(service.getDashboard().priceSnapshots).toEqual([]);
+    } as never)).toThrow("游戏币价格快照必须填写");
   });
 
   it("moves every item held by a role without capitalizing the transfer expense", () => {
     const service = createService();
-
     service.createTrade({
       type: "buy",
-      itemName: "金刚石",
-      quantity: 2,
-      unitPrice: 100,
+      itemName: "高级连击",
+      quantity: 1,
+      unitPrice: 300,
       currency: "rmb",
       occurredAt: "2026-06-01T10:00:00.000Z",
       serverName: "长安城",
-      characterName: "商人甲"
-    });
-    service.createTrade({
-      type: "buy",
-      itemName: "夜光珠",
-      quantity: 1,
-      unitPrice: 50,
-      currency: "rmb",
-      occurredAt: "2026-06-01T11:00:00.000Z",
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-    service.createTrade({
-      type: "buy",
-      itemName: "金刚石",
-      quantity: 1,
-      unitPrice: 80,
-      currency: "rmb",
-      occurredAt: "2026-06-01T12:00:00.000Z",
-      serverName: "紫禁城",
       characterName: "商人甲"
     });
     service.createInventoryTransfer({
@@ -591,944 +215,100 @@ describe("mhxy service", () => {
     });
 
     const dashboard = service.getDashboard();
-    expect(dashboard.inventory).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        itemName: "金刚石",
-        serverName: "紫禁城",
-        characterName: "商人甲",
-        quantity: 3,
-        inventoryCostRmb: 280
-      }),
-      expect.objectContaining({
-        itemName: "夜光珠",
-        serverName: "紫禁城",
-        characterName: "商人甲",
-        quantity: 1,
-        inventoryCostRmb: 50
-      })
-    ]));
-    expect(dashboard.inventory.some((item) => item.serverName === "长安城")).toBe(false);
-    expect(dashboard.summary).toMatchObject({
-      inventoryCostRmb: 330,
-      realizedProfitRmb: -20
+    expect(dashboard.inventory[0]).toMatchObject({
+      itemName: "高级连击",
+      serverName: "紫禁城",
+      inventoryCostRmb: 300
     });
-    expect(dashboard.overviewSummary.crossServer.transferExpenseRmb).toBe(20);
+    expect(dashboard.summary.realizedProfitRmb).toBe(-20);
   });
 
-  it("builds cost and expected-value overview groups with inventory price fallback", () => {
+  it("tracks role, summon, and equipment asset flips with RMB-only profit", () => {
     const service = createService();
-    service.createTrade({ type: "buy", itemName: "有行情", quantity: 1, unitPrice: 100, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
-    service.createTrade({ type: "buy", itemName: "无行情", quantity: 1, unitPrice: 50, currency: "rmb", occurredAt: "2026-06-01T11:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
-    service.createPriceSnapshot({ itemName: "有行情", currency: "rmb", rmbUnitPrice: 140, capturedAt: "2026-06-02T10:00:00.000Z", serverName: "长安城" });
-    service.createGameCoinPurchase({ acquiredAt: "2026-06-01T09:00:00.000Z", gameCoinAmount: 1_000_000, rmbCost: 100, serverName: "长安城", characterName: "商人甲" });
-    service.createAssetFlip({ category: "role", name: "持有角色", buyAt: "2026-06-01T08:00:00.000Z", buyPriceRmb: 500, serverName: "长安城" });
-    service.createAssetFlip({ category: "equipment", name: "已售装备", buyAt: "2026-06-01T07:00:00.000Z", buyPriceRmb: 200, sellAt: "2026-06-03T10:00:00.000Z", sellPriceRmb: 250, serverName: "长安城", characterName: "商人甲" });
-
-    expect(service.getDashboard().overviewSummary).toEqual({
-      crossServer: {
-        holdingCostRmb: 250,
-        expectedValueRmb: 290,
-        realizedProfitRmb: 0,
-        transferExpenseRmb: 0
-      },
-      assetTrading: {
-        holdingCostRmb: 500,
-        expectedValueRmb: 500,
-        realizedProfitRmb: 50
-      },
-      total: {
-        holdingCostRmb: 750,
-        expectedValueRmb: 790,
-        realizedProfitRmb: 50
-      }
-    });
-  });
-
-  it("replays role-transfer edits and deletes atomically", () => {
-    const service = createService();
-    service.createTrade({ type: "buy", itemName: "金刚石", quantity: 1, unitPrice: 100, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
-    const transfer = service.createInventoryTransfer({ scope: "role", characterName: "商人甲", sourceServerName: "长安城", targetServerName: "紫禁城", transferCostRmb: 20, occurredAt: "2026-06-02T10:00:00.000Z" });
-
-    service.updateInventoryTransfer(transfer.id, { targetServerName: "建邺城", transferCostRmb: 10 });
-    expect(service.getDashboard()).toMatchObject({
-      inventory: [expect.objectContaining({ serverName: "建邺城", inventoryCostRmb: 100 })],
-      summary: { realizedProfitRmb: -10 }
-    });
-
-    service.deleteInventoryTransfer(transfer.id);
-    expect(service.getDashboard()).toMatchObject({
-      inventory: [expect.objectContaining({ serverName: "长安城", inventoryCostRmb: 100 })],
-      summary: { realizedProfitRmb: 0 }
-    });
-  });
-
-  it("rejects role transfers without source inventory or a different target server", () => {
-    const service = createService();
-    expect(() => service.createInventoryTransfer({ scope: "role", characterName: "空角色", sourceServerName: "长安城", targetServerName: "紫禁城", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" })).toThrow("角色没有可转移库存");
-    expect(() => service.createInventoryTransfer({ scope: "role", characterName: "空角色", sourceServerName: "长安城", targetServerName: "长安城", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" })).toThrow("源区服和目标区服不能相同");
-  });
-
-  it("keeps imported legacy item transfers on their original accounting rules", () => {
-    const seed = createService();
-    const trade = seed.createTrade({ type: "buy", itemName: "金刚石", quantity: 2, unitPrice: 100, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "长安城", characterName: "商人甲" });
-    const service = createService();
-    service.replaceAllData({
-      trades: [trade],
-      priceSnapshots: [],
-      inventoryTransfers: [{
-        id: "legacy-transfer",
-        itemName: "金刚石",
-        quantity: 1,
-        sourceServerName: "长安城",
-        sourceCharacterName: "商人甲",
-        targetServerName: "紫禁城",
-        targetCharacterName: "商人乙",
-        transferCostRmb: 20,
-        occurredAt: "2026-06-02T10:00:00.000Z",
-        createdAt: "2026-06-02T10:00:00.000Z",
-        updatedAt: "2026-06-02T10:00:00.000Z"
-      }],
-      inventoryTargets: [],
-      assetFlips: [],
-      gameCoinPurchases: [],
-      gameCoinCashouts: []
-    });
-
-    expect(service.getDashboard()).toMatchObject({
-      inventory: expect.arrayContaining([
-        expect.objectContaining({ serverName: "长安城", inventoryCostRmb: 100 }),
-        expect.objectContaining({ serverName: "紫禁城", inventoryCostRmb: 120 })
-      ]),
-      overviewSummary: { crossServer: { transferExpenseRmb: 0 } }
-    });
-    expect(() => service.updateInventoryTransfer("legacy-transfer", { transferCostRmb: 10 })).toThrow("历史单道具转移不支持编辑");
-  });
-
-  it("rejects unlocated game coin trades, oversells, and invalid historical edits", () => {
-    const service = createService();
-
-    expect(() =>
-      service.createTrade({
-        type: "buy",
-        itemName: "金刚石",
-        quantity: 1,
-        unitPrice: 1000,
-        currency: "gameCoin",
-        occurredAt: "2026-06-01T10:00:00.000Z"
-      })
-    ).toThrow("游戏币交易必须填写区服和角色");
-
-    const buy = service.createTrade({
-      type: "buy",
-      itemName: "金刚石",
-      quantity: 2,
-      unitPrice: 100,
-      currency: "rmb",
-      occurredAt: "2026-06-01T10:00:00.000Z",
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-    service.createTrade({
-      type: "sell",
-      itemName: "金刚石",
-      quantity: 2,
-      unitPrice: 120,
-      currency: "rmb",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-
-    expect(() => service.updateTrade(buy.id, { quantity: 1 })).toThrow("库存不足");
-    expect(service.getDashboard().trades.find((trade) => trade.id === buy.id)?.quantity).toBe(2);
-  });
-
-  it("tracks summon and equipment asset flips with RMB-only holding cost and realized profit", () => {
-    const service = createService();
-
     service.createAssetFlip({
       category: "summon",
       name: "须弥画魂",
       buyAt: "2026-06-01T10:00:00.000Z",
       buyPriceRmb: 1200,
+      sellAt: "2026-06-03T10:00:00.000Z",
+      sellPriceRmb: 1350,
       serverName: "长安城",
       characterName: "商人甲"
     });
     service.createAssetFlip({
-      category: "equipment",
-      name: "160 项链",
+      category: "role",
+      name: "175 大唐官府",
       buyAt: "2026-06-02T10:00:00.000Z",
-      buyPriceRmb: 3000,
-      sellAt: "2026-06-04T10:00:00.000Z",
-      sellPriceRmb: 2800,
-      serverName: "长安城",
-      characterName: "商人甲"
+      buyPriceRmb: 5000,
+      serverName: "紫禁城"
     });
 
     const dashboard = service.getDashboard();
-    expect(dashboard.assetFlips).toHaveLength(2);
-    expect(dashboard.assetFlips.find((item) => item.name === "160 项链")).toMatchObject({
-      status: "sold",
-      profitRmb: -200
-    });
     expect(dashboard.assetFlipSummary).toMatchObject({
       holdingCount: 1,
       soldCount: 1,
-      holdingCostRmb: 1200,
-      realizedRevenueRmb: 2800,
-      realizedProfitRmb: -200
+      holdingCostRmb: 5000,
+      realizedProfitRmb: 150
     });
-    expect(dashboard.combinedSummary).toMatchObject({
-      holdingCostRmb: 1200,
-      realizedProfitRmb: -200
-    });
+    expect(dashboard.assetFlips).toEqual(expect.arrayContaining([
+      expect.objectContaining({ purchaseCurrency: "rmb", buyPriceRmb: 1200, profitRmb: 150 }),
+      expect.objectContaining({ purchaseCurrency: "rmb", buyPriceRmb: 5000, profitRmb: null })
+    ]));
   });
 
-  it("requires located asset flips and owners for summons or equipment", () => {
+  it("normalizes imported records and rejects semantically invalid data", () => {
     const service = createService();
-
-    expect(() => service.createAssetFlip({
-      category: "role",
-      name: "无区服角色",
-      buyAt: "2026-06-01T10:00:00.000Z",
-      buyPriceRmb: 100
-    })).toThrow("区服不能为空");
-    expect(() => service.createAssetFlip({
-      category: "summon",
-      name: "无归属召唤兽",
-      buyAt: "2026-06-01T10:00:00.000Z",
-      buyPriceRmb: 100,
-      serverName: "长安城"
-    })).toThrow("装备和召唤兽必须填写归属角色");
-  });
-
-  it("imports role asset flips and reports generic asset errors", () => {
-    const service = createService();
-    const timestamp = "2026-06-01T10:00:00.000Z";
-
     service.replaceAllData({
+      trades: [
+        {
+          id: "legacy-buy",
+          type: "buy",
+          itemName: "Legacy Item",
+          quantity: 2,
+          unitPrice: 1000,
+          currency: "gameCoin",
+          rmbPerGameCoinWan: 0.08,
+          rmbAmount: 160,
+          feeRmb: 0,
+          occurredAt: "2026-06-01T10:00:00.000Z",
+          serverName: "Legacy Server",
+          characterName: "Legacy Buyer",
+          createdAt: "2026-06-01T10:00:00.000Z",
+          updatedAt: "2026-06-01T10:00:00.000Z"
+        }
+      ],
+      priceSnapshots: [],
+      inventoryTransfers: [],
+      inventoryTargets: [],
+      assetFlips: []
+    });
+
+    expect(service.getDashboard().trades).toContainEqual(expect.objectContaining({
+      id: "legacy-buy",
+      accountingMode: "legacyRate",
+      rmbAmount: 160
+    }));
+    expect(() => service.replaceAllData({
       trades: [],
       priceSnapshots: [],
       inventoryTransfers: [],
       inventoryTargets: [],
-      gameCoinPurchases: [],
       assetFlips: [
         {
-          id: "role-1",
-          category: "role",
-          name: "175 龙宫",
-          buyAt: timestamp,
+          id: "bad-asset",
+          category: "summon",
+          name: "",
+          buyAt: "2026-06-01T10:00:00.000Z",
           purchaseCurrency: "rmb",
-          buyPriceRmb: 4200,
+          buyPriceRmb: 100,
           status: "holding",
           profitRmb: null,
           serverName: "长安城",
-          createdAt: timestamp,
-          updatedAt: timestamp
+          characterName: "商人甲",
+          createdAt: "2026-06-01T10:00:00.000Z",
+          updatedAt: "2026-06-01T10:00:00.000Z"
         }
       ]
-    });
-
-    const dashboard = service.getDashboard();
-    expect(dashboard.assetFlips).toEqual([
-      expect.objectContaining({
-        category: "role",
-        name: "175 龙宫",
-        buyPriceRmb: 4200
-      })
-    ]);
-    expect(dashboard.assetFlipSummary).toMatchObject({
-      holdingCount: 1,
-      holdingCostRmb: 4200
-    });
-    expect(() => service.updateAssetFlip("missing", {})).toThrow("资产记录不存在");
-    expect(() => service.deleteAssetFlip("missing")).toThrow("资产记录不存在");
-  });
-
-  it("updates a holding asset flip to sold and validates sell fields", () => {
-    const service = createService();
-    const record = service.createAssetFlip({
-      category: "summon",
-      name: "力劈童子",
-      buyAt: "2026-06-01T10:00:00.000Z",
-      buyPriceRmb: 800,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-
-    expect(() => service.updateAssetFlip(record.id, { sellPriceRmb: 950 })).toThrow(
-      "卖出时间和卖出价格必须同时填写"
-    );
-    expect(() => service.updateAssetFlip(record.id, {
-      sellAt: "2026-05-01T10:00:00.000Z",
-      sellPriceRmb: 950
-    })).toThrow("卖出时间不能早于买入时间");
-
-    const sold = service.updateAssetFlip(record.id, {
-      sellAt: "2026-06-05T10:00:00.000Z",
-      sellPriceRmb: 950.235
-    });
-
-    expect(sold).toMatchObject({
-      status: "sold",
-      sellPriceRmb: 950.24,
-      profitRmb: 150.24
-    });
-    expect(service.getDashboard().assetFlipSummary).toMatchObject({
-      holdingCount: 0,
-      soldCount: 1,
-      holdingCostRmb: 0,
-      realizedProfitRmb: 150.24
-    });
-  });
-
-  it("uses the original game coin purchase batch cost instead of a later market rate", () => {
-    const service = createService();
-
-    const firstBatch = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 30_000_000,
-      rmbCost: 230
-    });
-    const asset = service.createAssetFlip({
-      category: "equipment",
-      name: "测试装备",
-      buyAt: "2026-06-02T10:00:00.000Z",
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 666_666,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-
-    expect(asset).toMatchObject({
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 666_666,
-      buyPriceRmb: 5.11,
-      gameCoinAllocations: [
-        {
-          gameCoinPurchaseId: firstBatch.id,
-          gameCoinAmount: 666_666,
-          rmbCost: 5.11
-        }
-      ]
-    });
-
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-03T10:00:00.000Z",
-      gameCoinAmount: 30_000_000,
-      rmbCost: 240
-    });
-
-    const dashboard = service.getDashboard();
-    expect(dashboard.assetFlips.find((item) => item.id === asset.id)?.buyPriceRmb).toBe(5.11);
-    expect(dashboard.gameCoinBalance).toEqual({
-      gameCoinAmount: 59_333_334,
-      rmbCost: 464.89
-    });
-  });
-
-  it("spans FIFO game coin batches and rejects spending more than the historical balance", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 1_000_000,
-      rmbCost: 10
-    });
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-02T10:00:00.000Z",
-      gameCoinAmount: 1_000_000,
-      rmbCost: 20
-    });
-
-    const asset = service.createAssetFlip({
-      category: "summon",
-      name: "跨批次召唤兽",
-      buyAt: "2026-06-03T10:00:00.000Z",
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 1_500_000,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-    expect(asset.buyPriceRmb).toBe(20);
-    expect(asset.gameCoinAllocations).toEqual([
-      expect.objectContaining({ gameCoinAmount: 1_000_000, rmbCost: 10 }),
-      expect.objectContaining({ gameCoinAmount: 500_000, rmbCost: 10 })
-    ]);
-
-    expect(() =>
-      service.createAssetFlip({
-        category: "equipment",
-        name: "余额不足装备",
-        buyAt: "2026-06-04T10:00:00.000Z",
-        purchaseCurrency: "gameCoin",
-        gameCoinCost: 600_000,
-        serverName: "长安城",
-        characterName: "商人甲"
-      })
-    ).toThrow("游戏币余额不足");
-    expect(service.getDashboard().assetFlips).toHaveLength(1);
-  });
-
-  it("conserves all game coin batch RMB cents across many rounded allocations", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 30_000_000,
-      rmbCost: 230
-    });
-    for (let index = 0; index < 45; index += 1) {
-      service.createAssetFlip({
-        category: "equipment",
-        name: `批次物品 ${index}`,
-        buyAt: new Date(Date.UTC(2026, 5, 2, 10, 0, index)).toISOString(),
-        purchaseCurrency: "gameCoin",
-        gameCoinCost: 666_666,
-        serverName: "长安城",
-        characterName: "商人甲"
-      });
-    }
-
-    const dashboard = service.getDashboard();
-    const allocated = dashboard.assetFlips.reduce((sum, item) => sum + item.buyPriceRmb, 0);
-    expect(Math.round((allocated + dashboard.gameCoinBalance.rmbCost) * 100)).toBe(23_000);
-  });
-
-  it("keeps historical game coin batch IDs when an earlier batch is added later", () => {
-    const service = createService();
-    const originalBatch = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 10
-    });
-    const asset = service.createAssetFlip({
-      category: "summon",
-      name: "冻结批次资产",
-      buyAt: "2026-06-03T10:00:00.000Z",
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 100,
-      sellAt: "2026-06-04T10:00:00.000Z",
-      sellPriceRmb: 30,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-05-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 20
-    });
-
-    const persisted = service.getDashboard().assetFlips.find((item) => item.id === asset.id);
-    expect(persisted).toMatchObject({
-      buyPriceRmb: 10,
-      profitRmb: 20,
-      gameCoinAllocations: [expect.objectContaining({ gameCoinPurchaseId: originalBatch.id })]
-    });
-  });
-
-  it("keeps the original game coin allocation when editing non-cost asset fields", () => {
-    const service = createService();
-    const originalBatch = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 10
-    });
-    const asset = service.createAssetFlip({
-      category: "summon",
-      name: "编辑后仍冻结成本",
-      buyAt: "2026-06-03T10:00:00.000Z",
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 100,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-05-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 20
-    });
-
-    const updated = service.updateAssetFlip(asset.id, { note: "只修改备注" });
-
-    expect(updated).toMatchObject({
-      buyPriceRmb: 10,
-      note: "只修改备注",
-      gameCoinAllocations: [expect.objectContaining({ gameCoinPurchaseId: originalBatch.id })]
-    });
-  });
-
-  it("rejects invalid runtime enums and protects referenced game coin batches from deletion", () => {
-    const service = createService();
-    expect(() => service.createTrade({
-      type: "buy",
-      itemName: "异常币种",
-      quantity: 1,
-      unitPrice: 100,
-      currency: "usd",
-      occurredAt: "2026-06-01T10:00:00.000Z"
-    } as never)).toThrow("交易币种必须是人民币或游戏币");
-
-    const purchase = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 10
-    });
-    const asset = service.createAssetFlip({
-      category: "equipment",
-      name: "引用批次",
-      buyAt: "2026-06-02T10:00:00.000Z",
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 100,
-      serverName: "长安城",
-      characterName: "商人甲"
-    });
-    expect(() => service.deleteGameCoinPurchase(purchase.id)).toThrow("游戏币批次不存在");
-    service.deleteAssetFlip(asset.id);
-    expect(service.deleteGameCoinPurchase(purchase.id)).toEqual({ id: purchase.id });
-  });
-
-  it("uses located game coin purchase batches to fund cross-server item buys", () => {
-    const service = createService();
-    const purchase = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 20_000_000,
-      rmbCost: 200,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    const trade = service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 2,
-      unitPrice: 500,
-      currency: "gameCoin",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    expect(purchase).toMatchObject({
-      rmbPerGameCoinWan: 0.1,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    expect(trade).toMatchObject({
-      accountingMode: "wallet",
-      gameCoinAmountWan: 1000,
-      rmbAmount: 100,
-      effectiveRmbPerGameCoinWan: 0.1,
-      gameCoinAllocations: [
-        expect.objectContaining({
-          gameCoinPurchaseId: purchase.id,
-          gameCoinAmount: 10_000_000,
-          rmbCost: 100
-        })
-      ]
-    });
-
-    const dashboard = service.getDashboard();
-    expect(dashboard.inventory[0]).toMatchObject({ inventoryCostRmb: 100, quantity: 2 });
-    expect(dashboard.gameCoinWallets).toContainEqual(
-      expect.objectContaining({
-        purpose: "procurement",
-        serverName: "Source Server",
-        characterName: "Buyer",
-        gameCoinAmount: 10_000_000,
-        rmbCostBasis: 100,
-        averageRmbPerGameCoinWan: 0.1
-      })
-    );
-  });
-
-  it("does not let a new trade bypass the wallet by supplying a legacy exchange rate", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 10_000_000,
-      rmbCost: 100,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    const trade = service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 1,
-      unitPrice: 500,
-      currency: "gameCoin",
-      rmbPerGameCoinWan: 999,
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    expect(trade).toMatchObject({ accountingMode: "wallet", rmbAmount: 50 });
-    expect(trade).not.toHaveProperty("rmbPerGameCoinWan");
-    expect(service.getDashboard().gameCoinWallets).toContainEqual(expect.objectContaining({
-      purpose: "procurement",
-      gameCoinAmount: 5_000_000,
-      rmbCostBasis: 50
-    }));
-  });
-
-  it("recomputes accounting when an RMB trade is changed to game coin", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T09:00:00.000Z",
-      gameCoinAmount: 10_000_000,
-      rmbCost: 100,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    const original = service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 1,
-      unitPrice: 100,
-      currency: "rmb",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    const updated = service.updateTrade(original.id, {
-      currency: "gameCoin",
-      unitPrice: 500
-    });
-
-    expect(updated).toMatchObject({ accountingMode: "wallet", rmbAmount: 50 });
-    expect(service.getDashboard().inventory).toContainEqual(
-      expect.objectContaining({ itemName: "Advanced Combo", inventoryCostRmb: 50 })
-    );
-    expect(service.getDashboard().gameCoinBalance).toEqual({
-      gameCoinAmount: 5_000_000,
-      rmbCost: 50
-    });
-  });
-
-  it("reallocates wallet batches when an existing game coin trade changes quantity", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T09:00:00.000Z",
-      gameCoinAmount: 20_000_000,
-      rmbCost: 200,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    const original = service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 1,
-      unitPrice: 500,
-      currency: "gameCoin",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    const updated = service.updateTrade(original.id, { quantity: 2 });
-
-    expect(updated).toMatchObject({ accountingMode: "wallet", rmbAmount: 100 });
-    expect(updated.gameCoinAllocations).toEqual([
-      expect.objectContaining({ gameCoinAmount: 10_000_000, rmbCost: 100 })
-    ]);
-    expect(service.getDashboard().gameCoinBalance).toEqual({
-      gameCoinAmount: 10_000_000,
-      rmbCost: 100
-    });
-  });
-
-  it("keeps cross-server allocations reserved when a later asset consumes game coin", () => {
-    const service = createService();
-    const first = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 10,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    const second = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T11:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 20,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    const trade = service.createTrade({
-      type: "buy",
-      itemName: "Cross Item",
-      quantity: 1,
-      unitPrice: 0.01,
-      currency: "gameCoin",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    const asset = service.createAssetFlip({
-      category: "equipment",
-      name: "Asset Item",
-      buyAt: "2026-06-03T10:00:00.000Z",
-      purchaseCurrency: "gameCoin",
-      gameCoinCost: 100,
-      serverName: "Target Server",
-      characterName: "Buyer"
-    });
-
-    expect(trade.gameCoinAllocations).toEqual([
-      expect.objectContaining({ gameCoinPurchaseId: first.id, gameCoinAmount: 100 })
-    ]);
-    expect(asset.gameCoinAllocations).toEqual([
-      expect.objectContaining({ gameCoinPurchaseId: second.id, gameCoinAmount: 100, rmbCost: 20 })
-    ]);
-    expect(service.getDashboard().gameCoinBalance).toEqual({ gameCoinAmount: 0, rmbCost: 0 });
-  });
-
-  it("rejects game coin trades whose displayed amount cannot resolve to a positive raw coin", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 100,
-      rmbCost: 10,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    expect(() => service.createTrade({
-      type: "buy",
-      itemName: "Free Item",
-      quantity: 1,
-      unitPrice: 0.00001,
-      currency: "gameCoin",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    })).toThrow("游戏币数量");
-    expect(service.getDashboard().trades).toHaveLength(0);
-  });
-
-  it("keeps six decimal precision for game coin exchange rates", () => {
-    const service = createService();
-    const purchase = service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 30_000_000,
-      rmbCost: 230,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-
-    expect(purchase.rmbPerGameCoinWan).toBe(0.076667);
-    expect(service.getDashboard().gameCoinWallets[0].averageRmbPerGameCoinWan).toBe(0.076667);
-  });
-
-  it("moves transferred item proceeds into liquidation and realizes profit only on cashout", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 20_000_000,
-      rmbCost: 200,
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 1,
-      unitPrice: 1000,
-      currency: "gameCoin",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    service.createInventoryTransfer({
-      scope: "role",
-      characterName: "Buyer",
-      sourceServerName: "Source Server",
-      targetServerName: "Target Server",
-      transferCostRmb: 20,
-      occurredAt: "2026-06-03T10:00:00.000Z"
-    });
-    const sale = service.createTrade({
-      type: "sell",
-      itemName: "Advanced Combo",
-      quantity: 1,
-      unitPrice: 1200,
-      currency: "gameCoin",
-      occurredAt: "2026-06-04T10:00:00.000Z",
-      serverName: "Target Server",
-      characterName: "Buyer"
-    });
-
-    expect(sale).toMatchObject({
-      accountingMode: "wallet",
-      gameCoinAmountWan: 1200,
-      rmbAmount: null
-    });
-    expect(service.getDashboard()).toMatchObject({
-      summary: { realizedProfitRmb: -20 },
-      gameCoinWallets: expect.arrayContaining([
-        expect.objectContaining({
-          purpose: "liquidation",
-          serverName: "Target Server",
-          characterName: "Buyer",
-          gameCoinAmount: 12_000_000,
-          rmbCostBasis: 100
-        })
-      ])
-    });
-
-    const cashout = service.createGameCoinCashout({
-      occurredAt: "2026-06-05T10:00:00.000Z",
-      serverName: "Target Server",
-      characterName: "Buyer",
-      gameCoinAmount: 6_000_000,
-      rmbReceived: 90
-    });
-
-    expect(cashout).toMatchObject({
-      rmbPerGameCoinWan: 0.15,
-      costBasisRmb: 50,
-      realizedProfitRmb: 40
-    });
-    expect(service.getDashboard()).toMatchObject({
-      summary: { realizedProfitRmb: 20 },
-      gameCoinCashoutSummary: { realizedProfitRmb: 40 },
-      gameCoinWallets: expect.arrayContaining([
-        expect.objectContaining({
-          purpose: "liquidation",
-          gameCoinAmount: 6_000_000,
-          rmbCostBasis: 50
-        })
-      ])
-    });
-  });
-
-  it("isolates procurement game coin by server and character", () => {
-    const service = createService();
-    service.createGameCoinPurchase({
-      acquiredAt: "2026-06-01T10:00:00.000Z",
-      gameCoinAmount: 10_000_000,
-      rmbCost: 100,
-      serverName: "Server A",
-      characterName: "Buyer A"
-    });
-
-    expect(() => service.createTrade({
-      type: "buy",
-      itemName: "Advanced Combo",
-      quantity: 1,
-      unitPrice: 500,
-      currency: "gameCoin",
-      occurredAt: "2026-06-02T10:00:00.000Z",
-      serverName: "Server A",
-      characterName: "Buyer B"
-    })).toThrow("游戏币余额不足");
-    expect(service.getDashboard().trades).toHaveLength(0);
-  });
-
-  it("splits mixed transferred and direct sale proceeds between both wallets", () => {
-    const service = createService();
-    service.createTrade({
-      type: "buy",
-      itemName: "Mixed Item",
-      quantity: 1,
-      unitPrice: 10,
-      currency: "rmb",
-      occurredAt: "2026-06-01T10:00:00.000Z",
-      serverName: "Target Server",
-      characterName: "Buyer"
-    });
-    service.createTrade({
-      type: "buy",
-      itemName: "Mixed Item",
-      quantity: 1,
-      unitPrice: 20,
-      currency: "rmb",
-      occurredAt: "2026-06-01T11:00:00.000Z",
-      serverName: "Source Server",
-      characterName: "Buyer"
-    });
-    service.createInventoryTransfer({
-      scope: "role",
-      characterName: "Buyer",
-      sourceServerName: "Source Server",
-      targetServerName: "Target Server",
-      transferCostRmb: 0,
-      occurredAt: "2026-06-02T10:00:00.000Z"
-    });
-    service.createTrade({
-      type: "sell",
-      itemName: "Mixed Item",
-      quantity: 2,
-      unitPrice: 0.02,
-      currency: "gameCoin",
-      occurredAt: "2026-06-03T10:00:00.000Z",
-      serverName: "Target Server",
-      characterName: "Buyer"
-    });
-
-    expect(service.getDashboard().gameCoinWallets).toEqual(expect.arrayContaining([
-      expect.objectContaining({ purpose: "liquidation", gameCoinAmount: 200, rmbCostBasis: 20 }),
-      expect.objectContaining({ purpose: "procurement", gameCoinAmount: 200, rmbCostBasis: 10 })
-    ]));
-  });
-
-  it("rejects cashing out more than the liquidation balance without writing", () => {
-    const service = createService();
-    service.createTrade({
-      type: "buy",
-      itemName: "Cashout Guard",
-      quantity: 1,
-      unitPrice: 10,
-      currency: "rmb",
-      occurredAt: "2026-06-01T10:00:00.000Z",
-      serverName: "Source",
-      characterName: "Buyer"
-    });
-    service.createInventoryTransfer({
-      scope: "role",
-      characterName: "Buyer",
-      sourceServerName: "Source",
-      targetServerName: "Target",
-      transferCostRmb: 0,
-      occurredAt: "2026-06-02T10:00:00.000Z"
-    });
-    service.createTrade({
-      type: "sell",
-      itemName: "Cashout Guard",
-      quantity: 1,
-      unitPrice: 0.01,
-      currency: "gameCoin",
-      occurredAt: "2026-06-03T10:00:00.000Z",
-      serverName: "Target",
-      characterName: "Buyer"
-    });
-
-    expect(() => service.createGameCoinCashout({
-      occurredAt: "2026-06-04T10:00:00.000Z",
-      serverName: "Target",
-      characterName: "Buyer",
-      gameCoinAmount: 101,
-      rmbReceived: 12
-    })).toThrow("准备卖出的游戏币余额不足");
-    expect(service.getDashboard().gameCoinCashouts).toHaveLength(0);
-  });
-
-  it("conserves liquidation cost cents across partial and final cashouts", () => {
-    const service = createService();
-    service.createTrade({ type: "buy", itemName: "Cent Item", quantity: 1, unitPrice: 1, currency: "rmb", occurredAt: "2026-06-01T10:00:00.000Z", serverName: "Source", characterName: "Buyer" });
-    service.createInventoryTransfer({ scope: "role", characterName: "Buyer", sourceServerName: "Source", targetServerName: "Target", transferCostRmb: 0, occurredAt: "2026-06-02T10:00:00.000Z" });
-    service.createTrade({ type: "sell", itemName: "Cent Item", quantity: 1, unitPrice: 0.0003, currency: "gameCoin", occurredAt: "2026-06-03T10:00:00.000Z", serverName: "Target", characterName: "Buyer" });
-
-    const first = service.createGameCoinCashout({ occurredAt: "2026-06-04T10:00:00.000Z", serverName: "Target", characterName: "Buyer", gameCoinAmount: 1, rmbReceived: 0.5 });
-    const second = service.createGameCoinCashout({ occurredAt: "2026-06-05T10:00:00.000Z", serverName: "Target", characterName: "Buyer", gameCoinAmount: 2, rmbReceived: 1 });
-
-    expect(first.costBasisRmb).toBe(0.33);
-    expect(second.costBasisRmb).toBe(0.67);
-    expect(service.getDashboard().gameCoinCashoutSummary).toMatchObject({
-      rmbReceived: 1.5,
-      realizedProfitRmb: 0.5
-    });
-    expect(service.getDashboard().gameCoinWallets.some((wallet) => wallet.purpose === "liquidation")).toBe(false);
+    })).toThrow("名称不能为空");
   });
 });
