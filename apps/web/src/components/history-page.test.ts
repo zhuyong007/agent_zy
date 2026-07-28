@@ -247,6 +247,7 @@ describe("HistoryPage", () => {
       root.unmount();
     });
     container.remove();
+    window.sessionStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -357,6 +358,42 @@ describe("HistoryPage", () => {
     expect(secondCopyPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
     expect(copyPromptButton?.textContent).toContain("已复制");
     expect(secondCopyPromptButton?.textContent).toContain("已复制");
+  });
+
+  it("keeps copied image prompt state in sessionStorage for the selected history item", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true
+    });
+
+    await renderHistoryPage();
+
+    const copyPromptButton = container.querySelector(
+      'button[aria-label="复制第1张生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      copyPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(
+      window.sessionStorage.getItem("agent-zy:history:copied-prompt-keys:history-1")
+    ).toBe(JSON.stringify(["prompt-0"]));
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+
+    await renderHistoryPage();
+
+    const restoredCopyPromptButton = container.querySelector(
+      'button[aria-label="复制第1张生图提示词"]'
+    ) as HTMLButtonElement | null;
+
+    expect(restoredCopyPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
+    expect(restoredCopyPromptButton?.textContent).toContain("已复制");
   });
 
   it("shows and copies xiaohongshu cover plan text from the selected history item", async () => {
@@ -568,6 +605,60 @@ describe("HistoryPage", () => {
       "What ideas moved along it?"
     );
     expect(targetSelect?.value).toBe("history-1::");
+  });
+
+  it("extracts comments from a pasted clipboard screenshot", async () => {
+    vi.mocked(extractHistoryCommentScreenshot).mockResolvedValueOnce({
+      detectedNoteTitle: "Silk Road",
+      comments: [{ commenterName: "Clipboard Reader", commentText: "Can I paste screenshots directly?" }],
+      targetCandidates: [
+        {
+          targetNotificationId: "history-1",
+          targetModuleType: null,
+          sourceTitle: "Silk Road",
+          score: 1
+        }
+      ],
+      warnings: []
+    });
+    await renderHistoryPage();
+
+    const screenshotTab = container.querySelector(
+      'button[aria-label="截图识别评论"]'
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      screenshotTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const screenshotFile = new File(["clipboard screenshot"], "clipboard-comments.png", { type: "image/png" });
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true }) as Event & {
+      clipboardData: {
+        files: File[];
+        items: Array<{ kind: string; type: string; getAsFile: () => File }>;
+      };
+    };
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        files: [screenshotFile],
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => screenshotFile
+          }
+        ]
+      }
+    });
+
+    await act(async () => {
+      window.dispatchEvent(pasteEvent);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(extractHistoryCommentScreenshot).toHaveBeenCalledWith(screenshotFile);
+    expect(container.textContent).toContain("clipboard-comments.png");
+    expect(container.textContent).toContain("Clipboard Reader");
+    expect(container.textContent).toContain("Can I paste screenshots directly?");
   });
 
   it("reopens, re-verifies and deletes persisted reply drafts", async () => {

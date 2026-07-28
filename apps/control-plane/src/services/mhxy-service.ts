@@ -145,7 +145,11 @@ function summarizeAssetFlips(records: MhxyAssetFlipRecord[]): MhxyAssetFlipSumma
   );
 }
 
-function normalizeTrade(input: MhxyTradeInput, existing?: MhxyTradeRecord): MhxyTradeRecord {
+function normalizeTrade(
+  input: MhxyTradeInput,
+  existing?: MhxyTradeRecord,
+  options: { preserveImportedRmbAmount?: boolean } = {}
+): MhxyTradeRecord {
   if (input.type !== "buy" && input.type !== "sell") throw new Error("交易类型必须是买入或卖出");
   if (input.currency !== "rmb" && input.currency !== "gameCoin") {
     throw new Error("交易币种必须是人民币或游戏币");
@@ -163,13 +167,22 @@ function normalizeTrade(input: MhxyTradeInput, existing?: MhxyTradeRecord): Mhxy
   const rmbPerGameCoinWan = input.currency === "gameCoin"
     ? input.rmbPerGameCoinWan ?? existing?.rmbPerGameCoinWan
     : undefined;
+  const shouldPreserveImportedRmbAmount =
+    options.preserveImportedRmbAmount === true &&
+    input.currency === "gameCoin" &&
+    rmbPerGameCoinWan === undefined &&
+    existing?.rmbAmount !== null &&
+    existing?.rmbAmount !== undefined &&
+    Number.isFinite(existing.rmbAmount) &&
+    existing.rmbAmount >= 0;
   const rmbAmount = input.currency === "rmb"
     ? roundRmb(input.quantity * input.unitPrice)
     : (() => {
-        if (!Number.isFinite(rmbPerGameCoinWan) || (rmbPerGameCoinWan ?? 0) <= 0) {
-          throw new Error("游戏币交易必须填写大于 0 的兑换比例");
+        if (Number.isFinite(rmbPerGameCoinWan) && (rmbPerGameCoinWan ?? 0) > 0) {
+          return roundRmb(input.quantity * input.unitPrice * (rmbPerGameCoinWan as number));
         }
-        return roundRmb(input.quantity * input.unitPrice * (rmbPerGameCoinWan as number));
+        if (shouldPreserveImportedRmbAmount) return roundRmb(existing.rmbAmount as number);
+        throw new Error("游戏币交易必须填写大于 0 的兑换比例");
       })();
   if (!Number.isFinite(rmbAmount)) throw new Error("折算人民币金额超出有效范围");
   const feeRmb = roundRmb(input.feeRmb ?? 0);
@@ -475,7 +488,7 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
 
   const trades = input.trades.map((record) => {
     assertRecordMetadata(record, "交易记录");
-    const normalized = normalizeTrade(record, record);
+    const normalized = normalizeTrade(record, record, { preserveImportedRmbAmount: true });
     return { ...normalized, updatedAt: record.updatedAt };
   });
   const priceSnapshots = input.priceSnapshots.map((record) => {

@@ -275,6 +275,21 @@ describe("mhxy service", () => {
           characterName: "Legacy Buyer",
           createdAt: "2026-06-01T10:00:00.000Z",
           updatedAt: "2026-06-01T10:00:00.000Z"
+        },
+        {
+          id: "legacy-fixed-rmb-buy",
+          type: "buy",
+          itemName: "Imported Fixed RMB Item",
+          quantity: 1,
+          unitPrice: 999,
+          currency: "gameCoin",
+          rmbAmount: 12.34,
+          feeRmb: 0,
+          occurredAt: "2026-06-01T11:00:00.000Z",
+          serverName: "Legacy Server",
+          characterName: "Legacy Buyer",
+          createdAt: "2026-06-01T11:00:00.000Z",
+          updatedAt: "2026-06-01T11:00:00.000Z"
         }
       ],
       priceSnapshots: [],
@@ -287,6 +302,11 @@ describe("mhxy service", () => {
       id: "legacy-buy",
       accountingMode: "legacyRate",
       rmbAmount: 160
+    }));
+    expect(service.getDashboard().trades).toContainEqual(expect.objectContaining({
+      id: "legacy-fixed-rmb-buy",
+      accountingMode: "legacyRate",
+      rmbAmount: 12.34
     }));
     expect(() => service.replaceAllData({
       trades: [],

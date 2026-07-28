@@ -114,6 +114,35 @@ describe("local data sync adapters", () => {
     expect(repository.readTrades()).toHaveLength(2);
   });
 
+  it("imports legacy mhxy game coin trades that already have a fixed RMB amount", () => {
+    const { dataDir, adapters } = fixture();
+    const repository = createMhxyRepository(dataDir);
+
+    adapters.mhxy.write(new Map([[
+      "trade:legacy-fixed-rmb-buy",
+      {
+        id: "legacy-fixed-rmb-buy",
+        type: "buy",
+        itemName: "Imported Fixed RMB Item",
+        quantity: 1,
+        unitPrice: 999,
+        currency: "gameCoin",
+        rmbAmount: 12.34,
+        feeRmb: 0,
+        occurredAt: "2026-06-01T11:00:00.000Z",
+        serverName: "Legacy Server",
+        characterName: "Legacy Buyer",
+        createdAt: "2026-06-01T11:00:00.000Z",
+        updatedAt: "2026-06-01T11:00:00.000Z"
+      }
+    ]]));
+
+    expect(repository.readTrades()).toContainEqual(expect.objectContaining({
+      id: "legacy-fixed-rmb-buy",
+      rmbAmount: 12.34
+    }));
+  });
+
   it("rejects duplicate mhxy record IDs instead of silently dropping data", () => {
     const { dataDir, adapters } = fixture();
     const repository = createMhxyRepository(dataDir);

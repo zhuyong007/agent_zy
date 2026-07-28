@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import type {
@@ -25,6 +25,9 @@ type ContentTarget = {
   targetModuleType: HistoryDynastyModuleType | null;
   sourceTitle: string;
 };
+
+const SUPPORTED_SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const MAX_SCREENSHOT_SIZE = 8 * 1024 * 1024;
 
 function buildTargetKey(notificationId: string, moduleType: HistoryDynastyModuleType | null) {
   return `${notificationId}::${moduleType ?? ""}`;
@@ -69,6 +72,18 @@ async function copyText(value: string) {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function getClipboardImageFile(clipboardData: DataTransfer | null) {
+  if (!clipboardData) {
+    return null;
+  }
+
+  return (
+    Array.from(clipboardData.items)
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"))
+      ?.getAsFile() ?? Array.from(clipboardData.files).find((item) => item.type.startsWith("image/")) ?? null
+  );
 }
 
 export function HistoryCommentReplyPanel(props: {
@@ -177,6 +192,41 @@ export function HistoryCommentReplyPanel(props: {
     onError: (error) => setLocalError(errorMessage(error, "评论回复删除失败"))
   });
 
+  function handleScreenshotFile(file: File | null | undefined, source: "upload" | "paste") {
+    if (!file) {
+      return;
+    }
+    if (!SUPPORTED_SCREENSHOT_TYPES.includes(file.type)) {
+      setLocalError("仅支持 PNG、JPEG 或 WebP 截图");
+      return;
+    }
+    if (file.size > MAX_SCREENSHOT_SIZE) {
+      setLocalError("截图大小必须在 8 MB 以内");
+      return;
+    }
+    setScreenshotName(source === "paste" ? (file.name || "剪贴板图片") : file.name);
+    extractionMutation.mutate(file);
+  }
+
+  useEffect(() => {
+    if (mode !== "screenshot") {
+      return undefined;
+    }
+
+    function handlePaste(event: ClipboardEvent) {
+      const file = getClipboardImageFile(event.clipboardData);
+      if (!file) {
+        return;
+      }
+
+      event.preventDefault();
+      handleScreenshotFile(file, "paste");
+    }
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [mode]);
+
   const visibleError =
     localError ??
     (extractionMutation.isError
@@ -244,20 +294,11 @@ export function HistoryCommentReplyPanel(props: {
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
-                  if (!file) return;
-                  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-                    setLocalError("仅支持 PNG、JPEG 或 WebP 截图");
-                    return;
-                  }
-                  if (file.size > 8 * 1024 * 1024) {
-                    setLocalError("截图大小必须在 8 MB 以内");
-                    return;
-                  }
-                  setScreenshotName(file.name);
-                  extractionMutation.mutate(file);
+                  handleScreenshotFile(file, "upload");
                 }}
               />
               <span>{screenshotName || "截图仅用于本次识别，不会保存"}</span>
+              <small>也可以直接粘贴剪贴板图片</small>
             </div>
           ) : null}
 

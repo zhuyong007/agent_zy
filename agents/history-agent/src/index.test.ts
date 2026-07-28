@@ -165,8 +165,8 @@ function createDynastyModules(dynasty: string) {
     },
     {
       type: "风云人物",
-      topic: `改变${dynasty}命运的5个人`,
-      summary: `挑选真正改变历史走向的人物，解释他们是谁、做了什么、为什么重要以及造成的影响。`,
+      topic: `改变${dynasty}命运的关键群像`,
+      summary: `覆盖更多有代表性的人物，用较少卡片合并呈现，降低榜单式入选争议。`,
       cover: createHistoryCover(`${dynasty}风云人物`),
       cardCount: 3,
       cards: createHistoryCards(`${dynasty}风云人物`),
@@ -963,6 +963,11 @@ ${JSON.stringify({
       expect(prompt).toContain("每张卡片聚焦一个事件");
       expect(prompt).toContain("人物只作为事件参与者简要出现");
       expect(prompt).toContain("避免与“皇帝图鉴”和“风云人物”重复");
+      expect(prompt).toContain("不要做“前 5 名”“最强几人”这类容易引发“为什么某某没有入榜”的榜单式选题");
+      expect(prompt).toContain("史料足够的朝代优先覆盖 8-12 人");
+      expect(prompt).toContain("最终图片数量不要因为人数增多而增加");
+      expect(prompt).toContain("每张卡片可以按身份、阶段或影响类型合并 2-3 位人物");
+      expect(prompt).toContain("代表性人物，不是完整排名");
       expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
       expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
@@ -1017,6 +1022,7 @@ ${JSON.stringify({
             }),
             expect.objectContaining({
               type: "风云人物",
+              topic: "改变东汉命运的关键群像",
               cardCount: 3
             }),
             expect.objectContaining({

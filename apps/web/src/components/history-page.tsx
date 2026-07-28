@@ -43,6 +43,40 @@ function copyText(value: string) {
   return Promise.resolve();
 }
 
+const HISTORY_PROMPT_COPY_STORAGE_PREFIX = "agent-zy:history:copied-prompt-keys:";
+
+function getCopiedPromptStorageKey(notificationId: string | null | undefined) {
+  return notificationId ? `${HISTORY_PROMPT_COPY_STORAGE_PREFIX}${notificationId}` : null;
+}
+
+function loadCopiedPromptKeys(notificationId: string | null | undefined) {
+  const storageKey = getCopiedPromptStorageKey(notificationId);
+  if (!storageKey) {
+    return new Set<string>();
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function saveCopiedPromptKeys(notificationId: string | null | undefined, keys: Set<string>) {
+  const storageKey = getCopiedPromptStorageKey(notificationId);
+  if (!storageKey) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(storageKey, JSON.stringify(Array.from(keys)));
+  } catch {
+    // Copy state is a visual convenience; storage failures should never block copying.
+  }
+}
+
 export function HistoryPage() {
   const queryClient = useQueryClient();
   const clockLine = useLiveClock();
@@ -137,6 +171,7 @@ export function HistoryPage() {
     setCopiedPromptKeys((current) => {
       const next = new Set(current);
       next.add(key);
+      saveCopiedPromptKeys(selectedNotification?.id, next);
       return next;
     });
   }
@@ -172,7 +207,7 @@ export function HistoryPage() {
     historyNotifications.find((notification) => notification.id === selectedId) ?? historyNotifications[0] ?? null;
 
   useEffect(() => {
-    setCopiedPromptKeys(new Set());
+    setCopiedPromptKeys(loadCopiedPromptKeys(selectedNotification?.id));
   }, [selectedNotification?.id]);
   const selectedPayload = selectedNotification?.payload ?? null;
   const selectedPostPayload: HistoryPostPayload | null =
