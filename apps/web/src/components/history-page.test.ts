@@ -288,6 +288,37 @@ describe("HistoryPage", () => {
     expect(container.querySelector('[data-sync-module="history"]')).not.toBeNull();
   });
 
+  it("keeps history archive collapsed until the user expands it", async () => {
+    await renderHistoryPage();
+
+    let archiveToggle = Array.from(container.querySelectorAll(".history-archive__toggle")).find(
+      (button) => button.getAttribute("aria-label") === "展开历史记录"
+    ) as HTMLButtonElement | undefined;
+
+    expect(archiveToggle).toBeTruthy();
+    expect(archiveToggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(archiveToggle?.textContent).toBe("+");
+    expect(container.querySelector(".history-archive__list")).toBeNull();
+
+    await act(async () => {
+      archiveToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    archiveToggle = (container.querySelector(".history-archive__toggle") as HTMLButtonElement | null) ?? undefined;
+
+    expect(archiveToggle?.getAttribute("aria-label")).toBe("收起历史记录");
+    expect(archiveToggle?.textContent).toBe("−");
+    expect(archiveToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector(".history-archive__list")?.textContent).toContain("Silk Road");
+
+    await act(async () => {
+      archiveToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector(".history-archive__toggle")?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector(".history-archive__list")).toBeNull();
+  });
+
   it("submits the most series without a topic input", async () => {
     await renderHistoryPage();
 
@@ -438,6 +469,11 @@ describe("HistoryPage", () => {
 
   it("deletes an archived history notification from the history list", async () => {
     await renderHistoryPage();
+
+    const archiveToggle = container.querySelector(".history-archive__toggle") as HTMLButtonElement | null;
+    await act(async () => {
+      archiveToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
 
     const deleteButton = container.querySelector(
       'button[aria-label="删除 Silk Road"]'

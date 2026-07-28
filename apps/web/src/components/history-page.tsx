@@ -85,6 +85,7 @@ export function HistoryPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicInput, setTopicInput] = useState("");
   const [generationMode, setGenerationMode] = useState<"topic" | "dynasty" | "most">("topic");
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedPromptKeys, setCopiedPromptKeys] = useState<Set<string>>(() => new Set());
   const xhsFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -251,7 +252,7 @@ export function HistoryPage() {
         ]}
       />
 
-      <section className="history-board">
+      <section className={`history-board${archiveExpanded ? " history-board--archive-expanded" : " history-board--archive-collapsed"}`}>
         <section className="history-stage">
           <header className="history-stage__hero">
             <div>
@@ -661,52 +662,70 @@ export function HistoryPage() {
           ) : null}
         </section>
 
-        <aside className="history-archive">
-          <div className="history-stage__heading">
-            <p className="eyebrow">Archive</p>
-            <h2>历史记录</h2>
+        <aside className={`history-archive${archiveExpanded ? " is-expanded" : " is-collapsed"}`}>
+          <div className="history-stage__heading history-archive__heading">
+            <div>
+              <p className="eyebrow">Archive</p>
+              <h2>历史记录</h2>
+              <span className="history-archive__count">{historyNotifications.length} 条</span>
+            </div>
+            <button
+              type="button"
+              className="history-archive__toggle"
+              aria-label={archiveExpanded ? "收起历史记录" : "展开历史记录"}
+              aria-expanded={archiveExpanded}
+              aria-controls="history-archive-content"
+              title={archiveExpanded ? "收起历史记录" : "展开历史记录"}
+              onClick={() => setArchiveExpanded((value) => !value)}
+            >
+              <span aria-hidden="true">{archiveExpanded ? "−" : "+"}</span>
+            </button>
           </div>
-          <div className="history-archive__list">
-            {historyNotifications.length > 0 ? (
-              historyNotifications.map((notification) => {
-                const active = notification.id === selectedNotification?.id;
-                const title = getHistoryPayloadTitle(notification.payload);
-                const summary = getHistoryPayloadSummary(notification.payload);
-                const updatedAt = getHistoryPayloadUpdatedAt(notification);
+          {archiveExpanded ? (
+            <>
+              <div id="history-archive-content" className="history-archive__list">
+                {historyNotifications.length > 0 ? (
+                  historyNotifications.map((notification) => {
+                    const active = notification.id === selectedNotification?.id;
+                    const title = getHistoryPayloadTitle(notification.payload);
+                    const summary = getHistoryPayloadSummary(notification.payload);
+                    const updatedAt = getHistoryPayloadUpdatedAt(notification);
 
-                return (
-                  <article
-                    key={notification.id}
-                    className={`history-archive__item${active ? " is-active" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="history-archive__select"
-                      onClick={() => setSelectedId(notification.id)}
-                    >
-                      <span>{formatDateTime(updatedAt)}</span>
-                      <strong>{title}</strong>
-                      <p>{summary}</p>
-                    </button>
-                    <button
-                      type="button"
-                      className="history-archive__delete"
-                      aria-label={`删除 ${title}`}
-                      disabled={historyDeleteMutation.isPending}
-                      onClick={() => historyDeleteMutation.mutate(notification.id)}
-                    >
-                      删除
-                    </button>
-                  </article>
-                );
-              })
-            ) : (
-              <div className="edge-empty">暂无历史知识存档。</div>
-            )}
-          </div>
-          <Link to="/" className="history-archive__back">
-            返回首页工作台
-          </Link>
+                    return (
+                      <article
+                        key={notification.id}
+                        className={`history-archive__item${active ? " is-active" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="history-archive__select"
+                          onClick={() => setSelectedId(notification.id)}
+                        >
+                          <span>{formatDateTime(updatedAt)}</span>
+                          <strong>{title}</strong>
+                          <p>{summary}</p>
+                        </button>
+                        <button
+                          type="button"
+                          className="history-archive__delete"
+                          aria-label={`删除 ${title}`}
+                          disabled={historyDeleteMutation.isPending}
+                          onClick={() => historyDeleteMutation.mutate(notification.id)}
+                        >
+                          删除
+                        </button>
+                      </article>
+                    );
+                  })
+                ) : (
+                  <div className="edge-empty">暂无历史知识存档。</div>
+                )}
+              </div>
+              <Link to="/" className="history-archive__back">
+                返回首页工作台
+              </Link>
+            </>
+          ) : null}
         </aside>
       </section>
     </main>

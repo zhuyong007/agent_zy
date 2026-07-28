@@ -5504,6 +5504,15 @@ body[data-theme="day"] .summary-list button {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 14px;
   min-height: 0;
+  transition: grid-template-columns 180ms ease;
+}
+
+.history-board--archive-collapsed {
+  grid-template-columns: minmax(0, 1fr) 56px;
+}
+
+.history-board--archive-expanded {
+  grid-template-columns: minmax(0, 1fr) 320px;
 }
 
 .history-stage,
@@ -5533,6 +5542,89 @@ body[data-theme="day"] .summary-list button {
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
   padding: 18px;
+  transition:
+    padding 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.history-archive.is-collapsed {
+  grid-template-rows: auto;
+  align-content: start;
+  padding: 12px 6px;
+  border-color: rgba(var(--accent-rgb), 0.14);
+}
+
+.history-archive__heading {
+  align-items: center;
+}
+
+.history-archive__heading > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.history-archive__count {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.history-archive.is-collapsed .history-archive__heading {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.history-archive.is-collapsed .history-archive__heading .eyebrow,
+.history-archive.is-collapsed .history-archive__count {
+  display: none;
+}
+
+.history-archive.is-collapsed .history-archive__heading h2 {
+  margin-top: 2px;
+  font-size: 0.9rem;
+  line-height: 1.25;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+.history-archive__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--control-bg);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.history-archive__toggle:hover {
+  border-color: rgba(var(--accent-rgb), 0.34);
+  transform: translateY(-1px);
+}
+
+.history-archive__toggle span {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--accent);
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .history-archive__list {
