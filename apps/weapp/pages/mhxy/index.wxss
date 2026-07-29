@@ -1,0 +1,9 @@
+.right-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+  color: #14201f;
+  font-size: 24rpx;
+  text-align: right;
+}

@@ -1,0 +1,16 @@
+{
+  "description": "Agent ZY local LAN mini program client",
+  "projectname": "agent-zy-local-weapp",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "libVersion": "3.9.0",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": false,
+    "compileHotReLoad": true
+  },
+  "condition": {}
+}

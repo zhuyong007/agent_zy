@@ -1,0 +1,31 @@
+.home-page .reset-button {
+  width: 100%;
+  margin-top: 14rpx;
+}
+
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 24rpx;
+  border: 1rpx solid #d8ceb9;
+  border-radius: 16rpx;
+  background: #102523;
+  color: #fffaf1;
+}
+
+.quick-action text:first-child {
+  font-size: 31rpx;
+  font-weight: 760;
+}
+
+.quick-action text:last-child {
+  color: rgba(255, 250, 241, 0.72);
+  font-size: 24rpx;
+}

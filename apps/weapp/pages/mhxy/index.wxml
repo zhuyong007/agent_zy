@@ -1,0 +1,212 @@
+<view class="page">
+  <view class="page-header">
+    <text class="eyebrow">MHXY LEDGER</text>
+    <text class="page-title">梦幻西游交易</text>
+    <text class="page-subtitle">手机上快速记物品交易、角色资产和查看库存收益。</text>
+  </view>
+
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>收益概览</text>
+      <text wx:if="{{loading}}">刷新中</text>
+    </view>
+    <view class="grid-2">
+      <view class="metric" wx:for="{{summaryRows}}" wx:key="label">
+        <text class="metric-label">{{item.label}}</text>
+        <text class="metric-value">{{item.value}}</text>
+      </view>
+    </view>
+    <view class="actions">
+      <button class="secondary-button" loading="{{loading}}" bindtap="refresh">刷新</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>新增物品交易</text>
+      <text>跨服库存</text>
+    </view>
+    <view class="panel panel-padding form">
+      <view class="grid-2">
+        <view>
+          <text class="field-label">类型</text>
+          <picker range="{{tradeTypes}}" range-key="label" value="{{tradeTypeIndex}}" bindchange="onTradeTypeChange">
+            <view class="field picker-value">{{tradeTypes[tradeTypeIndex].label}}</view>
+          </picker>
+        </view>
+        <view>
+          <text class="field-label">币种</text>
+          <picker range="{{currencies}}" range-key="label" value="{{currencyIndex}}" bindchange="onCurrencyChange">
+            <view class="field picker-value">{{currencies[currencyIndex].label}}</view>
+          </picker>
+        </view>
+      </view>
+      <view>
+        <text class="field-label">物品名</text>
+        <input class="field" value="{{tradeForm.itemName}}" data-field="itemName" bindinput="onTradeInput" placeholder="如 高级魔兽要诀" />
+      </view>
+      <view class="grid-2">
+        <view>
+          <text class="field-label">数量</text>
+          <input class="field" type="digit" value="{{tradeForm.quantity}}" data-field="quantity" bindinput="onTradeInput" />
+        </view>
+        <view>
+          <text class="field-label">单价</text>
+          <input class="field" type="digit" value="{{tradeForm.unitPrice}}" data-field="unitPrice" bindinput="onTradeInput" placeholder="人民币或万两" />
+        </view>
+      </view>
+      <view class="grid-2">
+        <view>
+          <text class="field-label">手续费 RMB</text>
+          <input class="field" type="digit" value="{{tradeForm.feeRmb}}" data-field="feeRmb" bindinput="onTradeInput" />
+        </view>
+        <view>
+          <text class="field-label">汇率 元/万两</text>
+          <input class="field" type="digit" value="{{tradeForm.rmbPerGameCoinWan}}" data-field="rmbPerGameCoinWan" bindinput="onTradeInput" placeholder="游戏币必填" />
+        </view>
+      </view>
+      <view class="grid-2">
+        <view>
+          <text class="field-label">服务器</text>
+          <input class="field" value="{{tradeForm.serverName}}" data-field="serverName" bindinput="onTradeInput" />
+        </view>
+        <view>
+          <text class="field-label">角色</text>
+          <input class="field" value="{{tradeForm.characterName}}" data-field="characterName" bindinput="onTradeInput" />
+        </view>
+      </view>
+      <view>
+        <text class="field-label">发生日期</text>
+        <picker mode="date" value="{{tradeForm.occurredAt}}" bindchange="onTradeDateChange">
+          <view class="field picker-value">{{tradeForm.occurredAt}}</view>
+        </picker>
+      </view>
+      <view>
+        <text class="field-label">备注</text>
+        <textarea class="field textarea" value="{{tradeForm.note}}" data-field="note" bindinput="onTradeInput" />
+      </view>
+      <button class="primary-button" loading="{{savingTrade}}" bindtap="submitTrade">保存交易</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>新增资产买卖</text>
+      <text>角色/召唤兽/装备</text>
+    </view>
+    <view class="panel panel-padding form">
+      <view class="grid-2">
+        <view>
+          <text class="field-label">类别</text>
+          <picker range="{{assetCategories}}" range-key="label" value="{{assetCategoryIndex}}" bindchange="onAssetCategoryChange">
+            <view class="field picker-value">{{assetCategories[assetCategoryIndex].label}}</view>
+          </picker>
+        </view>
+        <view>
+          <text class="field-label">买入日期</text>
+          <picker mode="date" value="{{assetForm.buyAt}}" bindchange="onAssetBuyDateChange">
+            <view class="field picker-value">{{assetForm.buyAt}}</view>
+          </picker>
+        </view>
+      </view>
+      <view>
+        <text class="field-label">名称</text>
+        <input class="field" value="{{assetForm.name}}" data-field="name" bindinput="onAssetInput" placeholder="如 175 龙宫号" />
+      </view>
+      <view class="grid-2">
+        <view>
+          <text class="field-label">买入价 RMB</text>
+          <input class="field" type="digit" value="{{assetForm.buyPriceRmb}}" data-field="buyPriceRmb" bindinput="onAssetInput" />
+        </view>
+        <view>
+          <text class="field-label">卖出价 RMB</text>
+          <input class="field" type="digit" value="{{assetForm.sellPriceRmb}}" data-field="sellPriceRmb" bindinput="onAssetInput" placeholder="可空" />
+        </view>
+      </view>
+      <view>
+        <text class="field-label">卖出日期</text>
+        <picker mode="date" value="{{assetForm.sellAt}}" bindchange="onAssetSellDateChange">
+          <view class="field picker-value">{{assetForm.sellAt || '未卖出'}}</view>
+        </picker>
+      </view>
+      <view class="grid-2">
+        <view>
+          <text class="field-label">服务器</text>
+          <input class="field" value="{{assetForm.serverName}}" data-field="serverName" bindinput="onAssetInput" />
+        </view>
+        <view>
+          <text class="field-label">角色</text>
+          <input class="field" value="{{assetForm.characterName}}" data-field="characterName" bindinput="onAssetInput" />
+        </view>
+      </view>
+      <button class="primary-button" loading="{{savingAsset}}" bindtap="submitAsset">保存资产</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>当前库存</text>
+      <text>{{inventory.length}} 项</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{inventory.length === 0}}" class="empty">暂无库存</view>
+      <view class="list-item" wx:for="{{inventory}}" wx:key="key">
+        <view class="item-main">
+          <view>
+            <text class="item-title">{{item.title}} x {{item.quantity}}</text>
+            <text class="item-meta">{{item.meta}}</text>
+          </view>
+          <view class="right-stack">
+            <text>{{item.cost}}</text>
+            <text class="muted">{{item.value}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>近期交易</text>
+      <text>{{recentTrades.length}} 条</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{recentTrades.length === 0}}" class="empty">暂无交易</view>
+      <view class="list-item" wx:for="{{recentTrades}}" wx:key="id">
+        <view class="item-main">
+          <view>
+            <text class="item-title">{{item.title}}</text>
+            <text class="item-meta">{{item.meta}}</text>
+            <text class="item-meta">{{item.amount}}</text>
+          </view>
+          <button class="danger-button" data-id="{{item.id}}" bindtap="deleteTrade">删除</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>资产记录</text>
+      <text>{{assetFlips.length}} 条</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{assetFlips.length === 0}}" class="empty">暂无资产记录</view>
+      <view class="list-item" wx:for="{{assetFlips}}" wx:key="id">
+        <view class="item-main">
+          <view>
+            <text class="item-title">{{item.title}}</text>
+            <text class="item-meta">{{item.meta}}</text>
+            <text class="item-meta">{{item.amount}}</text>
+          </view>
+          <view class="right-stack">
+            <text class="tag">{{item.status}}</text>
+            <button class="danger-button" data-id="{{item.id}}" bindtap="deleteAsset">删除</button>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

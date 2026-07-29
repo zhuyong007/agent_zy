@@ -1,0 +1,188 @@
+<view class="page">
+  <view class="page-header">
+    <text class="eyebrow">CHILD MEAL</text>
+    <text class="page-title">孩子食谱</text>
+    <text class="page-subtitle">记录每日餐食、状态备注，并在手机上生成辅食计划。</text>
+  </view>
+
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>孩子概况</text>
+      <text wx:if="{{loading}}">刷新中</text>
+    </view>
+    <view class="grid-2">
+      <view class="metric">
+        <text class="metric-label">姓名</text>
+        <text class="metric-value">{{childName}}</text>
+      </view>
+      <view class="metric">
+        <text class="metric-label">年龄</text>
+        <text class="metric-value">{{ageText}}</text>
+      </view>
+      <view class="metric">
+        <text class="metric-label">阶段</text>
+        <text class="metric-value">{{stage}}</text>
+      </view>
+      <view class="metric">
+        <text class="metric-label">今日餐食</text>
+        <text class="metric-value">{{todayRecords.length}} 条</text>
+      </view>
+    </view>
+    <view class="actions">
+      <button class="secondary-button" loading="{{loading}}" bindtap="refresh">刷新</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>新增餐食</text>
+      <text>今天常用</text>
+    </view>
+    <view class="panel panel-padding form">
+      <view>
+        <text class="field-label">日期</text>
+        <picker mode="date" value="{{recordForm.date}}" bindchange="onRecordDateChange">
+          <view class="field picker-value">{{recordForm.date}}</view>
+        </picker>
+      </view>
+      <view class="grid-2">
+        <view>
+          <text class="field-label">餐次</text>
+          <picker range="{{mealTypes}}" range-key="label" value="{{mealTypeIndex}}" bindchange="onMealTypeChange">
+            <view class="field picker-value">{{mealTypes[mealTypeIndex].label}}</view>
+          </picker>
+        </view>
+        <view>
+          <text class="field-label">接受度</text>
+          <picker range="{{acceptances}}" range-key="label" value="{{acceptanceIndex}}" bindchange="onAcceptanceChange">
+            <view class="field picker-value">{{acceptances[acceptanceIndex].label}}</view>
+          </picker>
+        </view>
+      </view>
+      <view>
+        <text class="field-label">食物名称</text>
+        <input class="field" value="{{recordForm.foodName}}" data-field="foodName" bindinput="onRecordInput" placeholder="如 南瓜牛肉粥" />
+      </view>
+      <view>
+        <text class="field-label">食材</text>
+        <input class="field" value="{{recordForm.ingredients}}" data-field="ingredients" bindinput="onRecordInput" placeholder="逗号分隔" />
+      </view>
+      <view>
+        <text class="field-label">做法</text>
+        <input class="field" value="{{recordForm.cookingMethods}}" data-field="cookingMethods" bindinput="onRecordInput" placeholder="蒸、煮、搅打" />
+      </view>
+      <view class="grid-2 align-center">
+        <view>
+          <text class="field-label">量</text>
+          <input class="field" value="{{recordForm.amount}}" data-field="amount" bindinput="onRecordInput" placeholder="半碗/80g" />
+        </view>
+        <view class="switch-row">
+          <text>不适反应</text>
+          <switch checked="{{recordForm.discomfort}}" bindchange="onDiscomfortChange" color="#0d5c63" />
+        </view>
+      </view>
+      <view>
+        <text class="field-label">备注</text>
+        <textarea class="field textarea" value="{{recordForm.note}}" data-field="note" bindinput="onRecordInput" />
+      </view>
+      <button class="primary-button" loading="{{savingRecord}}" bindtap="submitRecord">保存餐食</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>状态备注</text>
+      <text>过敏/偏好/作息</text>
+    </view>
+    <view class="panel panel-padding form">
+      <view>
+        <text class="field-label">日期</text>
+        <picker mode="date" value="{{noteForm.date}}" bindchange="onNoteDateChange">
+          <view class="field picker-value">{{noteForm.date}}</view>
+        </picker>
+      </view>
+      <view>
+        <text class="field-label">内容</text>
+        <textarea class="field textarea" value="{{noteForm.content}}" data-field="content" bindinput="onNoteInput" placeholder="如 今天吃鸡蛋后无不适" />
+      </view>
+      <view>
+        <text class="field-label">标签</text>
+        <input class="field" value="{{noteForm.tags}}" data-field="tags" bindinput="onNoteInput" placeholder="逗号分隔" />
+      </view>
+      <button class="primary-button" loading="{{savingNote}}" bindtap="submitNote">保存备注</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>生成计划</text>
+      <text>需要模型配置</text>
+    </view>
+    <view class="panel panel-padding form">
+      <view>
+        <text class="field-label">范围</text>
+        <picker range="{{planTypes}}" range-key="label" value="{{planTypeIndex}}" bindchange="onPlanTypeChange">
+          <view class="field picker-value">{{planTypes[planTypeIndex].label}}</view>
+        </picker>
+      </view>
+      <view>
+        <text class="field-label">额外要求</text>
+        <textarea class="field textarea" value="{{planForm.userExtraRequest}}" bindinput="onPlanInput" placeholder="如 多安排补铁食材，避开虾" />
+      </view>
+      <view class="actions">
+        <button class="primary-button" loading="{{generatingPlan}}" bindtap="generatePlan">生成</button>
+        <button class="secondary-button" loading="{{savingPlan}}" disabled="{{!generatedPlan}}" bindtap="saveGeneratedPlan">保存</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{generatedPlanView}}" class="section">
+    <view class="section-title">
+      <text>刚生成的计划</text>
+      <text>{{generatedPlanView.title}}</text>
+    </view>
+    <view class="panel list">
+      <view class="list-item" wx:for="{{generatedPlanView.days}}" wx:key="date">
+        <text class="item-title">{{item.date}}</text>
+        <text class="item-meta">{{item.focus}}</text>
+        <view class="meal-list">
+          <view class="meal-chip" wx:for="{{item.meals}}" wx:key="key" wx:for-item="meal">
+            <text>{{meal.name}}</text>
+            <text>{{meal.ingredients}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>今日餐食</text>
+      <text>{{todayRecords.length}} 条</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{todayRecords.length === 0}}" class="empty">今天还没有餐食记录</view>
+      <view class="list-item" wx:for="{{todayRecords}}" wx:key="id">
+        <text class="item-title">{{item.title}}</text>
+        <text class="item-meta">{{item.meta}}</text>
+        <text wx:if="{{item.note}}" class="item-meta">{{item.note}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>近期备注</text>
+      <text>{{notes.length}} 条</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{notes.length === 0}}" class="empty">暂无备注</view>
+      <view class="list-item" wx:for="{{notes}}" wx:key="id">
+        <text class="item-title">{{item.title}}</text>
+        <text class="item-meta">{{item.meta}}</text>
+      </view>
+    </view>
+  </view>
+</view>

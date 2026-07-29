@@ -1,0 +1,42 @@
+.align-center {
+  align-items: center;
+}
+
+.switch-row {
+  display: flex;
+  min-height: 76rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16rpx;
+  border: 1rpx solid #ddd4c1;
+  border-radius: 12rpx;
+  background: #fffdf8;
+  color: #263532;
+  box-sizing: border-box;
+}
+
+.meal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 14rpx;
+}
+
+.meal-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  padding: 14rpx;
+  border-radius: 12rpx;
+  background: #f4efe5;
+}
+
+.meal-chip text:first-child {
+  color: #14201f;
+  font-weight: 700;
+}
+
+.meal-chip text:last-child {
+  color: #6f7975;
+  font-size: 23rpx;
+}

@@ -1,0 +1,91 @@
+<view class="page home-page">
+  <view class="page-header">
+    <text class="eyebrow">LOCAL LAN</text>
+    <text class="page-title">Agent ZY</text>
+    <text class="page-subtitle">连接你电脑上的控制面，在手机微信里快速查看和录入。</text>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>连接</text>
+      <text>{{healthText}}</text>
+    </view>
+    <view class="panel panel-padding">
+      <text class="field-label">API 地址</text>
+      <input class="field" value="{{apiBase}}" bindinput="onApiBaseInput" placeholder="http://192.168.1.20:4378" />
+      <view class="actions">
+        <button class="primary-button" loading="{{checking}}" bindtap="checkConnection">检测</button>
+        <button class="secondary-button" bindtap="saveApiBase">保存</button>
+      </view>
+      <button class="secondary-button reset-button" bindtap="resetApiBase">恢复 127.0.0.1</button>
+    </view>
+  </view>
+
+  <view wx:if="{{error}}" class="section error">{{error}}</view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>概览</text>
+      <text wx:if="{{loading}}">刷新中</text>
+    </view>
+    <view class="grid-2">
+      <view class="metric" wx:for="{{stats}}" wx:key="label">
+        <text class="metric-label">{{item.label}}</text>
+        <text class="metric-value">{{item.value}}</text>
+      </view>
+    </view>
+    <view class="actions">
+      <button class="primary-button" loading="{{loading}}" bindtap="refreshAll">刷新</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>快捷入口</text>
+      <text>首版</text>
+    </view>
+    <view class="quick-actions">
+      <view class="quick-action" bindtap="goPage" data-url="/pages/mhxy/index">
+        <text>梦幻西游交易</text>
+        <text>库存、收益、交易录入</text>
+      </view>
+      <view class="quick-action" bindtap="goPage" data-url="/pages/child-meal/index">
+        <text>孩子食谱</text>
+        <text>餐食记录、计划生成</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>今日餐食</text>
+      <text>{{todayMeals.length}} 条</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{todayMeals.length === 0}}" class="empty">今天还没有餐食记录</view>
+      <view class="list-item" wx:for="{{todayMeals}}" wx:key="id">
+        <text class="item-title">{{item.title}}</text>
+        <text class="item-meta">{{item.meta}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>近期任务</text>
+      <text>{{recentTasks.length}} 条</text>
+    </view>
+    <view class="panel list">
+      <view wx:if="{{recentTasks.length === 0}}" class="empty">暂无任务</view>
+      <view class="list-item" wx:for="{{recentTasks}}" wx:key="id">
+        <view class="item-main">
+          <view>
+            <text class="item-title">{{item.summary}}</text>
+            <text class="item-meta">{{item.updatedAt}}</text>
+          </view>
+          <text class="tag">{{item.status}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
