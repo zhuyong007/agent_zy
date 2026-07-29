@@ -27,6 +27,7 @@ import { ImageToVideoPage } from "./components/image-to-video-page";
 import { InterviewPage } from "./components/interview-page";
 import { ChildMealPage } from "./components/child-meal-page";
 import { MhxyPage } from "./components/mhxy-page";
+import { GameCreatorPage } from "./components/game-creator-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
 
 const queryClient = new QueryClient();
@@ -167,6 +168,12 @@ const childMealRoute = createRoute({
   component: ChildMealPage
 });
 
+const gameCreatorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/game-creator",
+  component: GameCreatorPage
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   manageRoute,
@@ -188,6 +195,7 @@ const routeTree = rootRoute.addChildren([
   screenMonitorRoute,
   promptTemplateRoute,
   childMealRoute,
+  gameCreatorRoute,
   logsRoute
 ]);
 

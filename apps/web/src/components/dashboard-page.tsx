@@ -146,6 +146,7 @@ export type RailSection =
   | "cinematic"
   | "classicShots"
   | "imageToVideo"
+  | "gameCreator"
   | "interview"
   | "ledger"
   | "mhxy"
@@ -171,20 +172,21 @@ const railItems: Array<{
     { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
     { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
     { key: "imageToVideo", label: "图转视频", stamp: "07", to: "/image-to-video", moduleId: "imageToVideo" },
-    { key: "interview", label: "面试训练", stamp: "08", to: "/interview", moduleId: "interview" },
-    { key: "ledger", label: "记账", stamp: "09", to: "/ledger", moduleId: "ledger" },
-    { key: "mhxy", label: "梦幻西游", stamp: "10", to: "/mhxy", moduleId: "mhxy" },
-    { key: "todo", label: "待办", stamp: "11", to: "/todo", moduleId: "todo" },
-    { key: "summary", label: "总结", stamp: "12", to: "/summaries", moduleId: "summary" },
+    { key: "gameCreator", label: "游戏创作", stamp: "08", to: "/game-creator" },
+    { key: "interview", label: "面试训练", stamp: "09", to: "/interview", moduleId: "interview" },
+    { key: "ledger", label: "记账", stamp: "10", to: "/ledger", moduleId: "ledger" },
+    { key: "mhxy", label: "梦幻西游", stamp: "11", to: "/mhxy", moduleId: "mhxy" },
+    { key: "todo", label: "待办", stamp: "12", to: "/todo", moduleId: "todo" },
+    { key: "summary", label: "总结", stamp: "13", to: "/summaries", moduleId: "summary" },
     {
       key: "browserAutomation",
       label: "浏览器自动化",
-      stamp: "13",
+      stamp: "14",
       to: "/tools/browser-automation",
       moduleId: "browserAutomation"
     },
-    { key: "tools", label: "工具", stamp: "14", to: "/tools" },
-    { key: "logs", label: "日志", stamp: "15", to: "/logs" }
+    { key: "tools", label: "工具", stamp: "15", to: "/tools" },
+    { key: "logs", label: "日志", stamp: "16", to: "/logs" }
   ];
 
 const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
