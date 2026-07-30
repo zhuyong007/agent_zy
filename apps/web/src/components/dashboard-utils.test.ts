@@ -165,7 +165,6 @@ describe("dashboard utils", () => {
     expect(getModuleSummary("news", dashboard)).toBe("02 条热点");
     expect(getModuleSummary("ledger", dashboard)).toBe("结余 12,800");
     expect(getModuleSummary("history", dashboard)).toBe("01 条知识卡");
-    expect(getModuleSummary("cinematic", dashboard)).toBe("03 个镜头项目");
     expect(getModuleSummary("unknown-module", dashboard)).toBe("待接入");
   });
 

@@ -110,6 +110,10 @@
   color: #4ca478;
 }
 
+.data-sync-control__state.is-dirty {
+  color: #c98042;
+}
+
 .data-sync-control__state.is-conflict,
 .data-sync-control__error {
   color: #d26a5c;
@@ -3729,9 +3733,16 @@ textarea {
   line-height: 1.65;
 }
 
-.game-creator-header__status {
+.game-creator-header__aside {
   display: grid;
   width: min(280px, 32vw);
+  justify-items: end;
+  gap: 14px;
+}
+
+.game-creator-header__status {
+  display: grid;
+  width: 100%;
   gap: 6px;
 }
 
@@ -4308,8 +4319,17 @@ body[data-theme="day"] .game-creator-method header {
     flex-direction: column;
   }
 
+  .game-creator-header__aside,
   .game-creator-header__status {
     width: 100%;
+  }
+
+  .game-creator-header__aside {
+    justify-items: start;
+  }
+
+  .game-creator-header__aside .data-sync-control {
+    justify-items: start;
   }
 
   .game-creator-daily ol,
@@ -10308,6 +10328,24 @@ body[data-theme="day"] .todo-scene-hero p {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 360px));
 }
 
+.model-management__actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.model-management__sync-note {
+  margin: -4px 0 0;
+  color: var(--manage-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.model-management__actions .data-sync-control {
+  align-items: flex-end;
+}
+
 .manage-card-grid--modules {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 320px));
 }
@@ -10506,6 +10544,18 @@ body[data-theme="day"] .model-check-grid .ant-checkbox-wrapper {
 }
 
 @media (max-width: 960px) {
+  .model-management .manage-group__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-management__actions {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .model-profile-card__status-grid {
     grid-template-columns: 1fr;
   }

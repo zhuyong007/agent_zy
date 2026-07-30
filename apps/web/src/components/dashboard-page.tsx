@@ -55,8 +55,6 @@ import {
   fetchModelProviders,
   fetchMhxyDashboard,
   fetchSystemStatus,
-  generateClassicShot,
-  generateCinematic,
   generateHistory,
   openExternalUrl,
   openDashboardStream,
@@ -99,6 +97,7 @@ import {
   type ThemeKey,
   themeOptions
 } from "../theme";
+import { DataSyncControl } from "./data-sync-control";
 import { homeImageAssets } from "../image-assets";
 import {
   HOME_MODULE_DEFINITIONS,
@@ -117,6 +116,11 @@ import {
   type HomeModuleSize
 } from "../home-layout";
 import {
+  HOME_MODULE_CONTRACT_IDS,
+  getHomeModuleSizeRule,
+  homeModuleHasFeature
+} from "../home-module-size-contract";
+import {
   buildCaptionExcerpt,
   getHistoryHomePreviewRule,
   getHistoryNotifications,
@@ -127,6 +131,7 @@ import {
   isHistoryPostPayload
 } from "../history-view";
 import { TodoPanel, useTodoWorkspaceDashboard } from "./todo-module";
+import { UI_ROUTE_PATHS, shouldCollapseNavigationByDefault } from "../ui-contract";
 import {
   formatAmount,
   formatClockLine,
@@ -141,13 +146,8 @@ export type RailSection =
   | "home"
   | "manage"
   | "news"
-  | "topics"
   | "history"
-  | "cinematic"
-  | "classicShots"
-  | "imageToVideo"
   | "gameCreator"
-  | "interview"
   | "ledger"
   | "mhxy"
   | "todo"
@@ -164,29 +164,24 @@ const railItems: Array<{
   to: string;
   moduleId?: HomeModuleId;
 }> = [
-    { key: "home", label: "工作台", stamp: "00", to: "/" },
-    { key: "manage", label: "管理", stamp: "01", to: "/manage" },
-    { key: "news", label: "热点情报", stamp: "02", to: "/news", moduleId: "news" },
-    { key: "topics", label: "选题", stamp: "03", to: "/topics", moduleId: "topics" },
-    { key: "history", label: "历史知识", stamp: "04", to: "/history", moduleId: "history" },
-    { key: "cinematic", label: "电影镜头", stamp: "05", to: "/cinematic", moduleId: "cinematic" },
-    { key: "classicShots", label: "经典复刻", stamp: "06", to: "/classic-shots", moduleId: "classicShots" },
-    { key: "imageToVideo", label: "图转视频", stamp: "07", to: "/image-to-video", moduleId: "imageToVideo" },
-    { key: "gameCreator", label: "游戏创作", stamp: "08", to: "/game-creator" },
-    { key: "interview", label: "面试训练", stamp: "09", to: "/interview", moduleId: "interview" },
-    { key: "ledger", label: "记账", stamp: "10", to: "/ledger", moduleId: "ledger" },
-    { key: "mhxy", label: "梦幻西游", stamp: "11", to: "/mhxy", moduleId: "mhxy" },
-    { key: "todo", label: "待办", stamp: "12", to: "/todo", moduleId: "todo" },
-    { key: "summary", label: "总结", stamp: "13", to: "/summaries", moduleId: "summary" },
+    { key: "home", label: "工作台", stamp: "00", to: UI_ROUTE_PATHS.home },
+    { key: "manage", label: "管理", stamp: "01", to: UI_ROUTE_PATHS.manage },
+    { key: "news", label: "热点情报", stamp: "02", to: UI_ROUTE_PATHS.news, moduleId: "news" },
+    { key: "history", label: "历史知识", stamp: "04", to: UI_ROUTE_PATHS.history, moduleId: "history" },
+    { key: "gameCreator", label: "游戏创作", stamp: "08", to: UI_ROUTE_PATHS.gameCreator },
+    { key: "ledger", label: "记账", stamp: "10", to: UI_ROUTE_PATHS.ledger, moduleId: "ledger" },
+    { key: "mhxy", label: "梦幻西游", stamp: "11", to: UI_ROUTE_PATHS.mhxy, moduleId: "mhxy" },
+    { key: "todo", label: "待办", stamp: "12", to: UI_ROUTE_PATHS.todo, moduleId: "todo" },
+    { key: "summary", label: "总结", stamp: "13", to: UI_ROUTE_PATHS.summaries, moduleId: "summary" },
     {
       key: "browserAutomation",
       label: "浏览器自动化",
       stamp: "14",
-      to: "/tools/browser-automation",
+      to: UI_ROUTE_PATHS.browserAutomation,
       moduleId: "browserAutomation"
     },
-    { key: "tools", label: "工具", stamp: "15", to: "/tools" },
-    { key: "logs", label: "日志", stamp: "16", to: "/logs" }
+    { key: "tools", label: "工具", stamp: "15", to: UI_ROUTE_PATHS.tools },
+    { key: "logs", label: "日志", stamp: "16", to: UI_ROUTE_PATHS.logs }
   ];
 
 const moduleDefinitionsById = new Map<HomeModuleId, (typeof HOME_MODULE_DEFINITIONS)[number]>(
@@ -535,6 +530,7 @@ export function CommandRail({
   onRestartProject?: () => void;
   isRestarting?: boolean;
 }) {
+  const appliedResponsiveDefault = useRef(false);
   const [dateTimePart, weekdayPart] = clockLine.split(" · ");
   const timeLabel = dateTimePart?.slice(11, 16) ?? clockLine;
   const dateLabel = [dateTimePart?.slice(5, 10), weekdayPart].filter(Boolean).join(" ");
@@ -542,7 +538,28 @@ export function CommandRail({
   const shownNavigationIds = new Set(
     navigationPreferences.filter((item) => item.showInNavigation).map((item) => item.id)
   );
-  const visibleRailItems = railItems.filter((item) => !item.moduleId || shownNavigationIds.has(item.moduleId));
+  const visibleRailItems = railItems.filter(
+    (item) =>
+      item.key === activeSection ||
+      !item.moduleId ||
+      shownNavigationIds.has(item.moduleId)
+  );
+
+  useEffect(() => {
+    if (
+      appliedResponsiveDefault.current ||
+      !expanded ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    appliedResponsiveDefault.current = true;
+
+    if (shouldCollapseNavigationByDefault(window.innerWidth)) {
+      onToggle();
+    }
+  }, [expanded, onToggle]);
 
   return (
     <header className={`command-rail${showNavigation ? "" : " command-rail--compact"}${expanded ? " is-expanded" : ""}`}>
@@ -637,19 +654,13 @@ export function NewsPanel({
   isRefreshing: boolean;
   refreshError: string | null;
 }) {
+  const rule = getHomeModuleSizeRule("news", size);
   const filteredItems = items.filter((item) => filter === "all" || item.category === filter);
-  const visibleItemsBySize: Record<HomeModuleSize, number> = {
-    max: 7,
-    large: 5,
-    medium: 4,
-    smaller: 3,
-    small: 2
-  };
-  const showFilters = size === "max" || size === "large" || size === "medium";
-  const showSummary = size === "max" || size === "large" || size === "smaller";
-  const showTags = size === "max" || size === "large";
-  const showDate = size === "max" || size === "large";
-  const timelineItems = filteredItems.slice(0, visibleItemsBySize[size]);
+  const showFilters = homeModuleHasFeature(rule, "filters");
+  const showSummary = homeModuleHasFeature(rule, "summary");
+  const showTags = homeModuleHasFeature(rule, "tags");
+  const showDate = rule.mustShow.includes("date");
+  const timelineItems = filteredItems.slice(0, rule.maxItems);
   const dateLabel = timelineItems[0]
     ? new Date(timelineItems[0].publishedAt).toLocaleDateString("zh-CN", {
       month: "long",
@@ -658,22 +669,33 @@ export function NewsPanel({
     : "等待刷新";
 
   return (
-    <aside className={`edge-panel edge-panel--news edge-panel--ops news-panel news-panel--${size}`}>
+    <aside
+      className={`edge-panel edge-panel--news edge-panel--ops news-panel news-panel--${size}`}
+      data-home-variant={rule.variant}
+      data-primary-action={rule.primaryAction}
+    >
       <div className="edge-panel__header">
         <div>
           <p className="eyebrow">AI HOT Feed</p>
           <h2>AI 热点</h2>
         </div>
         <div className="edge-panel__actions">
-          <button
-            type="button"
-            className="history-panel__generate"
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            aria-label="立即更新 AI 热点"
-          >
-            {isRefreshing ? "更新中..." : "立即更新"}
-          </button>
+          {rule.primaryAction === "refresh" ? (
+            <button
+              type="button"
+              className="history-panel__generate"
+              data-home-primary-action={rule.primaryAction}
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              aria-label="立即更新 AI 热点"
+            >
+              {isRefreshing ? "更新中..." : "立即更新"}
+            </button>
+          ) : (
+            <Link to="/news" className="panel-link" data-home-primary-action={rule.primaryAction}>
+              查看热点
+            </Link>
+          )}
           <span className="panel-stamp">{updatedAt ? `刷新 ${formatTime(updatedAt)}` : "等待刷新"}</span>
         </div>
       </div>
@@ -739,7 +761,7 @@ export function NewsPanel({
           <div className="edge-empty">当前筛选下没有热点摘要。</div>
         )}
       </div>
-      <div className="ops-panel-footer">
+      <div className="ops-panel-footer news-panel__footer">
         <span>{filteredItems.length} 条 AI HOT</span>
         <img src={homeImageAssets.iconMore} alt="" aria-hidden="true" />
       </div>
@@ -755,6 +777,7 @@ function LedgerPanel({
   dashboard: DashboardData;
   size: HomeModuleSize;
 }) {
+  const rule = getHomeModuleSizeRule("ledger", size);
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const [lastReply, setLastReply] = useState<string | null>(null);
@@ -764,8 +787,9 @@ function LedgerPanel({
   const todayExpense = coach.todayExpenseCents / 100 || summary.todayExpense;
   const rolling7dNet = coach.rolling7dNetCents / 100;
   const coachTip = coach.coachTip ?? "记录几笔后，AI 会开始提醒你的消费变化和经营投入效果。";
-  const compact = size === "small" || size === "smaller";
-  const inputOnly = size === "small";
+  const compact = !homeModuleHasFeature(rule, "details");
+  const showMetrics = homeModuleHasFeature(rule, "metrics");
+  const showRecent = homeModuleHasFeature(rule, "recent");
   const ledgerMutation = useMutation({
     mutationFn: recordLedger,
     onSuccess: (response) => {
@@ -789,7 +813,11 @@ function LedgerPanel({
   };
 
   return (
-    <section className={`ledger-panel ledger-panel--${size}`}>
+    <section
+      className={`ledger-panel ledger-panel--${size}`}
+      data-home-variant={rule.variant}
+      data-primary-action={rule.primaryAction}
+    >
       <div className="ledger-panel__header">
         <div>
           <p className="eyebrow">AI Ledger</p>
@@ -806,11 +834,15 @@ function LedgerPanel({
           placeholder={compact ? "昨天火锅 280" : "昨天和老婆吃火锅花了 280"}
           aria-label="自然语言记账"
         />
-        <button type="submit" disabled={ledgerMutation.isPending || input.trim().length === 0}>
+        <button
+          type="submit"
+          data-home-primary-action={rule.primaryAction}
+          disabled={ledgerMutation.isPending || input.trim().length === 0}
+        >
           {ledgerMutation.isPending ? "记录中" : "记录"}
         </button>
       </form>
-      {!inputOnly ? (
+      {showMetrics ? (
         <div className="ledger-panel__metrics">
           <div>
             <span>今日支出</span>
@@ -831,14 +863,14 @@ function LedgerPanel({
           {ledgerMutation.error instanceof Error ? ledgerMutation.error.message : "记录失败"}
         </p>
       ) : null}
-      {lastReply && !inputOnly ? <p className="ledger-panel__reply">{lastReply}</p> : null}
-      {!compact ? (
+      {lastReply && showMetrics ? <p className="ledger-panel__reply">{lastReply}</p> : null}
+      {homeModuleHasFeature(rule, "details") ? (
         <div className="ledger-panel__coach">
           <span>教练提示</span>
           <p>{coachTip}</p>
         </div>
       ) : null}
-      {!compact && coach.recentFacts.length > 0 ? (
+      {showRecent && coach.recentFacts.length > 0 ? (
         <div className="ledger-panel__recent" aria-label="最近记账">
           {coach.recentFacts.slice(0, 2).map((fact) => (
             <span key={fact.id}>
@@ -853,107 +885,57 @@ function LedgerPanel({
   );
 }
 
-function MhxyPanel() {
+function MhxyPanel({ size }: { size: HomeModuleSize }) {
+  const rule = getHomeModuleSizeRule("mhxy", size);
   const query = useQuery({
     queryKey: ["mhxy"],
     queryFn: fetchMhxyDashboard
   });
   const summary = query.data?.summary;
   const combined = query.data?.combinedSummary;
+  const recentPositions = query.data?.inventory.slice(0, rule.maxItems) ?? [];
   const format = (value: number | undefined) =>
     `¥${(value ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
 
   return (
-    <section className="mhxy-panel">
+    <section
+      className={`mhxy-panel mhxy-panel--${size}`}
+      data-home-variant={rule.variant}
+      data-primary-action={rule.primaryAction}
+    >
       <div className="mhxy-panel__header">
         <div>
           <p className="eyebrow">RMB MAIN LEDGER</p>
           <h2>梦幻西游交易</h2>
         </div>
-        <Link to="/mhxy" className="panel-link">打开账本</Link>
+        <Link to="/mhxy" className="panel-link" data-home-primary-action={rule.primaryAction}>
+          打开账本
+        </Link>
       </div>
       <div className="mhxy-panel__metrics">
         <span>持有总成本<strong>{format(combined?.holdingCostRmb ?? summary?.inventoryCostRmb)}</strong></span>
-        <span>已实现总收益<strong>{format(combined?.realizedProfitRmb ?? summary?.realizedProfitRmb)}</strong></span>
-        <span>主账本浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
+        {homeModuleHasFeature(rule, "metrics") ? (
+          <>
+            <span>已实现总收益<strong>{format(combined?.realizedProfitRmb ?? summary?.realizedProfitRmb)}</strong></span>
+            <span>主账本浮盈<strong>{format(summary?.unrealizedProfitRmb)}</strong></span>
+          </>
+        ) : null}
       </div>
-      <p>{summary?.pendingValuationCount ? `${summary.pendingValuationCount} 项库存待补价格快照` : "全部库存已按人民币口径估值"}</p>
+      <p className="mhxy-panel__status">
+        {summary?.pendingValuationCount ? `${summary.pendingValuationCount} 项库存待补价格快照` : "全部库存已按人民币口径估值"}
+      </p>
+      {homeModuleHasFeature(rule, "list") && recentPositions.length > 0 ? (
+        <div className="mhxy-panel__positions" aria-label="近期持仓">
+          {recentPositions.map((position) => (
+            <div key={`${position.serverName}-${position.characterName}-${position.itemName}`}>
+              <span>{position.itemName}</span>
+              <small>{position.serverName} · {position.quantity} 件</small>
+              <strong>{format(position.marketValueRmb ?? position.inventoryCostRmb)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
-  );
-}
-
-function TopicPanel({
-  buckets,
-  generatedAt,
-  size
-}: {
-  buckets: DashboardData["topics"]["currentByDimension"];
-  generatedAt: string | null;
-  size: HomeModuleSize;
-}) {
-  const safeBuckets = buckets ?? [];
-  const leadBucket = safeBuckets[0];
-  const lead = leadBucket?.items[0] ?? null;
-  const compact = size === "small";
-  const narrow = size === "small" || size === "smaller";
-  const showSummary = size !== "small";
-  const visibleBuckets =
-    size === "max"
-      ? safeBuckets.slice(0, 3)
-      : size === "large"
-        ? safeBuckets.slice(0, 2)
-        : size === "medium"
-          ? safeBuckets.slice(0, 2)
-          : safeBuckets.slice(0, 1);
-
-  return (
-    <Link to="/topics" className={`topic-module topic-module--${size}`}>
-      <div className="topic-module__header">
-        <div>
-          <p className="eyebrow">Topic Direction</p>
-          <h2>选题</h2>
-        </div>
-        <span>{generatedAt ? `手动生成 ${formatTime(generatedAt)}` : "等待生成"}</span>
-      </div>
-      {lead ? (
-        <div className="topic-module__hero">
-          <div className="topic-module__hero-copy">
-            <span>{leadBucket?.label ?? "技术"}</span>
-            <strong>{lead.title}</strong>
-            {showSummary ? <p>{lead.hook}</p> : null}
-          </div>
-          {!narrow ? (
-            <div className="topic-module__hero-meta">
-              <small>{safeBuckets.length} 个方向</small>
-              <b>{lead.score}</b>
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        <div className="edge-empty">还没有选题推送。</div>
-      )}
-      <div className="topic-module__bands">
-        {visibleBuckets.map((bucket) => (
-          <section key={bucket.dimensionId} className="topic-module__band">
-            <div className="topic-module__band-head">
-              <strong>{bucket.label}</strong>
-              {!compact ? <span>{bucket.description}</span> : null}
-            </div>
-            <div className="topic-module__band-list">
-              {bucket.items.slice(0, 1).map((item) => (
-                <article key={item.id} className="topic-module__band-item">
-                  <em>{item.score}</em>
-                  <div>
-                    <h3>{item.title}</h3>
-                    {!compact ? <p>{item.contentDirection}</p> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-    </Link>
   );
 }
 
@@ -964,23 +946,24 @@ function HistoryPanel({
   notifications: NotificationRecord[];
   size: HomeModuleSize;
 }) {
+  const contractRule = getHomeModuleSizeRule("history", size);
   const queryClient = useQueryClient();
   const [topicInput, setTopicInput] = useState("");
   const historyNotifications = getHistoryNotifications(notifications);
   const latestNotification = historyNotifications[0];
   const latestPayload = latestNotification?.payload;
-  const rule = getHistoryHomePreviewRule(size);
+  const previewRule = getHistoryHomePreviewRule(size);
   const latestPostPayload = isHistoryPostPayload(latestPayload) ? latestPayload : null;
   const latestDynastyPayload = isHistoryDynastyPayload(latestPayload) ? latestPayload : null;
-  const cards = latestPostPayload?.cards.slice(0, rule.visibleCards) ?? [];
-  const dynastyModules = latestDynastyPayload?.modules.slice(0, rule.visibleCards) ?? [];
+  const cards = latestPostPayload?.cards.slice(0, previewRule.visibleCards) ?? [];
+  const dynastyModules = latestDynastyPayload?.modules.slice(0, previewRule.visibleCards) ?? [];
   const countLabel = latestPostPayload
     ? `${latestPostPayload.cardCount} 张图文`
     : latestDynastyPayload
       ? `${latestDynastyPayload.modules.length} 套内容`
       : "等待推送";
   const archiveCount = historyNotifications.length;
-  const canGenerateInline = size === "max" || size === "large" || size === "medium";
+  const canGenerateInline = contractRule.primaryAction === "generate";
   const historyGenerateMutation = useMutation({
     mutationFn: (topic?: string) =>
       generateHistory({
@@ -1000,7 +983,11 @@ function HistoryPanel({
   });
 
   return (
-    <article className={`history-panel history-panel--${size}`}>
+    <article
+      className={`history-panel history-panel--${size}`}
+      data-home-variant={contractRule.variant}
+      data-primary-action={contractRule.primaryAction}
+    >
       <div className="history-panel__rail" aria-hidden="true" />
       <div className="history-panel__header">
         <div>
@@ -1035,14 +1022,23 @@ function HistoryPanel({
                 placeholder="输入主题"
                 disabled={historyGenerateMutation.isPending}
               />
-              <button type="submit" className="history-panel__generate" disabled={historyGenerateMutation.isPending}>
+              <button
+                type="submit"
+                className="history-panel__generate"
+                data-home-primary-action={contractRule.primaryAction}
+                disabled={historyGenerateMutation.isPending}
+              >
                 {historyGenerateMutation.isPending ? "生成中..." : "生成"}
               </button>
             </form>
           ) : null}
         </div>
       </div>
-      <Link to="/history" className="history-panel__body-link">
+      <Link
+        to="/history"
+        className="history-panel__body-link"
+        data-home-primary-action={!canGenerateInline ? contractRule.primaryAction : undefined}
+      >
         {latestNotification && latestPayload ? (
           <>
             <div className="history-panel__lead">
@@ -1050,17 +1046,17 @@ function HistoryPanel({
                 {latestDynastyPayload ? "朝代四件套" : "今日策展主题"}
               </span>
               <strong>{getHistoryPayloadTitle(latestPayload)}</strong>
-              {rule.showMetaLine ? (
+              {previewRule.showMetaLine ? (
                 <p className="history-panel__meta">
                   <span>{countLabel}</span>
                   <span>{archiveCount} 条存档</span>
                 </p>
               ) : null}
-              {rule.showSummary ? (
+              {previewRule.showSummary ? (
                 <p className="history-panel__summary">{getHistoryPayloadSummary(latestPayload)}</p>
               ) : null}
             </div>
-            {rule.showStats ? (
+            {previewRule.showStats ? (
               <div className="history-panel__stats">
                 <div>
                   <span>主题存档</span>
@@ -1084,7 +1080,7 @@ function HistoryPanel({
                     <div>
                       <strong>{module.type}：{module.topic}</strong>
                       {size !== "small" ? <p>{buildCaptionExcerpt(module.summary, 64)}</p> : null}
-                      {rule.showPrompts ? <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small> : null}
+                      {previewRule.showPrompts ? <small>{module.cards[0]?.prompt ?? module.cover?.prompt}</small> : null}
                     </div>
                   </div>
                 ))
@@ -1094,18 +1090,18 @@ function HistoryPanel({
                     <div>
                       <strong>{card.title}</strong>
                       {size !== "small" ? <p>{card.imageText}</p> : null}
-                      {rule.showPrompts ? <small>{card.prompt}</small> : null}
+                      {previewRule.showPrompts ? <small>{card.prompt}</small> : null}
                     </div>
                   </div>
                 ))}
             </div>
-            {rule.showCaption && latestPostPayload ? (
+            {previewRule.showCaption && latestPostPayload ? (
               <div className="history-panel__caption">
                 <span>正文摘录</span>
                 <p>{buildCaptionExcerpt(latestPostPayload.xiaohongshuCaption, size === "max" ? 140 : 96)}</p>
               </div>
             ) : null}
-            {!rule.showMetaLine ? (
+            {!previewRule.showMetaLine ? (
               <div className="history-panel__status">
                 <span>{latestNotification ? `更新 ${formatTime(getHistoryPayloadUpdatedAt(latestNotification))}` : "等待推送"}</span>
                 <strong>{size === "small" ? "已生成" : `${archiveCount} 条存档`}</strong>
@@ -1128,214 +1124,6 @@ function HistoryPanel({
   );
 }
 
-export function CinematicPanel({
-  dashboard,
-  size
-}: {
-  dashboard: DashboardData;
-  size: HomeModuleSize;
-}) {
-  const queryClient = useQueryClient();
-  const [concept, setConcept] = useState("");
-  const summary = dashboard.cinematic.dashboard;
-  const latest = summary.latestProject;
-  const compact = size === "small";
-  const minimal = size === "small";
-  const showList = size === "max" || size === "large" || size === "medium";
-  const showPrompt = size === "max" || size === "large";
-  const showInspiration = size !== "small";
-  const generateMutation = useMutation({
-    mutationFn: (nextConcept: string) =>
-      generateCinematic({
-        concept: nextConcept
-      }),
-    onSuccess: async () => {
-      setConcept("");
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard"]
-      });
-    }
-  });
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextConcept = concept.trim();
-
-    if (generateMutation.isPending) {
-      return;
-    }
-
-    generateMutation.mutate(nextConcept);
-  }
-
-  return (
-    <section className={`cinematic-panel cinematic-panel--${size}`}>
-      <div className="cinematic-panel__header">
-        <div>
-          <p className="eyebrow">Cinematic Shot Design</p>
-          <h2>电影镜头</h2>
-        </div>
-        <Link to="/cinematic" className="panel-link">
-          分镜台
-        </Link>
-      </div>
-      <form className="cinematic-panel__quick" onSubmit={handleSubmit}>
-        <input
-          value={concept}
-          onChange={(event) => setConcept(event.target.value)}
-          placeholder={compact ? "留空自动生成" : "输入概念；留空则由 AI 自行判断"}
-          disabled={generateMutation.isPending}
-          aria-label="快速生成电影分镜"
-        />
-        <button type="submit" disabled={generateMutation.isPending}>
-          {generateMutation.isPending ? "生成中" : "生成"}
-        </button>
-      </form>
-      {showInspiration ? <div className="cinematic-panel__inspiration">
-        <span>今日灵感</span>
-        <strong>{summary.todayInspiration}</strong>
-      </div> : null}
-      {latest ? (
-        <article className="cinematic-panel__latest">
-          <span>{latest.mood}</span>
-          <h3>{latest.title}</h3>
-          {!minimal ? <p>{latest.script}</p> : null}
-          <div className="cinematic-panel__meta">
-            <b>{latest.storyboard.length} 镜头</b>
-            <b>{latest.pace || "情绪递进"}</b>
-          </div>
-        </article>
-      ) : (
-        <div className="edge-empty">还没有电影分镜项目。</div>
-      )}
-      {showList && summary.recentProjects.length > 0 ? (
-        <div className="cinematic-panel__projects" aria-label="最近分镜项目">
-          {summary.recentProjects.slice(0, size === "max" ? 4 : 3).map((project) => (
-            <Link key={project.id} to="/cinematic" className="cinematic-panel__project">
-              <span>{project.storyboard.length} shots</span>
-              <strong>{project.title}</strong>
-            </Link>
-          ))}
-        </div>
-      ) : null}
-      {showPrompt && latest?.storyboard[0] ? (
-        <div className="cinematic-panel__prompt">
-          <span>首镜提示词</span>
-          <p>{latest.storyboard[0].prompt.zh}</p>
-        </div>
-      ) : null}
-      {generateMutation.isError ? (
-        <div className="news-error">
-          错误：
-          {generateMutation.error instanceof Error ? generateMutation.error.message : "电影分镜生成失败"}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-export function ClassicShotPanel({
-  dashboard,
-  size
-}: {
-  dashboard: DashboardData;
-  size: HomeModuleSize;
-}) {
-  const queryClient = useQueryClient();
-  const [input, setInput] = useState("");
-  const summary = dashboard.classicShots.dashboard;
-  const latest = summary.latestProject;
-  const compact = size === "small";
-  const showList = size === "max" || size === "large" || size === "medium";
-  const showPrompt = size === "max" || size === "large";
-  const generateMutation = useMutation({
-    mutationFn: (nextInput: string) =>
-      generateClassicShot({
-        input: nextInput || "随机生成一个经典镜头",
-        targetPlatform: "generic"
-      }),
-    onSuccess: async () => {
-      setInput("");
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard"]
-      });
-    }
-  });
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!generateMutation.isPending) {
-      generateMutation.mutate(input.trim());
-    }
-  }
-
-  return (
-    <section className={`cinematic-panel cinematic-panel--${size}`}>
-      <div className="cinematic-panel__header">
-        <div>
-          <p className="eyebrow">Classic Shot Recreation</p>
-          <h2>经典镜头复刻</h2>
-        </div>
-        <Link to="/classic-shots" className="panel-link">
-          复刻台
-        </Link>
-      </div>
-      <form className="cinematic-panel__quick" onSubmit={handleSubmit}>
-        <input
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder={compact ? "留空随机" : "输入导演、电影或经典镜头；留空随机"}
-          disabled={generateMutation.isPending}
-          aria-label="快速生成经典镜头复刻"
-        />
-        <button type="submit" disabled={generateMutation.isPending}>
-          {generateMutation.isPending ? "生成中" : "生成"}
-        </button>
-      </form>
-      <div className="cinematic-panel__inspiration">
-        <span>参考镜头</span>
-        <strong>{summary.todayReference}</strong>
-      </div>
-      {latest ? (
-        <article className="cinematic-panel__latest">
-          <span>{latest.source.director} · {latest.source.year}</span>
-          <h3>{latest.source.film}：{latest.source.shotName}</h3>
-          {size !== "small" ? <p>{latest.coreValue}</p> : null}
-          <div className="cinematic-panel__meta">
-            <b>{latest.storyboard.length} 分镜</b>
-            <b>{latest.targetPlatform}</b>
-          </div>
-        </article>
-      ) : (
-        <div className="edge-empty">还没有经典镜头复刻方案。</div>
-      )}
-      {showList && summary.recentProjects.length > 0 ? (
-        <div className="cinematic-panel__projects" aria-label="最近经典镜头复刻">
-          {summary.recentProjects.slice(0, size === "max" ? 4 : 3).map((project) => (
-            <Link key={project.id} to="/classic-shots" className="cinematic-panel__project">
-              <span>{project.storyboard.length} shots</span>
-              <strong>{project.source.director}《{project.source.film}》</strong>
-            </Link>
-          ))}
-        </div>
-      ) : null}
-      {showPrompt && latest?.storyboard[0] ? (
-        <div className="cinematic-panel__prompt">
-          <span>首镜提示词</span>
-          <p>{latest.storyboard[0].prompt}</p>
-        </div>
-      ) : null}
-      {generateMutation.isError ? (
-        <div className="news-error">
-          错误：
-          {generateMutation.error instanceof Error ? generateMutation.error.message : "经典镜头复刻生成失败"}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 function SummaryPanel({
   dashboard,
   size
@@ -1343,10 +1131,13 @@ function SummaryPanel({
   dashboard: DashboardData;
   size: HomeModuleSize;
 }) {
+  const rule = getHomeModuleSizeRule("summary", size);
   const summary = dashboard.summary.dashboard;
   const latest = summary.latestSummary;
-  const compact = size === "small";
-  const showDetails = size !== "small" && size !== "smaller";
+  const showMetrics = homeModuleHasFeature(rule, "metrics");
+  const showLatest = homeModuleHasFeature(rule, "latest");
+  const showSummary = homeModuleHasFeature(rule, "summary");
+  const showTags = homeModuleHasFeature(rule, "tags");
   const statusLabel: Record<string, string> = {
     missing: "未总结",
     draft: "有草稿",
@@ -1354,17 +1145,25 @@ function SummaryPanel({
   };
 
   return (
-    <section className={`summary-panel summary-panel--${size}`}>
+    <section
+      className={`summary-panel summary-panel--${size}`}
+      data-home-variant={rule.variant}
+      data-primary-action={rule.primaryAction}
+    >
       <div className="summary-panel__header">
         <div>
           <p className="eyebrow">Reflection</p>
           <h2>总结</h2>
         </div>
-        <Link to="/summaries" className="panel-link">
+        <Link
+          to="/summaries"
+          className="panel-link"
+          data-home-primary-action={rule.primaryAction === "openSummaries" ? rule.primaryAction : undefined}
+        >
           总结中心
         </Link>
       </div>
-      <div className="summary-panel__status">
+      {showMetrics ? <div className="summary-panel__status">
         <div>
           <span>今日</span>
           <strong>{statusLabel[summary.todaySummaryStatus]}</strong>
@@ -1377,15 +1176,19 @@ function SummaryPanel({
           <span>总数</span>
           <strong>{summary.totalCount}</strong>
         </div>
-      </div>
-      {!compact ? (
+      </div> : null}
+      {showLatest ? (
         <div className="summary-panel__latest">
           <span>最近一条</span>
           <strong>{latest?.title ?? "还没有正式总结"}</strong>
-          {latest ? <p>{latest.finalSummary || latest.aiDraft}</p> : <p>写下真实素材，再让 AI 生成一版有判断的草稿。</p>}
+          {showSummary ? (
+            latest
+              ? <p>{latest.finalSummary || latest.aiDraft}</p>
+              : <p>写下真实素材，再让 AI 生成一版有判断的草稿。</p>
+          ) : null}
         </div>
       ) : null}
-      {showDetails ? (
+      {showTags ? (
         <div className="summary-panel__chips">
           {[...summary.recentKeywords, ...summary.recentMoodTags].slice(0, 8).map((item) => (
             <span key={item}>{item}</span>
@@ -1393,55 +1196,13 @@ function SummaryPanel({
         </div>
       ) : null}
       <div className="summary-panel__actions">
-        <Link to="/summaries">新建</Link>
+        <Link
+          to="/summaries"
+          data-home-primary-action={rule.primaryAction === "newSummary" ? rule.primaryAction : undefined}
+        >
+          新建
+        </Link>
         <Link to="/summaries">进入中心</Link>
-      </div>
-    </section>
-  );
-}
-
-function InterviewPanel({
-  dashboard,
-  size
-}: {
-  dashboard: DashboardData;
-  size: HomeModuleSize;
-}) {
-  const interview = dashboard.interview;
-  const today = new Date().toISOString().slice(0, 10);
-  const session = interview?.sessions.find((item) => item.date === today) ?? interview?.sessions[0] ?? null;
-  const report = session?.report ?? null;
-  const compact = size === "small" || size === "smaller";
-  const weakLabels = report?.weakPoints.length
-    ? report.weakPoints
-    : ["Python 基础", "RAG", "Agent 工作流"];
-
-  return (
-    <section className={`interview-panel interview-panel--${size}`}>
-      <div className="interview-panel__header">
-        <div>
-          <p className="eyebrow">Interview Drill</p>
-          <h2>面试训练</h2>
-        </div>
-        <Link to="/interview" className="panel-link">进入训练</Link>
-      </div>
-      <div className="interview-panel__metrics">
-        <div>
-          <span>今日</span>
-          <strong>{report ? `${report.completedCount}/${report.totalCount}` : "待生成"}</strong>
-        </div>
-        <div>
-          <span>平均分</span>
-          <strong>{report?.averageScore ?? "-"}</strong>
-        </div>
-      </div>
-      {!compact ? (
-        <p className="interview-panel__summary">
-          {report?.summary ?? "按 AI 全栈开发能力图谱轮换模块，每个模块至少 3 题。"}
-        </p>
-      ) : null}
-      <div className="interview-panel__chips">
-        {weakLabels.slice(0, compact ? 2 : 4).map((label) => <span key={label}>{label}</span>)}
       </div>
     </section>
   );
@@ -1569,7 +1330,14 @@ function HistoryNotificationTray({
   );
 }
 
-function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
+function ChatPanel({
+  dashboard,
+  size
+}: {
+  dashboard: DashboardData;
+  size: HomeModuleSize;
+}) {
+  const rule = getHomeModuleSizeRule("chat", size);
   const queryClient = useQueryClient();
   const [workspace, setWorkspace] = useState(() =>
     createInitialChatWorkspace(dashboard.messages, new Date().toISOString())
@@ -1629,6 +1397,11 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
     activeSession && activeSession.progress.length > 0
       ? activeSession.progress
       : buildFallbackProgress(dashboard);
+  const visibleMessages = activeSession?.messages.slice(-Math.max(rule.maxItems, 1)) ?? [];
+  const visibleProgress = displayedProgress.slice(-Math.max(rule.maxItems, 1));
+  const showSessionTabs = size !== "small";
+  const showProgress = homeModuleHasFeature(rule, "progress");
+  const showComposer = homeModuleHasFeature(rule, "composer");
   function handleCreateSession() {
     const now = new Date().toISOString();
     let createdSessionId = "";
@@ -1660,9 +1433,80 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
     });
   }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!draft.trim() || !activeSession) {
+      return;
+    }
+
+    mutation.mutate({
+      message: draft.trim(),
+      sessionId: activeSession.id
+    });
+  }
+
+  if (size === "small") {
+    const latestMessage = visibleMessages.at(-1);
+
+    return (
+      <section
+        className="console-shell console-shell--ops chat-panel chat-panel--small"
+        data-home-variant={rule.variant}
+        data-primary-action={rule.primaryAction}
+      >
+        <header className="chat-panel__identity">
+          <div>
+            <p className="eyebrow">Agent Console</p>
+            <h2>会话</h2>
+          </div>
+          <span className="panel-stamp">{mutation.isPending ? "处理中" : "已同步"}</span>
+        </header>
+        <p className="chat-panel__compact-latest">
+          {latestMessage?.content ?? "主 Agent 已就绪，输入一句话开始处理。"}
+        </p>
+        <form className="chat-panel__compact-composer" onSubmit={handleSubmit}>
+          <input
+            value={draft}
+            onChange={(event) => {
+              if (!activeSession) {
+                return;
+              }
+
+              setDraftsBySession((previous) => ({
+                ...previous,
+                [activeSession.id]: event.target.value
+              }));
+            }}
+            placeholder="问主 Agent…"
+            aria-label="当前会话输入"
+          />
+          <button
+            type="submit"
+            data-home-primary-action={rule.primaryAction}
+            disabled={mutation.isPending || !draft.trim()}
+          >
+            {mutation.isPending ? "发送中" : "发送"}
+          </button>
+        </form>
+      </section>
+    );
+  }
+
   return (
-    <section className="console-shell console-shell--ops">
-      <div className="session-tabs">
+    <section
+      className={`console-shell console-shell--ops chat-panel chat-panel--${size}`}
+      data-home-variant={rule.variant}
+      data-primary-action={rule.primaryAction}
+    >
+      <header className="chat-panel__identity">
+        <div>
+          <p className="eyebrow">Agent Console</p>
+          <h2>会话</h2>
+        </div>
+        <span className="panel-stamp">{mutation.isPending ? "处理中" : "已同步"}</span>
+      </header>
+      {showSessionTabs ? <div className="session-tabs">
         <div className="session-tabs__track">
           {workspace.sessions.map((session) => (
             <button
@@ -1701,15 +1545,17 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
         <button type="button" className="session-tabs__create" onClick={handleCreateSession}>
           ＋ 新建会话
         </button>
-      </div>
+      </div> : null}
 
-      <HistoryNotificationTray notifications={dashboard.notifications} />
+      {homeModuleHasFeature(rule, "details") ? (
+        <HistoryNotificationTray notifications={dashboard.notifications} />
+      ) : null}
 
       <div className="chat-shell">
         <div className="chat-shell__main">
           <div className="chat-shell__messages">
-            {activeSession && activeSession.messages.length > 0 ? (
-              activeSession.messages.map((message) => (
+            {visibleMessages.length > 0 ? (
+              visibleMessages.map((message) => (
                 <article key={message.id} className={`message-entry message-entry--${message.role}`}>
                   <div className="message-entry__meta">
                     <span>{getMessageLabel(message.role)}</span>
@@ -1724,20 +1570,9 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
             )}
           </div>
 
-          <form
+          {showComposer ? <form
             className="chat-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-
-              if (!draft.trim() || !activeSession) {
-                return;
-              }
-
-              mutation.mutate({
-                message: draft.trim(),
-                sessionId: activeSession.id
-              });
-            }}
+            onSubmit={handleSubmit}
           >
             <label className="chat-composer__prompt" htmlFor="agent-console-input">
               <span>$ main-agent</span>
@@ -1757,18 +1592,22 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
                 }));
               }}
               placeholder="输入你的问题，主 Agent 会在左侧回复，并在右侧展示调用与执行进度。"
-              rows={5}
+              rows={size === "smaller" || size === "medium" ? 2 : 5}
             />
             <div className="chat-composer__actions">
               <span>{draft.trim() ? `${draft.trim().length} chars` : "等待输入"}</span>
-              <button type="submit" disabled={mutation.isPending}>
+              <button
+                type="submit"
+                data-home-primary-action={rule.primaryAction}
+                disabled={mutation.isPending}
+              >
                 {mutation.isPending ? "发送中..." : "发送"}
               </button>
             </div>
-          </form>
+          </form> : null}
         </div>
 
-        <aside className="progress-panel">
+        {showProgress ? <aside className="progress-panel">
           <div className="progress-panel__header">
             <div>
               <p className="eyebrow">Progress Timeline</p>
@@ -1779,10 +1618,10 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
             </span>
           </div>
           <div className="progress-panel__scroll">
-            {displayedProgress.length > 0 ? (
-              displayedProgress.map((step, index) => (
+            {visibleProgress.length > 0 ? (
+              visibleProgress.map((step, index) => (
                 <article key={step.id} className="progress-step">
-                  <div className="progress-step__line" aria-hidden={index === displayedProgress.length - 1} />
+                  <div className="progress-step__line" aria-hidden={index === visibleProgress.length - 1} />
                   <div className={`progress-step__dot progress-step__dot--${step.status}`} />
                   <div className="progress-step__body">
                     <div className="progress-step__meta">
@@ -1797,7 +1636,7 @@ function ChatPanel({ dashboard }: { dashboard: DashboardData }) {
               <div className="edge-empty">发送问题后，这里会按时间线显示主 Agent 的路由和子 Agent 的处理步骤。</div>
             )}
           </div>
-        </aside>
+        </aside> : null}
       </div>
     </section>
   );
@@ -1874,6 +1713,7 @@ function HomeModuleShell({
   preview?: boolean;
   isDragging?: boolean;
 }) {
+  const rule = getHomeModuleSizeRule(preference.id, preference.size);
   const moduleStyle = {
     ...getModuleFrameStyle(preference.size, preference.collapsed),
     ...sortableStyle
@@ -1885,16 +1725,23 @@ function HomeModuleShell({
       className={`home-module home-module--size-${preference.size}${preference.collapsed ? " is-collapsed" : ""}${isDragging ? " is-dragging" : ""
         }${preview ? " home-module--drag-overlay" : ""}`}
       style={moduleStyle}
+      data-home-module={preference.id}
+      data-home-size={preference.size}
+      data-home-variant={rule.variant}
+      data-home-collapsed={preference.collapsed ? "true" : "false"}
+      data-primary-action={preference.collapsed ? "expand" : rule.primaryAction}
     >
-      <div
+      <button
+        type="button"
         ref={setActivatorNodeRef}
         className="home-module__meta"
-        aria-hidden="true"
+        aria-label={`拖动调整${title}`}
+        title={`拖动调整${title}`}
         {...(dragAttributes ?? {})}
         {...(dragListeners ?? {})}
       >
-        <strong>{title}</strong>
-      </div>
+        <span aria-hidden="true">拖动</span>
+      </button>
       <div className="home-module__body">
         {preference.collapsed ? (
           <div className="home-module__collapsed-content">
@@ -1913,6 +1760,7 @@ function HomeModuleShell({
           <button
             type="button"
             className="home-module__collapse"
+            data-home-primary-action={preference.collapsed ? "expand" : undefined}
             onClick={onToggleCollapsed}
           >
             {preference.collapsed ? "展开" : "收起"}
@@ -1920,6 +1768,104 @@ function HomeModuleShell({
         </div>
       )}
     </article>
+  );
+}
+
+function BrowserAutomationPanel({
+  dashboard,
+  size
+}: {
+  dashboard: DashboardData;
+  size: HomeModuleSize;
+}) {
+  const rule = getHomeModuleSizeRule("browserAutomation", size);
+  const automation = dashboard.browserAutomation;
+  const runs = automation?.runs.slice(0, rule.maxItems) ?? [];
+  const latestRun = runs[0];
+  const enabledWorkflows = automation?.workflows.filter((workflow) => workflow.enabled).length ?? 0;
+  const runningCount = automation?.runs.filter((run) => run.status === "running" || run.status === "queued").length ?? 0;
+  const statusLabels = {
+    queued: "排队中",
+    running: "运行中",
+    completed: "已完成",
+    failed: "失败",
+    stopped: "已停止"
+  } as const;
+
+  return (
+    <section
+      className={`browser-home-panel browser-home-panel--${size}`}
+      data-home-variant={rule.variant}
+      data-primary-action={rule.primaryAction}
+    >
+      <header className="browser-home-panel__header">
+        <div>
+          <p className="eyebrow">Browser Ops</p>
+          <h2>浏览器自动化</h2>
+        </div>
+        <Link
+          to="/tools/browser-automation"
+          className="panel-link"
+          data-home-primary-action={rule.primaryAction}
+        >
+          打开控制台
+        </Link>
+      </header>
+
+      {homeModuleHasFeature(rule, "metrics") ? (
+        <div className="browser-home-panel__metrics">
+          <span><strong>{enabledWorkflows}</strong>启用流程</span>
+          <span><strong>{runningCount}</strong>正在执行</span>
+          <span><strong>{automation?.triggerRules.filter((item) => item.enabled).length ?? 0}</strong>触发规则</span>
+        </div>
+      ) : null}
+
+      {latestRun ? (
+        <div className="browser-home-panel__latest">
+          <div>
+            <span>最近运行</span>
+            <strong>{latestRun.workflowName}</strong>
+          </div>
+          <span className={`browser-home-panel__status is-${latestRun.status}`}>
+            {statusLabels[latestRun.status]}
+          </span>
+        </div>
+      ) : (
+        <div className="browser-home-panel__latest">
+          <div>
+            <span>运行状态</span>
+            <strong>尚无执行记录</strong>
+          </div>
+          <span className="browser-home-panel__status">待命</span>
+        </div>
+      )}
+
+      {homeModuleHasFeature(rule, "activity") && runs.length > 0 ? (
+        <div className="browser-home-panel__runs" aria-label="最近自动化运行">
+          {runs.map((run) => (
+            <div key={run.id}>
+              <span className={`browser-home-panel__run-dot is-${run.status}`} aria-hidden="true" />
+              <div>
+                <strong>{run.workflowName}</strong>
+                <small>{formatDateTime(run.startedAt)}</small>
+              </div>
+              <span>{statusLabels[run.status]}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {homeModuleHasFeature(rule, "list") && automation && automation.workflows.length > 0 ? (
+        <div className="browser-home-panel__workflows" aria-label="自动化流程">
+          {automation.workflows.slice(0, 3).map((workflow) => (
+            <span key={workflow.id}>
+              <i className={workflow.enabled ? "is-enabled" : ""} aria-hidden="true" />
+              {workflow.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -2007,17 +1953,27 @@ function renderHomeModuleContent({
   }
 
   if (id === "chat") {
-    return <ChatPanel dashboard={dashboard} />;
+    return <ChatPanel dashboard={dashboard} size={size} />;
   }
 
   if (id === "todo") {
     return (
-      <TodoPanel
-        dashboard={dashboard}
-        size={size}
-        onToggleItem={todoActions.toggleItemStatus}
-        onAddItem={todoActions.addItem}
-      />
+      <section className={`todo-home-panel todo-home-panel--${size}`}>
+        {size === "small" ? <h2 className="todo-home-panel__title">待办</h2> : null}
+        <TodoPanel
+          dashboard={dashboard}
+          size={size}
+          onToggleItem={todoActions.toggleItemStatus}
+          onAddItem={todoActions.addItem}
+        />
+        <Link
+          to="/todo"
+          className="todo-home-panel__link"
+          data-home-primary-action={getHomeModuleSizeRule("todo", size).primaryAction}
+        >
+          进入待办
+        </Link>
+      </section>
     );
   }
 
@@ -2026,37 +1982,19 @@ function renderHomeModuleContent({
   }
 
   if (id === "mhxy") {
-    return <MhxyPanel />;
-  }
-
-  if (id === "topics") {
-    return (
-      <TopicPanel
-        buckets={dashboard.topics.currentByDimension}
-        generatedAt={dashboard.topics.lastGeneratedAt}
-        size={size}
-      />
-    );
+    return <MhxyPanel size={size} />;
   }
 
   if (id === "history") {
     return <HistoryPanel notifications={dashboard.notifications} size={size} />;
   }
 
-  if (id === "cinematic") {
-    return <CinematicPanel dashboard={dashboard} size={size} />;
-  }
-
-  if (id === "classicShots") {
-    return <ClassicShotPanel dashboard={dashboard} size={size} />;
-  }
-
   if (id === "summary") {
     return <SummaryPanel dashboard={dashboard} size={size} />;
   }
 
-  if (id === "interview") {
-    return <InterviewPanel dashboard={dashboard} size={size} />;
+  if (id === "browserAutomation") {
+    return <BrowserAutomationPanel dashboard={dashboard} size={size} />;
   }
 
   return <div className="edge-empty">模块已注册，内容组件待接入。</div>;
@@ -2173,10 +2111,7 @@ const MODULE_AGENT_IDS: Record<string, string> = {
   ledger: "ledger-agent",
   todo: "schedule-agent",
   news: "news-agent",
-  topics: "topic-agent",
   history: "history-agent",
-  cinematic: "cinematic-agent",
-  classicShots: "classic-shot-agent",
   summary: "summary-agent"
 };
 
@@ -2203,6 +2138,7 @@ function toggleListValue<T extends string>(items: T[], value: T) {
 export function ModelManagementSection({
   providers,
   profiles,
+  syncControl,
   onSave,
   onDelete,
   onTest,
@@ -2210,6 +2146,7 @@ export function ModelManagementSection({
 }: {
   providers: ModelProviderDefinition[];
   profiles: ModelProfileView[];
+  syncControl?: ReactNode;
   onSave: (input: { id?: string; form: ModelProfileInput }) => void;
   onDelete: (id: string) => void;
   onTest: (id: string) => void;
@@ -2269,10 +2206,16 @@ export function ModelManagementSection({
           <h2 id="manage-model-heading">模型管理</h2>
           <p>统一配置模型实例、密钥状态与用途绑定，agent 只通过后端运行时调用模型。</p>
         </div>
-        <Button type="primary" onClick={openCreate}>
-          添加模型
-        </Button>
+        <div className="model-management__actions">
+          {syncControl}
+          <Button type="primary" onClick={openCreate}>
+            添加模型
+          </Button>
+        </div>
       </div>
+      <p className="model-management__sync-note">
+        仅同步模型参数与用途绑定；API Key 始终保存在当前设备，不会写入 GitHub。
+      </p>
 
       <div className="manage-card-grid manage-card-grid--models">
         {profiles.map((profile, index) => (
@@ -2590,6 +2533,11 @@ export function HomeManagePage() {
         </div>
 
         <div className="manage-overview" aria-label="模块配置摘要">
+          <div className="manage-overview__intro">
+            <span className="eyebrow">Workspace Status</span>
+            <strong>配置概览</strong>
+            <p>先确认全局状态，再进入右侧工作区逐项调整。</p>
+          </div>
           <div>
             <span>总模块</span>
             <strong>{layout.length}</strong>
@@ -2613,6 +2561,15 @@ export function HomeManagePage() {
             <ModelManagementSection
               providers={providersQuery.data.providers}
               profiles={profilesQuery.data.profiles}
+              syncControl={(
+                <DataSyncControl
+                  module="models"
+                  onSynced={async () => {
+                    await queryClient.invalidateQueries({ queryKey: ["model-profiles"] });
+                    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+                  }}
+                />
+              )}
               onSave={(input) => saveModelMutation.mutate(input)}
               onDelete={(id) => deleteModelMutation.mutate(id)}
               onTest={(id) => testModelMutation.mutate(id)}
@@ -3047,6 +3004,80 @@ export function DashboardPage() {
   }
 
   const dashboard = todoWorkspace.dashboard;
+  const auditParams = new URLSearchParams(window.location.search);
+  const auditModuleId = HOME_MODULE_CONTRACT_IDS.find(
+    (id) => id === auditParams.get("homeModuleAudit")
+  );
+  const auditSize = HOME_MODULE_SIZE_OPTIONS.find(
+    (option) => option.value === auditParams.get("size")
+  )?.value;
+  const auditViewport = auditParams.get("viewport") === "mobile" ? "mobile" : "desktop";
+  const auditCollapsed = auditParams.get("collapsed") === "true";
+
+  if (auditModuleId && auditSize) {
+    const auditPreference: HomeModulePreference = {
+      id: auditModuleId,
+      visible: true,
+      showInNavigation: canShowHomeModuleInNavigation(auditModuleId),
+      size: auditSize,
+      collapsed: auditCollapsed,
+      order: 0
+    };
+    const previewSize = getHomeModulePreviewSize(auditSize, auditCollapsed);
+
+    return (
+      <main
+        className={`home-module-audit-page home-module-audit-page--${auditViewport}`}
+        data-audit-module={auditModuleId}
+        data-audit-size={auditSize}
+        data-audit-viewport={auditViewport}
+        data-audit-theme={themeKey}
+        data-audit-collapsed={auditCollapsed ? "true" : "false"}
+      >
+        <header className="home-module-audit-controls">
+          <strong>
+            {auditModuleId} · {auditCollapsed ? "collapsed" : auditSize} · {auditViewport}
+          </strong>
+          <div role="group" aria-label="审计主题">
+            <button type="button" aria-pressed={themeKey === "day"} onClick={() => setThemeKey("day")}>日间</button>
+            <button type="button" aria-pressed={themeKey === "night"} onClick={() => setThemeKey("night")}>夜间</button>
+          </div>
+        </header>
+        <div
+          className="home-module-audit-viewport"
+          style={{
+            width: auditViewport === "mobile" ? 390 : previewSize.width,
+            height: previewSize.height
+          }}
+        >
+          <HomeModuleShell
+            preference={auditPreference}
+            title={getModuleDisplayName(auditModuleId, layout)}
+            summary={getModuleSummary(auditModuleId, dashboard)}
+            onToggleCollapsed={() => undefined}
+          >
+            {renderHomeModuleContent({
+              id: auditModuleId,
+              dashboard,
+              todoActions: todoWorkspace,
+              newsFilter,
+              onNewsFilterChange: setNewsFilter,
+              size: auditSize,
+              onNewsRefresh: () => newsRefreshMutation.mutate(),
+              isNewsRefreshing: newsRefreshMutation.isPending,
+              newsRefreshError:
+                newsRefreshMutation.isError && newsRefreshMutation.error instanceof Error
+                  ? newsRefreshMutation.error.message
+                  : newsRefreshMutation.isError
+                    ? "热点更新失败，请稍后重试。"
+                    : null
+            })}
+          </HomeModuleShell>
+        </div>
+      </main>
+    );
+  }
+
   const visibleLayout = layout.filter((item) => item.visible);
   const activePreference = activeId ? visibleLayout.find((item) => item.id === activeId) : null;
 

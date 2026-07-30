@@ -1391,7 +1391,51 @@ export interface ScreenMonitorState {
   lastUpdatedAt: string | null;
 }
 
-export type DataSyncModule = "history" | "mhxy" | "browser-automation";
+export type GameCreatorWorkflowStageId =
+  | "brief"
+  | "script"
+  | "capture"
+  | "edit"
+  | "package"
+  | "review"
+  | "publish";
+
+export interface GameCreatorDraft {
+  game: string;
+  audience: string;
+  format: string;
+  promise: string;
+  angle: string;
+  title: string;
+  coverCopy: string;
+  opening: string;
+  outline: string;
+  assetNotes: string;
+  editNotes: string;
+  tags: string;
+  publishedUrl: string;
+  retrospective: string;
+}
+
+export interface GameCreatorState {
+  version: 1;
+  date: string;
+  projectId: string;
+  updatedAt: string;
+  activeStage: GameCreatorWorkflowStageId;
+  completedTaskIds: string[];
+  checkedQualityIds: string[];
+  ready: boolean;
+  completedVideos: number;
+  draft: GameCreatorDraft;
+}
+
+export type DataSyncModule =
+  | "history"
+  | "mhxy"
+  | "browser-automation"
+  | "game-creator"
+  | "models";
 export type DataSyncActivityStatus = "idle" | "syncing" | "synced" | "conflict" | "failed";
 export type DataSyncResolutionChoice = "local" | "remote";
 
@@ -1874,13 +1918,17 @@ export interface DashboardData {
     todayItems: ScheduleItem[];
   };
   news: NewsState;
-  topics: TopicState;
-  cinematic: CinematicState & {
+  /** @deprecated Removed from dashboard responses; retained for legacy client type compatibility. */
+  topics?: TopicState;
+  /** @deprecated Removed from dashboard responses; retained for legacy client type compatibility. */
+  cinematic?: CinematicState & {
     dashboard: CinematicDashboardSummary;
   };
-  classicShots: ClassicShotState & {
+  /** @deprecated Removed from dashboard responses; retained for legacy client type compatibility. */
+  classicShots?: ClassicShotState & {
     dashboard: ClassicShotDashboardSummary;
   };
+  /** @deprecated Removed from dashboard responses; retained for legacy client type compatibility. */
   imageToVideo?: ImageToVideoState & {
     dashboard: ImageToVideoDashboardSummary;
   };
@@ -1888,6 +1936,7 @@ export interface DashboardData {
   screenMonitor?: ScreenMonitorState;
   promptTemplates?: PromptTemplateState;
   childMeal?: ChildMealState;
+  /** @deprecated Removed from dashboard responses; retained for legacy client type compatibility. */
   interview?: InterviewState;
   summary: SummaryState & {
     dashboard: SummaryDashboard;

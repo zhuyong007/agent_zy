@@ -12,11 +12,7 @@ describe("sub-agent route config", () => {
       "ledger-agent",
       "schedule-agent",
       "news-agent",
-      "topic-agent",
       "history-agent",
-      "cinematic-agent",
-      "classic-shot-agent",
-      "image-to-video-planner-agent",
       "browser-automation-agent",
       "summary-agent"
     ]);
@@ -40,11 +36,7 @@ describe("sub-agent route config", () => {
       "news",
       "todo",
       "ledger",
-      "topics",
       "history",
-      "cinematic",
-      "classicShots",
-      "imageToVideo",
       "summary",
       "browserAutomation"
     ]);

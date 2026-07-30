@@ -26,7 +26,9 @@ describe("data sync API", () => {
         modules: {
           history: { module: "history", status: "idle", lastSyncedAt: null, lastCommit: null, error: null },
           mhxy: { module: "mhxy", status: "idle", lastSyncedAt: null, lastCommit: null, error: null },
-          "browser-automation": { module: "browser-automation", status: "idle", lastSyncedAt: null, lastCommit: null, error: null }
+          "browser-automation": { module: "browser-automation", status: "idle", lastSyncedAt: null, lastCommit: null, error: null },
+          "game-creator": { module: "game-creator", status: "idle", lastSyncedAt: null, lastCommit: null, error: null },
+          models: { module: "models", status: "idle", lastSyncedAt: null, lastCommit: null, error: null }
         }
       }),
       sync
@@ -49,9 +51,23 @@ describe("data sync API", () => {
         resolutions: [{ key: "notification:one", choice: "local" }]
       });
 
+      const creatorResponse = await app.inject({
+        method: "POST",
+        url: "/api/data-sync/game-creator"
+      });
+      expect(creatorResponse.statusCode).toBe(200);
+      expect(sync).toHaveBeenCalledWith("game-creator", { resolutions: [] });
+
+      const modelsResponse = await app.inject({
+        method: "POST",
+        url: "/api/data-sync/models"
+      });
+      expect(modelsResponse.statusCode).toBe(200);
+      expect(sync).toHaveBeenCalledWith("models", { resolutions: [] });
+
       const invalid = await app.inject({ method: "POST", url: "/api/data-sync/secrets" });
       expect(invalid.statusCode).toBe(400);
-      expect(sync).toHaveBeenCalledTimes(1);
+      expect(sync).toHaveBeenCalledTimes(3);
     } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });

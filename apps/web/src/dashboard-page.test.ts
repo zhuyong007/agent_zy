@@ -19,7 +19,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import { CinematicPanel, CommandRail, ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
+import { CommandRail, ManageModuleCard, ModelManagementSection, NewsPanel } from "./components/dashboard-page";
 
 class TestResizeObserver {
   observe() {
@@ -433,44 +433,6 @@ describe("CommandRail", () => {
     testContainer.remove();
   });
 
-describe("CinematicPanel", () => {
-  let container: HTMLDivElement;
-  let root: Root;
-
-  afterEach(() => {
-    act(() => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("renders cinematic dashboard summary and quick generation entry", async () => {
-    const queryClient = new QueryClient();
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        React.createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          React.createElement(CinematicPanel, {
-            dashboard: createCinematicDashboard(),
-            size: "large"
-          })
-        )
-      );
-    });
-
-    expect(container.textContent).toContain("电影镜头");
-    expect(container.textContent).toContain("今日灵感");
-    expect(container.textContent).toContain("凌晨两点的城市");
-    expect(container.querySelector('input[aria-label="快速生成电影分镜"]')).not.toBeNull();
-  });
-});
-
 describe("ModelManagementSection", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -536,6 +498,7 @@ describe("ModelManagementSection", () => {
               apiKeySource: "local"
             }
           ],
+          syncControl: React.createElement("button", { "data-testid": "model-sync" }, "同步数据"),
           onSave,
           onDelete: vi.fn(),
           onTest: vi.fn(),
@@ -545,6 +508,8 @@ describe("ModelManagementSection", () => {
     });
 
     expect(container.textContent).toContain("模型管理");
+    expect(container.textContent).toContain("API Key 始终保存在当前设备");
+    expect(container.querySelector('[data-testid="model-sync"]')).not.toBeNull();
     expect(container.textContent).not.toContain("模块默认模型");
     expect(container.textContent).toContain("sk-****abcd");
     expect(container.textContent).not.toContain("sk-test-secret-abcd");

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createControlPlaneStore } from "../store";
 import { createMhxyRepository } from "../mhxy-repository";
 import { createMhxyService } from "../mhxy-service";
+import { createModelSecretsRepository } from "../model-secrets";
 import { createLocalDataSyncAdapters } from "./local-adapters";
 
 describe("local data sync adapters", () => {
@@ -76,6 +77,75 @@ describe("local data sync adapters", () => {
     expect(serialized).toContain("rule-1");
     expect(serialized).not.toContain("run-1");
     expect(serialized).not.toContain("secret page");
+  });
+
+  it("syncs model settings without API keys and preserves local secret references on import", () => {
+    const { dataDir, store, adapters } = fixture();
+    const profile = store.getState().modelSettings.profiles[0];
+    createModelSecretsRepository(dataDir).save(profile.id, "sk-never-upload-this");
+    store.updateModelProfile(profile.id, {
+      displayName: "本地模型",
+      apiKeyRef: `secret:${profile.id}`
+    });
+
+    const records = adapters.models.read();
+    const serialized = JSON.stringify([...records]);
+
+    expect(serialized).toContain("本地模型");
+    expect(serialized).not.toContain("sk-never-upload-this");
+    expect(serialized).not.toContain("apiKeyRef");
+    expect(serialized).not.toContain("maskedKey");
+
+    const syncedProfile = records.get(`profile:${profile.id}`)!;
+    syncedProfile.displayName = "远端模型";
+    adapters.models.write(records);
+
+    const imported = store.getState().modelSettings.profiles.find((item) => item.id === profile.id);
+    expect(imported).toMatchObject({
+      displayName: "远端模型",
+      apiKeyRef: `secret:${profile.id}`
+    });
+
+    records.set(`profile:${profile.id}`, { ...syncedProfile, apiKey: "sk-forbidden" });
+    expect(() => adapters.models.validate?.(records)).toThrow("不允许同步的字段：apiKey");
+  });
+
+  it("round-trips the game creator workspace as one conflict-safe record", () => {
+    const { adapters } = fixture();
+    const state = {
+      version: 1,
+      date: "2026-07-30",
+      projectId: "game-video-1",
+      updatedAt: "2026-07-30T01:00:00.000Z",
+      activeStage: "script",
+      completedTaskIds: ["brief-audience"],
+      checkedQualityIds: [],
+      ready: false,
+      completedVideos: 2,
+      draft: {
+        game: "空洞骑士",
+        audience: "新玩家",
+        format: "5–15 分钟 · B站横版中视频",
+        promise: "少走弯路",
+        angle: "攻略 / 教学",
+        title: "开荒指南",
+        coverCopy: "开荒避坑",
+        opening: "先看结果",
+        outline: "三段结构",
+        assetNotes: "",
+        editNotes: "",
+        tags: "动作游戏",
+        publishedUrl: "",
+        retrospective: ""
+      }
+    };
+
+    adapters["game-creator"].write(new Map([["workspace:main", state]]));
+    expect(adapters["game-creator"].read().get("workspace:main")).toEqual(state);
+    expect(() => adapters["game-creator"].write(new Map([["workspace:other", state]]))).toThrow(
+      "必须且只能包含 workspace:main"
+    );
+    expect(adapters["game-creator"].read().get("workspace:main")).toEqual(state);
   });
 
   it("round-trips all mhxy repository record categories", () => {

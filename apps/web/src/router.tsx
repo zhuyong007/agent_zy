@@ -8,27 +8,23 @@ import {
 import { QueryClient } from "@tanstack/react-query";
 
 import { DashboardPage, HomeManagePage } from "./components/dashboard-page";
-import { ClassicShotPage } from "./components/classic-shot-page";
-import { CinematicPage } from "./components/cinematic-page";
 import { HistoryPage } from "./components/history-page";
 import { LedgerPage } from "./components/ledger-page";
 import { LogsPage } from "./components/logs-page";
 import { NewsPage } from "./components/news-page";
 import { SummaryPage } from "./components/summary-page";
 import { TodoPage } from "./components/todo-module";
-import { TopicPage } from "./components/topic-page";
 import { PhotoRenamerPage } from "./components/photo-renamer-page";
 import { FileOrganizerPage } from "./components/file-organizer-page";
 import { BrowserAutomationPage } from "./components/browser-automation-page";
 import { PromptTemplatePage } from "./components/prompt-template-page";
 import { ScreenMonitorPage } from "./components/screen-monitor-page";
 import { ToolsPage } from "./components/tools-page";
-import { ImageToVideoPage } from "./components/image-to-video-page";
-import { InterviewPage } from "./components/interview-page";
 import { ChildMealPage } from "./components/child-meal-page";
 import { MhxyPage } from "./components/mhxy-page";
 import { GameCreatorPage } from "./components/game-creator-page";
 import { useWallpaperScrollSupport } from "./scroll-support";
+import { UI_ROUTE_PATHS } from "./ui-contract";
 
 const queryClient = new QueryClient();
 
@@ -44,133 +40,103 @@ const rootRoute = createRootRoute({
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/",
+  path: UI_ROUTE_PATHS.home,
   component: DashboardPage
 });
 
 const newsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/news",
+  path: UI_ROUTE_PATHS.news,
   component: NewsPage
-});
-
-const topicsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/topics",
-  component: TopicPage
 });
 
 const historyRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/history",
+  path: UI_ROUTE_PATHS.history,
   component: HistoryPage
-});
-
-const cinematicRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/cinematic",
-  component: CinematicPage
-});
-
-const classicShotRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/classic-shots",
-  component: ClassicShotPage
-});
-
-const imageToVideoRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/image-to-video",
-  component: ImageToVideoPage
-});
-
-const interviewRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/interview",
-  component: InterviewPage
 });
 
 const manageRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/manage",
+  path: UI_ROUTE_PATHS.manage,
   component: HomeManagePage
 });
 
 const ledgerRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/ledger",
+  path: UI_ROUTE_PATHS.ledger,
   component: LedgerPage
 });
 
 const mhxyRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/mhxy",
+  path: UI_ROUTE_PATHS.mhxy,
   component: MhxyPage
 });
 
 const todoRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/todo",
+  path: UI_ROUTE_PATHS.todo,
   component: TodoPage
 });
 
 const summaryRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/summaries",
+  path: UI_ROUTE_PATHS.summaries,
   component: SummaryPage
 });
 
 const logsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/logs",
+  path: UI_ROUTE_PATHS.logs,
   component: LogsPage
 });
 
 const toolsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools",
+  path: UI_ROUTE_PATHS.tools,
   component: ToolsPage
 });
 
 const photoRenamerRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools/photo-renamer",
+  path: UI_ROUTE_PATHS.photoRenamer,
   component: PhotoRenamerPage
 });
 
 const fileOrganizerRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools/file-organizer",
+  path: UI_ROUTE_PATHS.fileOrganizer,
   component: FileOrganizerPage
 });
 
 const browserAutomationRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools/browser-automation",
+  path: UI_ROUTE_PATHS.browserAutomation,
   component: BrowserAutomationPage
 });
 
 const screenMonitorRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools/screen-monitor",
+  path: UI_ROUTE_PATHS.screenMonitor,
   component: ScreenMonitorPage
 });
 
 const promptTemplateRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools/prompt-templates",
+  path: UI_ROUTE_PATHS.promptTemplates,
   component: PromptTemplatePage
 });
 
 const childMealRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/tools/child-meal",
+  path: UI_ROUTE_PATHS.childMeal,
   component: ChildMealPage
 });
 
 const gameCreatorRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/game-creator",
+  path: UI_ROUTE_PATHS.gameCreator,
   component: GameCreatorPage
 });
 
@@ -178,12 +144,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   manageRoute,
   newsRoute,
-  topicsRoute,
   historyRoute,
-  cinematicRoute,
-  classicShotRoute,
-  imageToVideoRoute,
-  interviewRoute,
   ledgerRoute,
   mhxyRoute,
   todoRoute,

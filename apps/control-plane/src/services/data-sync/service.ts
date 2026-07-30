@@ -17,7 +17,13 @@ import { canonicalJson, mergeRecordMaps, type SyncRecord, type SyncRecordMap } f
 import { readModuleSnapshot, writeModuleSnapshot } from "./snapshot";
 
 const DATA_SYNC_BRANCH = "agent-zy-data";
-const MODULES: DataSyncModule[] = ["history", "mhxy", "browser-automation"];
+const MODULES: DataSyncModule[] = [
+  "history",
+  "mhxy",
+  "browser-automation",
+  "game-creator",
+  "models"
+];
 const DISABLED_MESSAGE =
   "数据同步未启用，请确认仓库已设为 Private 后设置 AGENT_ZY_DATA_SYNC_ENABLED=true";
 
@@ -176,6 +182,7 @@ export function createDataSyncService(options: {
             };
           }
 
+          options.adapters[module].validate?.(merged.records);
           writeModuleSnapshot(workspace.rootDir, module, merged.records);
           const commitSha = await options.transport.commitAndPush(workspace, module);
           options.adapters[module].write(merged.records);

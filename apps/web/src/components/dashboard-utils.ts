@@ -84,25 +84,9 @@ export function getModuleSummary(id: HomeModuleId, dashboard: DashboardData) {
     return `结余 ${formatAmount(dashboard.ledger.summary.balance)}`;
   }
 
-  if (id === "topics") {
-    return `${formatShortCount(dashboard.topics.current.length)} 个选题`;
-  }
-
   if (id === "history") {
     const historyCount = dashboard.notifications.filter((item) => item.kind === "history-post" && item.payload).length;
     return `${formatShortCount(historyCount)} 条知识卡`;
-  }
-
-  if (id === "cinematic") {
-    return `${formatShortCount(dashboard.cinematic.dashboard.projectCount)} 个镜头项目`;
-  }
-
-  if (id === "classicShots") {
-    return `${formatShortCount(dashboard.classicShots.dashboard.projectCount)} 个复刻镜头`;
-  }
-
-  if (id === "imageToVideo") {
-    return `${formatShortCount(dashboard.imageToVideo?.dashboard.projectCount ?? 0)} 个策划项目`;
   }
 
   if (id === "summary") {

@@ -31,7 +31,9 @@ describe("data sync service", () => {
     const local = new Map<DataSyncModule, SyncRecordMap>([
       ["history", new Map()],
       ["mhxy", new Map()],
-      ["browser-automation", new Map()]
+      ["browser-automation", new Map()],
+      ["game-creator", new Map()],
+      ["models", new Map()]
     ]);
     const writes: DataSyncModule[] = [];
     const adapters = Object.fromEntries(
@@ -70,10 +72,12 @@ describe("data sync service", () => {
     });
     return {
       service,
+      adapters,
       local,
       writes,
       remoteRoot,
       baselineRoot,
+      getPushCount() { return nextCommit - 1; },
       setRemoteCommit(value: string) { remoteCommit = value; },
       setFailPush(value: boolean) { failPush = value; }
     };
@@ -125,6 +129,27 @@ describe("data sync service", () => {
     expect(item.local.get("mhxy")?.has("trade:local")).toBe(true);
   });
 
+  it("validates merged records before writing or pushing them", async () => {
+    const item = fixture();
+    const models = item.local.get("models")!;
+    models.set("profile:one", { id: "one", apiKey: "sk-forbidden" });
+    const validate = vi.fn(() => {
+      throw new Error("模型配置包含不允许同步的字段：apiKey");
+    });
+    item.adapters.models.validate = validate;
+
+    const result = await item.service.sync("models");
+
+    expect(result).toEqual({
+      status: "failed",
+      module: "models",
+      error: "模型配置包含不允许同步的字段：apiKey"
+    });
+    expect(validate).toHaveBeenCalledOnce();
+    expect(item.getPushCount()).toBe(0);
+    expect(item.writes).toEqual([]);
+  });
+
   it("reopens the remote branch and recomputes once after a non-fast-forward push", async () => {
     const item = fixture();
     let opens = 0;
@@ -147,7 +172,9 @@ describe("data sync service", () => {
       adapters: {
         history: { read: () => new Map([["notification:one", { id: "one" }]]), write: vi.fn() },
         mhxy: { read: () => new Map(), write: vi.fn() },
-        "browser-automation": { read: () => new Map(), write: vi.fn() }
+        "browser-automation": { read: () => new Map(), write: vi.fn() },
+        "game-creator": { read: () => new Map(), write: vi.fn() },
+        models: { read: () => new Map(), write: vi.fn() }
       },
       transport
     });

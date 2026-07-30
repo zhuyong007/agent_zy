@@ -1,5 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import type {
+  GameCreatorDraft,
+  GameCreatorState,
+  GameCreatorWorkflowStageId
+} from "@agent-zy/shared-types";
+
+import { fetchGameCreatorState, saveGameCreatorState } from "../api";
+import { DataSyncControl } from "./data-sync-control";
 import {
   CommandRail,
   useHomeLayoutPreferences,
@@ -9,22 +17,13 @@ import {
 
 export const GAME_CREATOR_STORAGE_KEY = "agent-zy-game-creator-v1";
 
-type WorkflowStageId =
-  | "brief"
-  | "script"
-  | "capture"
-  | "edit"
-  | "package"
-  | "review"
-  | "publish";
-
 interface WorkflowTask {
   id: string;
   label: string;
 }
 
 interface WorkflowStage {
-  id: WorkflowStageId;
+  id: GameCreatorWorkflowStageId;
   index: string;
   label: string;
   summary: string;
@@ -39,36 +38,18 @@ interface QualityCheck {
   critical?: boolean;
 }
 
-export interface GameCreatorDraft {
-  game: string;
-  audience: string;
-  format: string;
-  promise: string;
-  angle: string;
-  title: string;
-  coverCopy: string;
-  opening: string;
-  outline: string;
-  assetNotes: string;
-  editNotes: string;
-  tags: string;
-  publishedUrl: string;
-  retrospective: string;
-}
-
-export interface GameCreatorState {
-  version: 1;
-  date: string;
-  projectId: string;
-  activeStage: WorkflowStageId;
-  completedTaskIds: string[];
-  checkedQualityIds: string[];
-  ready: boolean;
-  completedVideos: number;
-  draft: GameCreatorDraft;
-}
-
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
+
+export interface GameCreatorRemoteActions {
+  fetch: () => Promise<GameCreatorState | null>;
+  save: (state: GameCreatorState) => Promise<GameCreatorState>;
+}
+
+const DEFAULT_REMOTE_ACTIONS: GameCreatorRemoteActions = {
+  fetch: fetchGameCreatorState,
+  save: saveGameCreatorState
+};
+const DEFAULT_NOW = () => new Date();
 
 const WORKFLOW_STAGES: WorkflowStage[] = [
   {
@@ -252,6 +233,7 @@ export function createInitialGameCreatorState(now = new Date()): GameCreatorStat
     version: 1,
     date: getTodayKey(now),
     projectId: createProjectId(now),
+    updatedAt: now.toISOString(),
     activeStage: "brief",
     completedTaskIds: [],
     checkedQualityIds: [],
@@ -276,7 +258,9 @@ export function createInitialGameCreatorState(now = new Date()): GameCreatorStat
   };
 }
 
-function isGameCreatorState(value: unknown): value is GameCreatorState {
+function isStoredGameCreatorState(value: unknown): value is Omit<GameCreatorState, "updatedAt"> & {
+  updatedAt?: string;
+} {
   if (!value || typeof value !== "object") return false;
   const state = value as Partial<GameCreatorState>;
   return (
@@ -292,24 +276,55 @@ function isGameCreatorState(value: unknown): value is GameCreatorState {
   );
 }
 
-export function loadGameCreatorState(
-  storage: StorageLike | null = typeof window === "undefined" ? null : window.localStorage,
-  now = new Date()
-) {
+function inferLegacyUpdatedAt(projectId: string, fallback: Date) {
+  const timestamp = Number(projectId.replace("game-video-", ""));
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : fallback.toISOString();
+}
+
+function readStoredGameCreatorState(storage: StorageLike | null, now: Date) {
   try {
     const stored = storage?.getItem(GAME_CREATOR_STORAGE_KEY);
     const parsed: unknown = stored ? JSON.parse(stored) : null;
-    if (isGameCreatorState(parsed)) {
+    if (isStoredGameCreatorState(parsed)) {
       return {
         ...parsed,
-        date: getTodayKey(now)
+        date: getTodayKey(now),
+        updatedAt:
+          typeof parsed.updatedAt === "string" && !Number.isNaN(Date.parse(parsed.updatedAt))
+            ? parsed.updatedAt
+            : inferLegacyUpdatedAt(parsed.projectId, now)
       };
     }
   } catch {
     // A broken browser entry should never block the creator workspace.
   }
 
-  return createInitialGameCreatorState(now);
+  return null;
+}
+
+export function loadGameCreatorState(
+  storage: StorageLike | null = typeof window === "undefined" ? null : window.localStorage,
+  now = new Date()
+) {
+  return readStoredGameCreatorState(storage, now) ?? createInitialGameCreatorState(now);
+}
+
+export function chooseNewestGameCreatorState(
+  local: GameCreatorState,
+  remote: GameCreatorState | null,
+  hasLocalSnapshot = true
+) {
+  if (!remote) return { state: local, dirty: true };
+  if (!hasLocalSnapshot) return { state: remote, dirty: false };
+  if (Date.parse(remote.updatedAt) > Date.parse(local.updatedAt)) {
+    return { state: remote, dirty: false };
+  }
+  return {
+    state: local,
+    dirty:
+      remote.updatedAt !== local.updatedAt ||
+      JSON.stringify(remote) !== JSON.stringify(local)
+  };
 }
 
 export function getQualityScore(state: GameCreatorState) {
@@ -443,26 +458,95 @@ function TextAreaField({
 
 export function GameCreatorWorkspace({
   storage = typeof window === "undefined" ? null : window.localStorage,
-  now = () => new Date()
+  now = DEFAULT_NOW,
+  remoteActions = DEFAULT_REMOTE_ACTIONS
 }: {
   storage?: StorageLike | null;
   now?: () => Date;
+  remoteActions?: GameCreatorRemoteActions | null;
 }) {
-  const [state, setState] = useState(() => loadGameCreatorState(storage, now()));
+  const initialSnapshot = useMemo(() => {
+    const currentTime = now();
+    const stored = readStoredGameCreatorState(storage, currentTime);
+    return {
+      hasLocalSnapshot: Boolean(stored),
+      state: stored ?? createInitialGameCreatorState(currentTime)
+    };
+  }, [now, storage]);
+  const [state, setState] = useState(initialSnapshot.state);
+  const hadLocalSnapshot = useRef(initialSnapshot.hasLocalSnapshot);
+  const stateRef = useRef(state);
   const [notice, setNotice] = useState("");
+  const [syncDirty, setSyncDirty] = useState(true);
   const activeStage = WORKFLOW_STAGES.find((stage) => stage.id === state.activeStage) ?? WORKFLOW_STAGES[0];
   const qualityScore = getQualityScore(state);
   const blockers = getReadyBlockers(state);
   const daily = useMemo(() => getDailyTargets(state), [state]);
   const progress = stageProgress(state);
 
-  function commit(next: GameCreatorState) {
+  function persistLocal(next: GameCreatorState) {
+    stateRef.current = next;
     setState(next);
     try {
       storage?.setItem(GAME_CREATOR_STORAGE_KEY, JSON.stringify(next));
     } catch {
       setNotice("浏览器存储不可用，本次进度只保留到页面关闭。");
     }
+  }
+
+  function commit(next: GameCreatorState) {
+    persistLocal({
+      ...next,
+      updatedAt: now().toISOString()
+    });
+    setSyncDirty(true);
+  }
+
+  function applySyncedState(next: GameCreatorState) {
+    persistLocal({
+      ...next,
+      date: getTodayKey(now())
+    });
+    setSyncDirty(false);
+  }
+
+  useEffect(() => {
+    if (!remoteActions) return;
+    let cancelled = false;
+
+    remoteActions.fetch()
+      .then((remote) => {
+        if (cancelled) return;
+        const selected = chooseNewestGameCreatorState(
+          stateRef.current,
+          remote,
+          hadLocalSnapshot.current
+        );
+        persistLocal({
+          ...selected.state,
+          date: getTodayKey(now())
+        });
+        setSyncDirty(selected.dirty);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setNotice(error instanceof Error ? error.message : "读取同步数据失败");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [remoteActions, storage]);
+
+  async function saveBeforeSync() {
+    if (!remoteActions) return;
+    await remoteActions.save(stateRef.current);
+  }
+
+  async function refreshAfterSync() {
+    if (!remoteActions) return;
+    const remote = await remoteActions.fetch();
+    if (remote) applySyncedState(remote);
   }
 
   function updateDraft(key: keyof GameCreatorDraft, value: string) {
@@ -655,11 +739,21 @@ export function GameCreatorWorkspace({
           <h1>游戏创作台</h1>
           <p>每天推进一段，把想法变成一条质量达标的 5–15 分钟游戏视频。</p>
         </div>
-        <div className="game-creator-header__status">
-          <span>项目进度</span>
-          <strong>{progress}%</strong>
-          <div aria-label={`项目进度 ${progress}%`}><i style={{ width: `${progress}%` }} /></div>
-          <small>已完成 {state.completedVideos} 条 · 自动保存在本机</small>
+        <div className="game-creator-header__aside">
+          <div className="game-creator-header__status">
+            <span>项目进度</span>
+            <strong>{progress}%</strong>
+            <div aria-label={`项目进度 ${progress}%`}><i style={{ width: `${progress}%` }} /></div>
+            <small>已完成 {state.completedVideos} 条 · 本机自动保存</small>
+          </div>
+          {remoteActions ? (
+            <DataSyncControl
+              module="game-creator"
+              dirty={syncDirty}
+              beforeSync={saveBeforeSync}
+              onSynced={refreshAfterSync}
+            />
+          ) : null}
         </div>
       </header>
 

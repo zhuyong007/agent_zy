@@ -311,42 +311,44 @@ export function NewsPage() {
             </button>
           </div>
 
-          {view === "all" ? (
-            <>
-              <div className="news-digest__toolbar news-digest__toolbar--timeline">
-                <div className="news-category-tabs" role="tablist" aria-label="AI HOT 分类">
-                  <button
-                    type="button"
-                    className={category === "all" ? "is-active" : ""}
-                    onClick={() => setCategory("all")}
-                  >
-                    全部
-                  </button>
-                  {categories.map((item) => (
+          <div className={`news-digest__body news-digest__body--${view}`}>
+            {view === "all" ? (
+              <>
+                <div className="news-digest__toolbar news-digest__toolbar--timeline">
+                  <div className="news-category-tabs" role="tablist" aria-label="AI HOT 分类">
                     <button
-                      key={item.value}
                       type="button"
-                      className={category === item.value ? "is-active" : ""}
-                      onClick={() => setCategory(item.value)}
+                      className={category === "all" ? "is-active" : ""}
+                      onClick={() => setCategory("all")}
                     >
-                      {item.label}
+                      全部
                     </button>
-                  ))}
+                    {categories.map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        className={category === item.value ? "is-active" : ""}
+                        onClick={() => setCategory(item.value)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="news-search">
+                    <span>搜索</span>
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="关键词"
+                    />
+                  </label>
                 </div>
-                <label className="news-search">
-                  <span>搜索</span>
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="关键词"
-                  />
-                </label>
-              </div>
-              <FeedTimeline items={filteredItems} />
-            </>
-          ) : (
-            <DailyReport report={news.daily} />
-          )}
+                <FeedTimeline items={filteredItems} />
+              </>
+            ) : (
+              <DailyReport report={news.daily} />
+            )}
+          </div>
         </section>
 
         <aside className="news-inspector news-inspector--aihot news-inspector--daily">

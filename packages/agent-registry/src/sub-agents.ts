@@ -1,14 +1,10 @@
 import type { AgentManifest } from "@agent-zy/agent-sdk";
 import { manifest as browserAutomationManifest } from "@agent-zy/browser-automation-agent/manifest";
-import { manifest as classicShotManifest } from "@agent-zy/classic-shot-agent/manifest";
-import { manifest as cinematicManifest } from "@agent-zy/cinematic-agent/manifest";
-import { manifest as imageToVideoManifest } from "@agent-zy/image-to-video-planner-agent/manifest";
 import { manifest as historyManifest } from "@agent-zy/history-agent/manifest";
 import { manifest as ledgerManifest } from "@agent-zy/ledger-agent/manifest";
 import { manifest as newsManifest } from "@agent-zy/news-agent/manifest";
 import { manifest as scheduleManifest } from "@agent-zy/schedule-agent/manifest";
 import { manifest as summaryManifest } from "@agent-zy/summary-agent/manifest";
-import { manifest as topicManifest } from "@agent-zy/topic-agent/manifest";
 
 export type SubAgentHomeModuleSize = "max" | "large" | "medium" | "smaller" | "small";
 
@@ -68,18 +64,6 @@ export const SUB_AGENT_ROUTES = [
     }
   },
   {
-    agentId: "topic-agent",
-    manifest: topicManifest,
-    homeModule: {
-      id: "topics",
-      label: "AI 自媒体选题",
-      description: "基于热点生成的选题建议",
-      defaultSize: "smaller",
-      defaultVisible: true,
-      order: 4
-    }
-  },
-  {
     agentId: "history-agent",
     manifest: historyManifest,
     homeModule: {
@@ -89,42 +73,6 @@ export const SUB_AGENT_ROUTES = [
       defaultSize: "smaller",
       defaultVisible: false,
       order: 5
-    }
-  },
-  {
-    agentId: "cinematic-agent",
-    manifest: cinematicManifest,
-    homeModule: {
-      id: "cinematic",
-      label: "电影镜头",
-      description: "电影感分镜、视频文案和镜头提示词",
-      defaultSize: "large",
-      defaultVisible: true,
-      order: 6
-    }
-  },
-  {
-    agentId: "classic-shot-agent",
-    manifest: classicShotManifest,
-    homeModule: {
-      id: "classicShots",
-      label: "经典镜头复刻",
-      description: "拆解经典电影镜头并生成 AI 视频分镜提示词",
-      defaultSize: "large",
-      defaultVisible: true,
-      order: 7
-    }
-  },
-  {
-    agentId: "image-to-video-planner-agent",
-    manifest: imageToVideoManifest,
-    homeModule: {
-      id: "imageToVideo",
-      label: "图片转视频策划",
-      description: "分析图片并逐步规划、补齐和审核视频关键帧",
-      defaultSize: "large",
-      defaultVisible: true,
-      order: 8
     }
   },
   {

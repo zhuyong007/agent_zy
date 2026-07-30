@@ -13,7 +13,9 @@ import { fetchDataSyncStatus, syncModuleData } from "../api";
 const MODULE_LABELS: Record<DataSyncModule, string> = {
   history: "历史知识",
   mhxy: "梦幻西游",
-  "browser-automation": "浏览器自动化"
+  "browser-automation": "浏览器自动化",
+  "game-creator": "游戏创作",
+  models: "模型配置"
 };
 
 function formatJson(value: Record<string, unknown> | null) {
@@ -22,6 +24,8 @@ function formatJson(value: Record<string, unknown> | null) {
 
 export function DataSyncControl(props: {
   module: DataSyncModule;
+  beforeSync?: () => void | Promise<void>;
+  dirty?: boolean;
   onSynced?: () => void | Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -37,8 +41,10 @@ export function DataSyncControl(props: {
   const enabled = statusQuery.data?.enabled === true;
 
   const mutation = useMutation({
-    mutationFn: (request: Parameters<typeof syncModuleData>[1]) =>
-      syncModuleData(props.module, request),
+    mutationFn: async (request: Parameters<typeof syncModuleData>[1]) => {
+      await props.beforeSync?.();
+      return syncModuleData(props.module, request);
+    },
     onSuccess: async (nextResult) => {
       setResult(nextResult);
       if (nextResult.status === "conflict") {
@@ -60,6 +66,14 @@ export function DataSyncControl(props: {
     [choices, conflict]
   );
   const commit = result?.status === "synced" ? result.commitSha : moduleStatus?.lastCommit;
+  const displayStatus =
+    mutation.isPending
+      ? "同步中…"
+      : props.dirty
+        ? "有本地修改"
+        : commit
+          ? `已同步 ${commit.slice(0, 7)}`
+          : "尚未同步";
   const error =
     result?.status === "failed"
       ? result.error
@@ -83,8 +97,8 @@ export function DataSyncControl(props: {
         >
           {mutation.isPending ? "同步中…" : "同步数据"}
         </button>
-        <span className={`data-sync-control__state is-${result?.status ?? moduleStatus?.status ?? "idle"}`}>
-          {commit ? `已同步 ${commit.slice(0, 7)}` : "尚未同步"}
+        <span className={`data-sync-control__state is-${props.dirty ? "dirty" : result?.status ?? moduleStatus?.status ?? "idle"}`}>
+          {displayStatus}
         </span>
       </div>
       {!enabled && !statusQuery.isPending ? (

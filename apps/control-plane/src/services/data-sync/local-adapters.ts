@@ -10,16 +10,20 @@ import type {
   MhxyInventoryTransferRecord,
   MhxyPriceSnapshot,
   MhxyTradeRecord,
+  ModelProfile,
+  ModelSettingsState,
   NotificationRecord
 } from "@agent-zy/shared-types";
 
 import { createMhxyRepository } from "../mhxy-repository";
 import { createMhxyService } from "../mhxy-service";
+import { createGameCreatorRepository } from "../game-creator-repository";
 import type { ControlPlaneStore } from "../store";
 import { canonicalJson, type SyncRecord, type SyncRecordMap } from "./merge";
 
 export interface LocalDataSyncAdapter {
   read(): SyncRecordMap;
+  validate?(records: SyncRecordMap): void;
   write(records: SyncRecordMap): void;
 }
 
@@ -77,6 +81,14 @@ function assertRecordIds(records: SyncRecordMap, prefix: string, label: string) 
     if (typeof value.id !== "string" || value.id !== key.slice(prefix.length)) {
       throw new Error(`${label}记录 ID 与同步键不匹配：${key}`);
     }
+  }
+}
+
+function assertOnlyKeys(record: SyncRecord, allowedKeys: string[], label: string) {
+  const allowed = new Set(allowedKeys);
+  const unknownKey = Object.keys(record).find((key) => !allowed.has(key));
+  if (unknownKey) {
+    throw new Error(`${label}包含不允许同步的字段：${unknownKey}`);
   }
 }
 
@@ -263,6 +275,122 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
   };
 }
 
+function createGameCreatorAdapter(dataDir: string): LocalDataSyncAdapter {
+  const repository = createGameCreatorRepository(dataDir);
+
+  return {
+    read() {
+      const state = repository.read();
+      return state
+        ? new Map([["workspace:main", asRecord(state, "游戏创作工作区")]])
+        : new Map();
+    },
+    write(records) {
+      assertKnownPrefixes(records, ["workspace:"], "游戏创作");
+      if (records.size === 0) {
+        repository.clear();
+        return;
+      }
+      if (records.size !== 1 || !records.has("workspace:main")) {
+        throw new Error("游戏创作同步快照必须且只能包含 workspace:main");
+      }
+      repository.write(records.get("workspace:main"));
+    }
+  };
+}
+
+const SYNCED_MODEL_PROFILE_KEYS = [
+  "id",
+  "displayName",
+  "provider",
+  "modelName",
+  "baseUrl",
+  "capabilities",
+  "temperature",
+  "maxTokens",
+  "enabled",
+  "isDefault",
+  "purpose",
+  "createdAt",
+  "updatedAt"
+];
+
+function validateModelRecords(records: SyncRecordMap) {
+  assertKnownPrefixes(records, ["profile:", "settings:"], "模型配置");
+  assertRecordIds(records, "profile:", "模型配置");
+
+  if (!records.has("settings:defaults")) {
+    throw new Error("模型配置同步快照缺少 settings:defaults");
+  }
+
+  for (const [key, value] of records) {
+    if (key.startsWith("profile:")) {
+      assertOnlyKeys(value, SYNCED_MODEL_PROFILE_KEYS, "模型配置");
+      continue;
+    }
+
+    if (key !== "settings:defaults") {
+      throw new Error(`模型配置同步快照包含未知设置：${key}`);
+    }
+    assertOnlyKeys(
+      value,
+      ["id", "defaultProfileId", "purposeDefaults", "agentDefaults", "lastUpdatedAt"],
+      "模型默认设置"
+    );
+    if (value.id !== "defaults") {
+      throw new Error("模型默认设置 ID 与同步键不匹配");
+    }
+  }
+}
+
+function createModelsAdapter(store: ControlPlaneStore): LocalDataSyncAdapter {
+  return {
+    read() {
+      const settings = store.getState().modelSettings;
+      const records: SyncRecordMap = new Map();
+      for (const profile of settings.profiles) {
+        const { apiKeyRef: _apiKeyRef, ...syncedProfile } = profile;
+        records.set(`profile:${profile.id}`, asRecord(syncedProfile, "模型配置"));
+      }
+      records.set("settings:defaults", {
+        id: "defaults",
+        defaultProfileId: settings.defaultProfileId,
+        purposeDefaults: structuredClone(settings.purposeDefaults),
+        agentDefaults: structuredClone(settings.agentDefaults),
+        lastUpdatedAt: settings.lastUpdatedAt
+      });
+      return records;
+    },
+    validate: validateModelRecords,
+    write(records) {
+      validateModelRecords(records);
+      const currentState = store.getState();
+      const localApiKeyRefs = new Map(
+        currentState.modelSettings.profiles.map((profile) => [profile.id, profile.apiKeyRef])
+      );
+      const profiles = recordsWithPrefix(records, "profile:").map((profile) => ({
+        ...(profile as unknown as Omit<ModelProfile, "apiKeyRef">),
+        apiKeyRef: localApiKeyRefs.get(String(profile.id)) ?? null
+      }));
+      const defaults = records.get("settings:defaults") as unknown as
+        | (Pick<
+            ModelSettingsState,
+            "defaultProfileId" | "purposeDefaults" | "agentDefaults" | "lastUpdatedAt"
+          > & { id: "defaults" })
+        | undefined;
+
+      currentState.modelSettings = {
+        profiles,
+        defaultProfileId: defaults?.defaultProfileId ?? null,
+        purposeDefaults: defaults?.purposeDefaults ?? {},
+        agentDefaults: defaults?.agentDefaults ?? {},
+        lastUpdatedAt: defaults?.lastUpdatedAt ?? null
+      };
+      store.replaceState(currentState);
+    }
+  };
+}
+
 export function createLocalDataSyncAdapters(options: {
   dataDir: string;
   projectDir: string;
@@ -271,6 +399,8 @@ export function createLocalDataSyncAdapters(options: {
   return {
     history: createHistoryAdapter(options),
     mhxy: createMhxyAdapter(options.dataDir),
-    "browser-automation": createBrowserAdapter(options.store)
+    "browser-automation": createBrowserAdapter(options.store),
+    "game-creator": createGameCreatorAdapter(options.dataDir),
+    models: createModelsAdapter(options.store)
   };
 }

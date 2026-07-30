@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import {
   GAME_CREATOR_STORAGE_KEY,
   GameCreatorWorkspace,
+  chooseNewestGameCreatorState,
   createInitialGameCreatorState,
   getQualityScore,
   getReadyBlockers
@@ -48,7 +49,8 @@ describe("GameCreatorWorkspace", () => {
       root.render(
         React.createElement(GameCreatorWorkspace, {
           storage,
-          now: () => new Date("2026-07-29T09:00:00+08:00")
+          now: () => new Date("2026-07-29T09:00:00+08:00"),
+          remoteActions: null
         })
       );
     });
@@ -140,5 +142,36 @@ describe("GameCreatorWorkspace", () => {
 
     expect(getQualityScore(state)).toBe(85);
     expect(getReadyBlockers(state)).toContain("关键项未过：前 30 秒成立");
+  });
+
+  it("keeps newer unsynced local edits and adopts newer synchronized data", () => {
+    const local = createInitialGameCreatorState(new Date("2026-07-29T09:00:00+08:00"));
+    local.draft.game = "本地新项目";
+    local.updatedAt = "2026-07-29T02:00:00.000Z";
+    const remote = {
+      ...createInitialGameCreatorState(new Date("2026-07-29T09:00:00+08:00")),
+      updatedAt: "2026-07-29T01:00:00.000Z",
+      draft: {
+        ...local.draft,
+        game: "远端旧项目"
+      }
+    };
+
+    expect(chooseNewestGameCreatorState(local, remote)).toEqual({
+      state: local,
+      dirty: true
+    });
+
+    remote.updatedAt = "2026-07-29T03:00:00.000Z";
+    expect(chooseNewestGameCreatorState(local, remote)).toEqual({
+      state: remote,
+      dirty: false
+    });
+
+    local.updatedAt = "2026-07-29T04:00:00.000Z";
+    expect(chooseNewestGameCreatorState(local, remote, false)).toEqual({
+      state: remote,
+      dirty: false
+    });
   });
 });

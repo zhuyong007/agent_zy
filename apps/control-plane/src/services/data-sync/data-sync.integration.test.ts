@@ -14,7 +14,10 @@ function git(cwd: string, ...args: string[]) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
-function createMemoryAdapters(history: { records: SyncRecordMap }): LocalDataSyncAdapters {
+function createMemoryAdapters(
+  history: { records: SyncRecordMap },
+  gameCreator: { records: SyncRecordMap }
+): LocalDataSyncAdapters {
   return {
     history: {
       read: () => structuredClone(history.records),
@@ -23,7 +26,14 @@ function createMemoryAdapters(history: { records: SyncRecordMap }): LocalDataSyn
       }
     },
     mhxy: { read: () => new Map(), write: () => undefined },
-    "browser-automation": { read: () => new Map(), write: () => undefined }
+    "browser-automation": { read: () => new Map(), write: () => undefined },
+    "game-creator": {
+      read: () => structuredClone(gameCreator.records),
+      write: (records) => {
+        gameCreator.records = structuredClone(records);
+      }
+    },
+    models: { read: () => new Map(), write: () => undefined }
   };
 }
 
@@ -56,16 +66,20 @@ describe("data sync two-client integration", () => {
 
     const firstLocal = { records: new Map([["notification:shared", { id: "shared", title: "初始" }]]) };
     const secondLocal = { records: new Map() as SyncRecordMap };
+    const firstGameCreator = {
+      records: new Map([["workspace:main", { projectId: "game-video-1", title: "初始选题" }]])
+    };
+    const secondGameCreator = { records: new Map() as SyncRecordMap };
     const firstService = createDataSyncService({
       dataDir: join(firstProject, ".agent-zy-data"),
       enabled: true,
-      adapters: createMemoryAdapters(firstLocal),
+      adapters: createMemoryAdapters(firstLocal, firstGameCreator),
       transport: createGitDataSyncTransport({ projectDir: firstProject, dataDir: join(firstProject, ".agent-zy-data") })
     });
     const secondService = createDataSyncService({
       dataDir: join(secondProject, ".agent-zy-data"),
       enabled: true,
-      adapters: createMemoryAdapters(secondLocal),
+      adapters: createMemoryAdapters(secondLocal, secondGameCreator),
       transport: createGitDataSyncTransport({ projectDir: secondProject, dataDir: join(secondProject, ".agent-zy-data") })
     });
 
@@ -96,5 +110,35 @@ describe("data sync two-client integration", () => {
     });
     expect(resolved.status).toBe("synced");
     expect(firstLocal.records.get("notification:shared")).toEqual({ id: "shared", title: "远端版本" });
+
+    expect((await firstService.sync("game-creator")).status).toBe("synced");
+    expect((await secondService.sync("game-creator")).status).toBe("synced");
+    expect(secondGameCreator.records.get("workspace:main")).toEqual({
+      projectId: "game-video-1",
+      title: "初始选题"
+    });
+
+    firstGameCreator.records.set("workspace:main", {
+      projectId: "game-video-1",
+      title: "本地改稿"
+    });
+    secondGameCreator.records.set("workspace:main", {
+      projectId: "game-video-1",
+      title: "远端改稿"
+    });
+    expect((await secondService.sync("game-creator")).status).toBe("synced");
+    const creatorConflict = await firstService.sync("game-creator");
+    expect(creatorConflict).toMatchObject({ status: "conflict", module: "game-creator" });
+    if (creatorConflict.status !== "conflict") throw new Error("expected game creator conflict");
+
+    const creatorResolved = await firstService.sync("game-creator", {
+      conflictToken: creatorConflict.conflictToken,
+      resolutions: [{ key: "workspace:main", choice: "remote" }]
+    });
+    expect(creatorResolved.status).toBe("synced");
+    expect(firstGameCreator.records.get("workspace:main")).toEqual({
+      projectId: "game-video-1",
+      title: "远端改稿"
+    });
   }, 20_000);
 });

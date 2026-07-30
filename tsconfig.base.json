@@ -27,24 +27,6 @@
       "@agent-zy/router-core": [
         "packages/router-core/src/index.ts"
       ],
-      "@agent-zy/cinematic-agent/manifest": [
-        "agents/cinematic-agent/src/manifest.ts"
-      ],
-      "@agent-zy/cinematic-agent": [
-        "agents/cinematic-agent/src/index.ts"
-      ],
-      "@agent-zy/classic-shot-agent/manifest": [
-        "agents/classic-shot-agent/src/manifest.ts"
-      ],
-      "@agent-zy/classic-shot-agent": [
-        "agents/classic-shot-agent/src/index.ts"
-      ],
-      "@agent-zy/image-to-video-planner-agent": [
-        "agents/image-to-video-planner-agent/src/index.ts"
-      ],
-      "@agent-zy/image-to-video-planner-agent/manifest": [
-        "agents/image-to-video-planner-agent/src/manifest.ts"
-      ],
       "@agent-zy/child-meal-planner-agent": [
         "agents/child-meal-planner-agent/src/index.ts"
       ],
@@ -62,12 +44,6 @@
       ],
       "@agent-zy/schedule-agent/manifest": [
         "agents/schedule-agent/src/manifest.ts"
-      ],
-      "@agent-zy/topic-agent/manifest": [
-        "agents/topic-agent/src/manifest.ts"
-      ],
-      "@agent-zy/topic-agent": [
-        "agents/topic-agent/src/index.ts"
       ],
       "@agent-zy/history-agent/manifest": [
         "agents/history-agent/src/manifest.ts"

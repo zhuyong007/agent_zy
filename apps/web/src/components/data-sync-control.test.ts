@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import React, { act } from "react";
+import React, { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +27,10 @@ describe("DataSyncControl", () => {
     vi.clearAllMocks();
   });
 
-  async function renderControl(onSynced = vi.fn()) {
+  async function renderControl(
+    onSynced = vi.fn(),
+    props: Partial<ComponentProps<typeof DataSyncControl>> = {}
+  ) {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -36,7 +39,7 @@ describe("DataSyncControl", () => {
         React.createElement(
           QueryClientProvider,
           { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
-          React.createElement(DataSyncControl, { module: "history", onSynced })
+          React.createElement(DataSyncControl, { module: "history", onSynced, ...props })
         )
       );
     });
@@ -83,6 +86,39 @@ describe("DataSyncControl", () => {
     expect(syncModuleData).toHaveBeenCalledWith("history", {});
     expect(onSynced).toHaveBeenCalledOnce();
     expect(container.textContent).toContain("abcdef1");
+  });
+
+  it("saves dirty local data before starting synchronization", async () => {
+    let saved = false;
+    const beforeSync = vi.fn(async () => {
+      saved = true;
+    });
+    fetchDataSyncStatus.mockResolvedValue({
+      enabled: true,
+      branch: "agent-zy-data",
+      modules: { history: { module: "history", status: "idle", lastSyncedAt: null, lastCommit: null, error: null } }
+    });
+    syncModuleData.mockImplementation(async () => {
+      expect(saved).toBe(true);
+      return {
+        status: "synced",
+        module: "history",
+        commitSha: "abcdef123456",
+        pulledCount: 0,
+        pushedCount: 1,
+        deletedCount: 0,
+        lastSyncedAt: "2026-06-22T10:00:00.000Z"
+      };
+    });
+    await renderControl(vi.fn(), { beforeSync, dirty: true });
+
+    expect(container.textContent).toContain("有本地修改");
+    await act(async () => {
+      (container.querySelector('[data-action="sync-data"]') as HTMLButtonElement).click();
+    });
+
+    expect(beforeSync).toHaveBeenCalledOnce();
+    expect(syncModuleData).toHaveBeenCalledOnce();
   });
 
   it("requires a per-record choice before resolving conflicts", async () => {

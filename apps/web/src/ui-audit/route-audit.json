@@ -1,0 +1,950 @@
+{
+  "generatedAt": "2026-07-30T07:04:10.356Z",
+  "baseUrl": "http://127.0.0.1:5173",
+  "routes": [
+    {
+      "path": "/",
+      "label": "工作台"
+    },
+    {
+      "path": "/news",
+      "label": "热点"
+    },
+    {
+      "path": "/history",
+      "label": "历史"
+    },
+    {
+      "path": "/manage",
+      "label": "管理"
+    },
+    {
+      "path": "/ledger",
+      "label": "记账"
+    },
+    {
+      "path": "/mhxy",
+      "label": "梦幻西游"
+    },
+    {
+      "path": "/todo",
+      "label": "待办"
+    },
+    {
+      "path": "/summaries",
+      "label": "总结"
+    },
+    {
+      "path": "/logs",
+      "label": "日志"
+    },
+    {
+      "path": "/tools",
+      "label": "工具"
+    },
+    {
+      "path": "/tools/photo-renamer",
+      "label": "媒体重命名"
+    },
+    {
+      "path": "/tools/file-organizer",
+      "label": "文件整理"
+    },
+    {
+      "path": "/tools/browser-automation",
+      "label": "浏览器自动化"
+    },
+    {
+      "path": "/tools/screen-monitor",
+      "label": "屏幕监控"
+    },
+    {
+      "path": "/tools/prompt-templates",
+      "label": "提示词模版"
+    },
+    {
+      "path": "/tools/child-meal",
+      "label": "孩子食谱"
+    },
+    {
+      "path": "/game-creator",
+      "label": "游戏创作"
+    }
+  ],
+  "viewports": {
+    "mobile": {
+      "width": 390,
+      "height": 844
+    },
+    "desktop": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "acceptance": {
+    "combinations": 34,
+    "passed": 34,
+    "failed": 0,
+    "requirements": {
+      "rootHorizontalOverflow": "none",
+      "activeNavigation": "present",
+      "primaryHeading": "visible and not clipped",
+      "visibleControls": "not clipped",
+      "mobilePrimaryTarget": "at least 44px with 0.5px rendering tolerance"
+    }
+  },
+  "themeAudit": {
+    "combinations": 68,
+    "passed": 68,
+    "failed": 0,
+    "themes": [
+      "day",
+      "night"
+    ],
+    "requirements": {
+      "rootHorizontalOverflow": "none",
+      "expectedThemeApplied": true
+    }
+  },
+  "palette": {
+    "reference": "https://aihot.virxact.com/",
+    "nightCanvas": "#0c1117",
+    "nightSurface": "#171d26",
+    "nightText": "#e8ebf2",
+    "accent": "#4fa3b3",
+    "dayCanvas": "#f3f6f8",
+    "dayAccent": "#378da0"
+  },
+  "aiHotTimeline": {
+    "desktop": {
+      "toolbarHeight": 40,
+      "toolbarBottom": 310.74,
+      "timelineTop": 328.74,
+      "overlap": false
+    },
+    "mobile": {
+      "toolbarHeight": 154,
+      "toolbarBottom": 505.04,
+      "timelineTop": 523.04,
+      "overlap": false
+    }
+  },
+  "results": [
+    {
+      "activeNavigation": "工作台",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "AI 热点",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "立即更新 AI 热点",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "AI 热点",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "AI 热点",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "同步全部",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 86
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/news",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "历史知识",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "南北朝",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/history",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "管理",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "管理配置中心",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "重置首页布局",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 110
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/manage",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "记账",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "一句话记录钱和人生阶段",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "记录到账本",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 47,
+        "width": 313
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/ledger",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "梦幻西游交易",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "梦幻西游交易主账本",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/mhxy",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "今日待办",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "待办作战室",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "今日待办总数0点击查看全部",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 107.2,
+        "width": 160.5
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/todo",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "总结",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "总结中心",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "新建总结",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 84
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/summaries",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "日志",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "结构化日志",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "刷新",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 335
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/logs",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "工具",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "01照片和视频名称修改递归扫描媒体目录，根据拍摄或创建时间预览并批量修改文件名。打开工具",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 213.8,
+        "width": 311
+      },
+      "primaryActionTag": "A",
+      "route": "/tools",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "照片和视频名称修改",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 280
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/photo-renamer",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "文件整理",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 269
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/file-organizer",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "浏览器自动化",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "浏览器自动化",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 88
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/tools/browser-automation",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "屏幕监控",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 269
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/screen-monitor",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "提示词模版",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 269
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/prompt-templates",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "孩子食谱",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 278
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/child-meal",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "游戏创作",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "游戏创作台",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "mobile",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 44,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/game-creator",
+      "scrollWidth": 390,
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "activeNavigation": "工作台",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "AI 热点",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "立即更新 AI 热点",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 34,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "AI 热点",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "AI 热点",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "同步全部",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 43,
+        "width": 86
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/news",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "历史知识",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "南北朝",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 34,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/history",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "管理",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "管理配置中心",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "重置首页布局",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 40,
+        "width": 116
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/manage",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "记账",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "一句话记录钱和人生阶段",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "记录到账本",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 47,
+        "width": 460
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/ledger",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "梦幻西游交易",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "梦幻西游交易主账本",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 34,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/mhxy",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "今日待办",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "待办作战室",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "今日待办总数0点击查看全部",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 116,
+        "width": 191.7
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/todo",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "总结",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "总结中心",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "新建总结",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 37,
+        "width": 84
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/summaries",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "日志",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "结构化日志",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "刷新",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 43,
+        "width": 56
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/logs",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "工具",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "01照片和视频名称修改递归扫描媒体目录，根据拍摄或创建时间预览并批量修改文件名。打开工具",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 213.8,
+        "width": 360
+      },
+      "primaryActionTag": "A",
+      "route": "/tools",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "照片和视频名称修改",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 40,
+        "width": 84
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/photo-renamer",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "文件整理",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 40,
+        "width": 84
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/file-organizer",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "浏览器自动化",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "浏览器自动化",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 43,
+        "width": 88
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/tools/browser-automation",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "屏幕监控",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 40,
+        "width": 84
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/screen-monitor",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "提示词模版",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 40,
+        "width": 84
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/prompt-templates",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "工具",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "孩子食谱",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "返回上级",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 40,
+        "width": 84
+      },
+      "primaryActionTag": "A",
+      "route": "/tools/child-meal",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    {
+      "activeNavigation": "游戏创作",
+      "clippedControlCount": 0,
+      "clippedControlSamples": [],
+      "heading": "游戏创作台",
+      "headingClipped": false,
+      "headingInViewport": true,
+      "mode": "desktop",
+      "overflowX": false,
+      "primaryAction": "同步数据",
+      "primaryActionInViewport": true,
+      "primaryActionMeetsTarget": true,
+      "primaryActionSize": {
+        "height": 34,
+        "width": 90
+      },
+      "primaryActionTag": "BUTTON",
+      "route": "/game-creator",
+      "scrollWidth": 1280,
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    }
+  ]
+}

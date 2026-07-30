@@ -6,10 +6,8 @@ import type {
   AppState,
   BrowserAutomationState,
   ChatMessage,
-  ClassicShotDashboardSummary,
   ClassicShotProject,
   ClassicShotState,
-  CinematicDashboardSummary,
   CinematicProject,
   CinematicState,
   ChildMealState,
@@ -27,7 +25,6 @@ import type {
   HistoryDynastyModuleType,
   HistoryPushState,
   HistoryXhsState,
-  ImageToVideoDashboardSummary,
   ImageToVideoState,
   InterviewState,
   LifeStageRecord,
@@ -111,11 +108,6 @@ const CORE_HOME_MODULE_DEFINITIONS = [
     id: "mhxy",
     defaultSize: "smaller",
     defaultVisible: true
-  },
-  {
-    id: "interview",
-    defaultSize: "smaller",
-    defaultVisible: true
   }
 ] as const satisfies ReadonlyArray<{
   id: HomeModuleId;
@@ -131,15 +123,10 @@ const HOME_MODULE_DEFINITIONS = [
 
 const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "news",
-  "topics",
   "ledger",
   "mhxy",
   "todo",
   "history",
-  "cinematic",
-  "classicShots",
-  "imageToVideo",
-  "interview",
   "summary",
   "browserAutomation"
 ]);
@@ -1026,26 +1013,6 @@ function normalizeCinematicState(cinematic: Partial<CinematicState> | undefined)
   };
 }
 
-function buildCinematicDashboard(cinematic: CinematicState): CinematicDashboardSummary {
-  const projectById = new Map(cinematic.projects.map((project) => [project.id, project]));
-  const recentProjects = cinematic.recentProjectIds
-    .map((id) => projectById.get(id))
-    .filter((project): project is CinematicProject => Boolean(project))
-    .slice(0, 4);
-  const latestProject = recentProjects[0] ?? cinematic.projects[0] ?? null;
-
-  return {
-    projectCount: cinematic.projects.length,
-    recentProjects,
-    latestProject,
-    lastGeneratedAt: cinematic.lastGeneratedAt,
-    totalShotCount: cinematic.projects.reduce((count, project) => count + project.storyboard.length, 0),
-    todayInspiration: latestProject
-      ? `${latestProject.mood} · ${latestProject.style || latestProject.title}`
-      : "把一个情绪变成镜头：先找光，再找沉默。"
-  };
-}
-
 function normalizeClassicShotStoryboard(
   shot: ClassicShotProject["storyboard"][number],
   index: number
@@ -1146,24 +1113,6 @@ function normalizeImageToVideoState(imageToVideo: Partial<ImageToVideoState> | u
   };
 }
 
-function buildImageToVideoDashboard(imageToVideo: ImageToVideoState): ImageToVideoDashboardSummary {
-  const projectById = new Map(imageToVideo.projects.map((project) => [project.id, project]));
-  const latestProject =
-    imageToVideo.recentProjectIds.map((id) => projectById.get(id)).find(Boolean) ??
-    imageToVideo.projects[0] ??
-    null;
-
-  return {
-    projectCount: imageToVideo.projects.length,
-    latestProject,
-    waitingKeyframeCount: imageToVideo.projects.reduce(
-      (count, project) =>
-        count + project.keyframes.filter((keyframe) => !["APPROVED", "APPROVED_BY_USER"].includes(keyframe.status)).length,
-      0
-    )
-  };
-}
-
 function normalizeClassicShotState(classicShots: Partial<ClassicShotState> | undefined): ClassicShotState {
   const projects = (classicShots?.projects ?? [])
     .map(normalizeClassicShotProject)
@@ -1182,26 +1131,6 @@ function normalizeClassicShotState(classicShots: Partial<ClassicShotState> | und
     lastGeneratedAt: classicShots?.lastGeneratedAt ?? projects[0]?.updatedAt ?? null,
     status: classicShots?.status === "generating" ? "generating" : "idle",
     lastError: classicShots?.lastError ?? null
-  };
-}
-
-function buildClassicShotDashboard(classicShots: ClassicShotState): ClassicShotDashboardSummary {
-  const projectById = new Map(classicShots.projects.map((project) => [project.id, project]));
-  const recentProjects = classicShots.recentProjectIds
-    .map((id) => projectById.get(id))
-    .filter((project): project is ClassicShotProject => Boolean(project))
-    .slice(0, 4);
-  const latestProject = recentProjects[0] ?? classicShots.projects[0] ?? null;
-
-  return {
-    projectCount: classicShots.projects.length,
-    recentProjects,
-    latestProject,
-    lastGeneratedAt: classicShots.lastGeneratedAt,
-    totalStoryboardCount: classicShots.projects.reduce((count, project) => count + project.storyboard.length, 0),
-    todayReference: latestProject
-      ? `${latestProject.source.director}《${latestProject.source.film}》`
-      : "选择一个有明确出处的经典镜头，再把它拆成可生成视频的连续调度。"
   };
 }
 
@@ -2286,24 +2215,10 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
           todayItems: state.schedule.items.filter((item) => item.date === today)
         },
         news: state.news,
-        topics: state.topics,
-        cinematic: {
-          ...state.cinematic,
-          dashboard: buildCinematicDashboard(state.cinematic)
-        },
-        classicShots: {
-          ...state.classicShots,
-          dashboard: buildClassicShotDashboard(state.classicShots)
-        },
-        imageToVideo: {
-          ...normalizeImageToVideoState(state.imageToVideo),
-          dashboard: buildImageToVideoDashboard(normalizeImageToVideoState(state.imageToVideo))
-        },
         browserAutomation: state.browserAutomation,
         screenMonitor: state.screenMonitor,
         promptTemplates: state.promptTemplates,
         childMeal: state.childMeal,
-        interview: state.interview,
         summary: {
           ...state.summary,
           dashboard: buildSummaryDashboard(state.summary, now)

@@ -1,7 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createAgentRegistry } from "@agent-zy/agent-registry";
@@ -28,8 +27,6 @@ import { createFileOrganizerService } from "./services/file-organizer-service";
 import { createPhotoRenamerService } from "./services/photo-renamer-service";
 import { createPromptTemplateService } from "./services/prompt-template-service";
 import { createChildMealService } from "./services/child-meal-service";
-import { createInterviewService } from "./services/interview-service";
-import { createImageToVideoPlannerService } from "./services/image-to-video-planner-service";
 import { createMhxyService, type MhxyService } from "./services/mhxy-service";
 import {
   mhxyAssetFlipInputSchema,
@@ -47,6 +44,7 @@ import {
 import { createGitDataSyncTransport } from "./services/data-sync/git-transport";
 import { createLocalDataSyncAdapters } from "./services/data-sync/local-adapters";
 import { createDataSyncService, type DataSyncService } from "./services/data-sync/service";
+import { createGameCreatorRepository } from "./services/game-creator-repository";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -69,16 +67,10 @@ import {
   type ScreenMonitorNotifier,
   type ScreenMonitorScreenCapture
 } from "./services/screen-monitor-service";
-import {
-  cleanupClassicShotVideoWorkDir,
-  createClassicShotVideoProcessor,
-  type ClassicShotVideoProcessor
-} from "./services/classic-shot-video-service";
 import { restartProjectWithScript, type ProjectRestarter } from "./services/system-restart";
-import { isLocalBrowserRequest, parseFallbackMultipartFile, parseFallbackMultipartImage, parseFallbackMultipartUpload } from "./app-helpers";
+import { isLocalBrowserRequest, parseFallbackMultipartFile } from "./app-helpers";
 
-const CLASSIC_SHOT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
-const CLASSIC_SHOT_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+const MULTIPART_BODY_MAX_BYTES = 100 * 1024 * 1024;
 
 export function createControlPlaneApp(options?: {
   dataDir?: string;
@@ -87,7 +79,6 @@ export function createControlPlaneApp(options?: {
   restartProject?: ProjectRestarter;
   historyXhsService?: HistoryXhsService;
   historyCommentReplyService?: HistoryCommentReplyService;
-  classicShotVideoProcessor?: ClassicShotVideoProcessor;
   browserAutomationExecutor?: BrowserAutomationExecutor;
   screenMonitorCapture?: ScreenMonitorScreenCapture;
   screenMonitorNotifier?: ScreenMonitorNotifier;
@@ -103,6 +94,7 @@ export function createControlPlaneApp(options?: {
 
   const dataDir = options?.dataDir ?? ".agent-zy-data";
   const store = createControlPlaneStore(dataDir);
+  const gameCreatorRepository = createGameCreatorRepository(dataDir);
   const dataSyncService = options?.dataSyncService ?? createDataSyncService({
     dataDir,
     enabled: process.env.AGENT_ZY_DATA_SYNC_ENABLED === "true",
@@ -152,20 +144,10 @@ export function createControlPlaneApp(options?: {
     store,
     modelRuntime
   });
-  const interviewService = createInterviewService({
-    store,
-    modelRuntime
-  });
-  const imageToVideoPlanner = createImageToVideoPlannerService({
-    dataDir,
-    store,
-    modelRuntime
-  });
   const mhxyService = options?.mhxyService ?? createMhxyService(dataDir);
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
   const historyCommentReplyService =
     options?.historyCommentReplyService ?? createHistoryCommentReplyService({ store, modelRuntime });
-  const classicShotVideoProcessor = options?.classicShotVideoProcessor ?? createClassicShotVideoProcessor();
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
   });
@@ -245,7 +227,7 @@ export function createControlPlaneApp(options?: {
   app.addContentTypeParser(
     /^multipart\/form-data/i,
     {
-      bodyLimit: CLASSIC_SHOT_VIDEO_MAX_BYTES,
+      bodyLimit: MULTIPART_BODY_MAX_BYTES,
       parseAs: "buffer"
     },
     (_request, body, done) => {
@@ -701,39 +683,6 @@ export function createControlPlaneApp(options?: {
     try { return childMealService.savePlan(request.body); } catch (error) { return childMealError(reply, error); }
   });
 
-  const interviewError = (reply: any, error: unknown, statusCode = 400) =>
-    reply.status(statusCode).send({ message: error instanceof Error ? error.message : "面试训练操作失败" });
-
-  app.get("/api/interview/overview", async () => interviewService.getOverview());
-  app.post("/api/interview/daily-session", async (request, reply) => {
-    try {
-      return await interviewService.getOrCreateDailySession((request.body ?? {}) as { force?: boolean });
-    } catch (error) {
-      return interviewError(reply, error);
-    }
-  });
-  app.post("/api/interview/answers", async (request, reply) => {
-    try {
-      return await interviewService.submitAnswer(request.body as any);
-    } catch (error) {
-      return interviewError(reply, error);
-    }
-  });
-  app.patch("/api/interview/answers/:id", async (request, reply) => {
-    try {
-      return interviewService.updateAnswer((request.params as { id: string }).id, request.body as any);
-    } catch (error) {
-      return interviewError(reply, error, 404);
-    }
-  });
-  app.post("/api/interview/reports/:date/regenerate", async (request, reply) => {
-    try {
-      return interviewService.regenerateReport((request.params as { date: string }).date);
-    } catch (error) {
-      return interviewError(reply, error, 404);
-    }
-  });
-
   app.get("/api/logs", async (request) => {
     const query = (request.query ?? {}) as Record<string, unknown>;
 
@@ -808,98 +757,6 @@ export function createControlPlaneApp(options?: {
       enabled: Boolean(body.enabled),
       isDefault: Boolean(body.isDefault),
       apiKey: typeof body.apiKey === "string" && body.apiKey.trim() ? body.apiKey.trim() : null
-    };
-  }
-
-  function parseFrameCount(value: unknown) {
-    const parsed = typeof value === "string" ? Number.parseInt(value, 10) : NaN;
-
-    if (!Number.isInteger(parsed)) {
-      return 6;
-    }
-
-    if (parsed < 3 || parsed > 8) {
-      throw new Error("抽帧数量必须在 3 到 8 之间");
-    }
-
-    return parsed;
-  }
-
-  async function parseClassicShotVideoUpload(request: any) {
-    if (typeof request.parts !== "function") {
-      const upload = parseFallbackMultipartUpload(request.headers["content-type"], request.body);
-
-      if (!CLASSIC_SHOT_VIDEO_TYPES.has(upload.video.mimetype)) {
-        throw new Error("仅支持 mp4、mov、webm 视频文件");
-      }
-
-      return {
-        video: upload.video,
-        targetPlatform: upload.fields.targetPlatform,
-        revisionInstruction:
-          upload.fields.revisionInstruction?.trim() ||
-          "保留镜头结构，改变画面风格和场景，避免生成一模一样的视频",
-        frameCount: parseFrameCount(upload.fields.frameCount)
-      };
-    }
-
-    const parts = request.parts();
-    const fields: Record<string, string> = {};
-    let video:
-      | {
-          filename: string;
-          mimetype: string;
-          buffer: Buffer;
-        }
-      | null = null;
-
-    for await (const part of parts) {
-      if (part.type === "file") {
-        if (part.fieldname !== "video") {
-          part.file.resume();
-          continue;
-        }
-
-        const chunks: Buffer[] = [];
-        let size = 0;
-
-        for await (const chunk of part.file) {
-          const buffer = Buffer.from(chunk);
-          size += buffer.length;
-
-          if (size > CLASSIC_SHOT_VIDEO_MAX_BYTES) {
-            throw new Error("上传视频不能超过 100MB");
-          }
-
-          chunks.push(buffer);
-        }
-
-        video = {
-          filename: part.filename || "uploaded-video",
-          mimetype: part.mimetype || "",
-          buffer: Buffer.concat(chunks)
-        };
-        continue;
-      }
-
-      fields[part.fieldname] = String(part.value ?? "");
-    }
-
-    if (!video) {
-      throw new Error("请上传 video 文件");
-    }
-
-    if (!CLASSIC_SHOT_VIDEO_TYPES.has(video.mimetype)) {
-      throw new Error("仅支持 mp4、mov、webm 视频文件");
-    }
-
-    return {
-      video,
-      targetPlatform: fields.targetPlatform,
-      revisionInstruction:
-        fields.revisionInstruction?.trim() ||
-        "保留镜头结构，改变画面风格和场景，避免生成一模一样的视频",
-      frameCount: parseFrameCount(fields.frameCount)
     };
   }
 
@@ -1045,9 +902,27 @@ export function createControlPlaneApp(options?: {
 
   app.get("/api/data-sync/status", async () => dataSyncService.getStatus());
 
+  app.get("/api/game-creator", async () => gameCreatorRepository.read());
+
+  app.put("/api/game-creator", async (request, reply) => {
+    try {
+      return gameCreatorRepository.write(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "游戏创作数据格式无效"
+      });
+    }
+  });
+
   app.post("/api/data-sync/:module", async (request, reply) => {
     const module = (request.params as { module?: unknown }).module;
-    if (module !== "history" && module !== "mhxy" && module !== "browser-automation") {
+    if (
+      module !== "history" &&
+      module !== "mhxy" &&
+      module !== "browser-automation" &&
+      module !== "game-creator" &&
+      module !== "models"
+    ) {
       return reply.code(400).send({ message: "不支持的数据同步模块" });
     }
     const body = (request.body ?? {}) as {
@@ -1189,188 +1064,6 @@ export function createControlPlaneApp(options?: {
     };
   });
 
-  app.get("/api/topics", async () => orchestrator.getTopics());
-
-  app.get("/api/cinematic", async () => orchestrator.getCinematic());
-
-  app.post("/api/cinematic/projects", async (request, reply) => {
-    try {
-      return orchestrator.createCinematicProject(request.body);
-    } catch (error) {
-      return reply.code(400).send({
-        message: error instanceof Error ? error.message : "invalid cinematic project"
-      });
-    }
-  });
-
-  app.patch("/api/cinematic/projects/:id", async (request, reply) => {
-    const params = request.params as { id: string };
-
-    try {
-      return orchestrator.updateCinematicProject(params.id, request.body);
-    } catch (error) {
-      return reply.code(404).send({
-        message: error instanceof Error ? error.message : "cinematic project not found"
-      });
-    }
-  });
-
-  app.delete("/api/cinematic/projects/:id", async (request, reply) => {
-    const params = request.params as { id: string };
-
-    try {
-      return orchestrator.deleteCinematicProject(params.id);
-    } catch (error) {
-      return reply.code(404).send({
-        message: error instanceof Error ? error.message : "cinematic project not found"
-      });
-    }
-  });
-
-  app.post("/api/cinematic/generate", async (request) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
-
-    return orchestrator.generateCinematicProject(body);
-  });
-
-  app.get("/api/image-to-video/projects", async () => imageToVideoPlanner.listProjects());
-
-  app.get("/api/image-to-video/projects/:id", async (request, reply) => {
-    try {
-      return imageToVideoPlanner.getProject((request.params as { id: string }).id);
-    } catch (error) {
-      return reply.code(404).send({ message: error instanceof Error ? error.message : "项目不存在" });
-    }
-  });
-
-  app.delete("/api/image-to-video/projects/:id", async (request, reply) => {
-    try {
-      return imageToVideoPlanner.deleteProject((request.params as { id: string }).id);
-    } catch (error) {
-      return reply.code(404).send({ message: error instanceof Error ? error.message : "项目不存在" });
-    }
-  });
-
-  app.get("/api/image-to-video/assets/:projectId/:assetId", async (request, reply) => {
-    try {
-      const params = request.params as { projectId: string; assetId: string };
-      const result = imageToVideoPlanner.readAsset(params.projectId, params.assetId);
-      return reply.type(result.asset.mimeType).send(result.buffer);
-    } catch (error) {
-      return reply.code(404).send({ message: error instanceof Error ? error.message : "图片不存在" });
-    }
-  });
-
-  app.post("/api/image-to-video/analyze", async (request, reply) => {
-    try {
-      const upload = parseFallbackMultipartImage(request.headers["content-type"], request.body);
-      return await imageToVideoPlanner.analyze({
-        projectId: upload.fields.projectId || undefined,
-        fileName: upload.image.filename,
-        mimeType: upload.image.mimetype,
-        buffer: upload.image.buffer
-      });
-    } catch (error) {
-      return reply.code(400).send({ message: error instanceof Error ? error.message : "图片分析失败" });
-    }
-  });
-
-  app.post("/api/image-to-video/plan", async (request, reply) => {
-    try {
-      return await imageToVideoPlanner.plan(String((request.body as any)?.projectId ?? ""));
-    } catch (error) {
-      return reply.code(400).send({ message: error instanceof Error ? error.message : "视频方案生成失败" });
-    }
-  });
-
-  app.post("/api/image-to-video/keyframes", async (request, reply) => {
-    try {
-      return await imageToVideoPlanner.planKeyframes(String((request.body as any)?.projectId ?? ""));
-    } catch (error) {
-      return reply.code(400).send({ message: error instanceof Error ? error.message : "关键帧规划失败" });
-    }
-  });
-
-  app.post("/api/image-to-video/review-keyframe", async (request, reply) => {
-    try {
-      const upload = parseFallbackMultipartImage(request.headers["content-type"], request.body);
-      return await imageToVideoPlanner.reviewKeyframe(upload.fields.projectId, upload.fields.keyframeId, {
-        fileName: upload.image.filename,
-        mimeType: upload.image.mimetype,
-        buffer: upload.image.buffer
-      });
-    } catch (error) {
-      return reply.code(400).send({ message: error instanceof Error ? error.message : "关键帧审核失败" });
-    }
-  });
-
-  app.post("/api/image-to-video/keyframes/:keyframeId/override", async (request, reply) => {
-    try {
-      return imageToVideoPlanner.overrideKeyframe(
-        String((request.body as any)?.projectId ?? ""),
-        (request.params as { keyframeId: string }).keyframeId
-      );
-    } catch (error) {
-      return reply.code(400).send({ message: error instanceof Error ? error.message : "人工通过失败" });
-    }
-  });
-
-  app.post("/api/image-to-video/final-prompt", async (request, reply) => {
-    try {
-      return await imageToVideoPlanner.generateFinalPrompt(String((request.body as any)?.projectId ?? ""));
-    } catch (error) {
-      return reply.code(400).send({ message: error instanceof Error ? error.message : "最终提示词生成失败" });
-    }
-  });
-
-  app.get("/api/classic-shots", async () => orchestrator.getClassicShots());
-
-  app.post("/api/classic-shots/generate", async (request) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
-
-    return orchestrator.generateClassicShotProject(body);
-  });
-
-  app.post("/api/classic-shots/generate-from-video", async (request, reply) => {
-    let workDir: string | null = null;
-
-    try {
-      const upload = await parseClassicShotVideoUpload(request);
-      const taskId = randomUUID();
-      workDir = join(dataDir, "tmp", "classic-shots", taskId);
-      await mkdir(workDir, { recursive: true });
-      const videoPath = join(workDir, upload.video.filename.replace(/[^\w.-]/g, "_") || "uploaded-video");
-
-      await writeFile(videoPath, upload.video.buffer);
-
-      const extracted = await classicShotVideoProcessor.extractFrames({
-        videoPath,
-        workDir,
-        frameCount: upload.frameCount
-      });
-
-      return await orchestrator.generateClassicShotProjectFromVideo({
-        input: `上传视频复刻：${upload.video.filename}`,
-        targetPlatform: upload.targetPlatform,
-        revisionInstruction: upload.revisionInstruction,
-        videoReference: {
-          fileName: upload.video.filename,
-          durationSeconds: extracted.durationSeconds,
-          extractedFrameCount: extracted.frames.length
-        },
-        frames: extracted.frames
-      });
-    } catch (error) {
-      return reply.code(400).send({
-        message: error instanceof Error ? error.message : "classic shot video generation failed"
-      });
-    } finally {
-      if (workDir) {
-        await cleanupClassicShotVideoWorkDir(workDir);
-      }
-    }
-  });
-
   app.get("/api/summaries", async (request) => {
     const query = request.query as Record<string, string | undefined>;
 
@@ -1451,12 +1144,6 @@ export function createControlPlaneApp(options?: {
         message: error instanceof Error ? error.message : "invalid summary import payload"
       });
     }
-  });
-
-  app.post("/api/topics/generate", async (request) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
-
-    return orchestrator.generateTopics(body);
   });
 
   app.post("/api/history/generate", async (request) => {

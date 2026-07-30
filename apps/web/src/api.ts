@@ -10,10 +10,6 @@ import type {
   BrowserAutomationState,
   BrowserAutomationTriggerRule,
   BrowserAutomationWorkflow,
-  CinematicProject,
-  CinematicState,
-  ClassicShotState,
-  ClassicShotTargetPlatform,
   DashboardData,
   DataSyncModule,
   DataSyncResolution,
@@ -32,12 +28,7 @@ import type {
   HistoryCommentReplyState,
   HistoryDynastyModuleType,
   HistoryXhsState,
-  ImageToVideoProject,
-  ImageToVideoState,
-  InterviewAnswer,
-  InterviewDailyReport,
-  InterviewDailySession,
-  InterviewOverview,
+  GameCreatorState,
   HomeModulePreference,
   LedgerFactRecord,
   LedgerReportRecord,
@@ -75,8 +66,7 @@ import type {
   ScreenMonitorSession,
   ScreenMonitorState,
   SummaryEntry,
-  SummaryType,
-  TopicState
+  SummaryType
 } from "@agent-zy/shared-types";
 
 export async function fetchDataSyncStatus(): Promise<DataSyncStatusResponse> {
@@ -98,6 +88,26 @@ export async function syncModuleData(
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "同步模块数据失败"));
+  }
+  return response.json();
+}
+
+export async function fetchGameCreatorState(): Promise<GameCreatorState | null> {
+  const response = await fetch(`${API_BASE}/api/game-creator`);
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "读取游戏创作数据失败"));
+  }
+  return response.json();
+}
+
+export async function saveGameCreatorState(state: GameCreatorState): Promise<GameCreatorState> {
+  const response = await fetch(`${API_BASE}/api/game-creator`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state)
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "保存游戏创作数据失败"));
   }
   return response.json();
 }
@@ -156,85 +166,6 @@ export const deleteChildMealRecord = (id: string) => childMealRequest<{ ok: true
 export const generateChildMealPlan = (input: { planType: ChildMealPlanType; userExtraRequest?: string }) => childMealRequest<ChildMealPlan>("/generate-plan", "POST", input);
 export const saveChildMealPlan = (input: ChildMealPlan) => childMealRequest<ChildMealPlan>("/save-plan", "POST", input);
 export const convertChildMealPlanMeal = (input: { date: string; meal: ChildMealPlan["days"][number]["meals"][number] }) => childMealRequest<ChildMealRecord>("/records/from-plan", "POST", input);
-
-async function interviewRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}/api/interview${path}`, {
-    method,
-    ...(body === undefined ? {} : {
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    })
-  });
-  if (!response.ok) throw new Error(await readApiError(response, "面试训练操作失败"));
-  return response.json();
-}
-
-export const fetchInterviewOverview = () => interviewRequest<InterviewOverview>("/overview");
-export const createInterviewDailySession = (input: { force?: boolean } = {}) =>
-  interviewRequest<InterviewDailySession>("/daily-session", "POST", input);
-export const submitInterviewAnswer = (input: { questionId: string; answerText: string }) =>
-  interviewRequest<InterviewAnswer>("/answers", "POST", input);
-export const updateInterviewAnswer = (id: string, input: Partial<Pick<InterviewAnswer, "manualScore" | "mastery" | "note">>) =>
-  interviewRequest<InterviewAnswer>(`/answers/${id}`, "PATCH", input);
-export const regenerateInterviewReport = (date: string) =>
-  interviewRequest<InterviewDailyReport>(`/reports/${date}/regenerate`, "POST");
-
-export function resolveImageToVideoAssetUrl(url: string) {
-  return url.startsWith("/api/") ? `${API_BASE}${url}` : url;
-}
-
-async function imageToVideoJsonRequest(path: string, body: unknown): Promise<ImageToVideoProject> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "图片转视频策划请求失败"));
-  }
-  return response.json();
-}
-
-export async function fetchImageToVideoProjects(): Promise<ImageToVideoState> {
-  const response = await fetch(`${API_BASE}/api/image-to-video/projects`);
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "读取图片转视频项目失败"));
-  }
-  return response.json();
-}
-
-export async function analyzeImageToVideo(input: FormData): Promise<ImageToVideoProject> {
-  const response = await fetch(`${API_BASE}/api/image-to-video/analyze`, { method: "POST", body: input });
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "图片分析失败"));
-  }
-  return response.json();
-}
-
-export const generateImageToVideoPlan = (projectId: string) =>
-  imageToVideoJsonRequest("/api/image-to-video/plan", { projectId });
-export const generateImageToVideoKeyframes = (projectId: string) =>
-  imageToVideoJsonRequest("/api/image-to-video/keyframes", { projectId });
-export const generateImageToVideoFinalPrompt = (projectId: string) =>
-  imageToVideoJsonRequest("/api/image-to-video/final-prompt", { projectId });
-export const overrideImageToVideoKeyframe = (projectId: string, keyframeId: string) =>
-  imageToVideoJsonRequest(`/api/image-to-video/keyframes/${keyframeId}/override`, { projectId });
-
-export async function reviewImageToVideoKeyframe(input: FormData): Promise<ImageToVideoProject> {
-  const response = await fetch(`${API_BASE}/api/image-to-video/review-keyframe`, { method: "POST", body: input });
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "关键帧审核失败"));
-  }
-  return response.json();
-}
-
-export async function deleteImageToVideoProject(projectId: string): Promise<ImageToVideoState> {
-  const response = await fetch(`${API_BASE}/api/image-to-video/projects/${projectId}`, { method: "DELETE" });
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "删除项目失败"));
-  }
-  return response.json();
-}
 
 export async function previewPhotoRenames(
   directoryPath: string,
@@ -848,143 +779,6 @@ export async function fetchNews(): Promise<NewsState> {
   return response.json();
 }
 
-export async function fetchTopics(): Promise<TopicState> {
-  const response = await fetch(`${API_BASE}/api/topics`);
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch topics");
-  }
-
-  return response.json();
-}
-
-export async function fetchCinematic(): Promise<CinematicState> {
-  const response = await fetch(`${API_BASE}/api/cinematic`);
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch cinematic projects");
-  }
-
-  return response.json();
-}
-
-export type CinematicGenerateInput = {
-  concept: string;
-  style?: string;
-  visualStyle?: string;
-  pace?: string;
-  targetShotCount?: number;
-  visualFocus?: string;
-  negativePrompt?: string;
-};
-
-export async function generateCinematic(input: CinematicGenerateInput): Promise<CinematicState> {
-  const response = await fetch(`${API_BASE}/api/cinematic/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(input)
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to generate cinematic storyboard"));
-  }
-
-  return response.json();
-}
-
-export async function createCinematicProject(input: Partial<CinematicProject>): Promise<CinematicProject> {
-  const response = await fetch(`${API_BASE}/api/cinematic/projects`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(input)
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to create cinematic project"));
-  }
-
-  return response.json();
-}
-
-export async function updateCinematicProject(
-  id: string,
-  input: Partial<CinematicProject>
-): Promise<CinematicProject> {
-  const response = await fetch(`${API_BASE}/api/cinematic/projects/${id}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(input)
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to update cinematic project"));
-  }
-
-  return response.json();
-}
-
-export async function deleteCinematicProject(id: string): Promise<CinematicState> {
-  const response = await fetch(`${API_BASE}/api/cinematic/projects/${id}`, {
-    method: "DELETE"
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to delete cinematic project"));
-  }
-
-  return response.json();
-}
-
-export async function fetchClassicShots(): Promise<ClassicShotState> {
-  const response = await fetch(`${API_BASE}/api/classic-shots`);
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch classic shot projects");
-  }
-
-  return response.json();
-}
-
-export type ClassicShotGenerateInput = {
-  input: string;
-  targetPlatform?: ClassicShotTargetPlatform;
-};
-
-export async function generateClassicShot(input: ClassicShotGenerateInput): Promise<ClassicShotState> {
-  const response = await fetch(`${API_BASE}/api/classic-shots/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(input)
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to generate classic shot storyboard"));
-  }
-
-  return response.json();
-}
-
-export async function generateClassicShotFromVideo(input: FormData): Promise<ClassicShotState> {
-  const response = await fetch(`${API_BASE}/api/classic-shots/generate-from-video`, {
-    method: "POST",
-    body: input
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to generate classic shot storyboard from video"));
-  }
-
-  return response.json();
-}
-
 export type SummaryListInput = {
   summaryType?: SummaryType;
   q?: string;
@@ -1115,24 +909,6 @@ export async function importSummaries(input: SummaryExportPayload): Promise<{
 
   if (!response.ok) {
     throw new Error(await readApiError(response, "Failed to import summaries"));
-  }
-
-  return response.json();
-}
-
-export async function generateTopics(reason = "manual"): Promise<TopicState> {
-  const response = await fetch(`${API_BASE}/api/topics/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      reason
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to generate topics");
   }
 
   return response.json();

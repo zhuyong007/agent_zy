@@ -1,18 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { GameCreatorState } from "@agent-zy/shared-types";
+
 import {
   createBrowserAutomationTriggerRule,
   createBrowserAutomationWorkflow,
   createPromptTemplate,
   fetchSystemStatus,
   fetchDataSyncStatus,
+  fetchGameCreatorState,
   fetchBrowserAutomation,
   openBrowserAutomationPermissionSettings,
   fetchPromptTemplates,
   clearEventLogs,
   fetchEventLogs,
   previewFileOrganization,
-  generateCinematic,
   generateHistory,
   openExternalUrl,
   previewPhotoRenames,
@@ -36,6 +38,7 @@ import {
   undoFileOrganization,
   undoPhotoRenames,
   syncModuleData,
+  saveGameCreatorState,
   deleteMhxyPriceSnapshot,
   updateMhxyPriceSeries
 } from "./api";
@@ -109,6 +112,58 @@ describe("data sync API", () => {
           conflictToken: "token",
           resolutions: [{ key: "notification:one", choice: "remote" }]
         })
+      })
+    );
+  });
+});
+
+describe("game creator API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("loads and saves the complete creator workspace", async () => {
+    const state: GameCreatorState = {
+      version: 1,
+      date: "2026-07-30",
+      projectId: "game-video-1",
+      updatedAt: "2026-07-30T01:00:00.000Z",
+      activeStage: "brief",
+      completedTaskIds: [],
+      checkedQualityIds: [],
+      ready: false,
+      completedVideos: 0,
+      draft: {
+        game: "黑神话：悟空",
+        audience: "动作游戏新玩家",
+        format: "5–15 分钟 · B站横版中视频",
+        promise: "避开开荒误区",
+        angle: "攻略 / 教学",
+        title: "",
+        coverCopy: "",
+        opening: "",
+        outline: "",
+        assetNotes: "",
+        editNotes: "",
+        tags: "",
+        publishedUrl: "",
+        retrospective: ""
+      }
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => state })
+      .mockResolvedValueOnce({ ok: true, json: async () => state });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchGameCreatorState();
+    await saveGameCreatorState(state);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining("/api/game-creator"));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/api/game-creator"),
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify(state)
       })
     );
   });
@@ -505,26 +560,6 @@ describe("generateHistory", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
       message: expect.stringContaining("历史之最")
     });
-  });
-});
-
-describe("generateCinematic", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("surfaces backend generation failures to the caller", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: async () => ({
-        message: "未找到可用模型配置"
-      })
-    });
-
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(generateCinematic({ concept: "" })).rejects.toThrow("未找到可用模型配置");
   });
 });
 

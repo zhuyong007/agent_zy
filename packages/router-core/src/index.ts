@@ -9,17 +9,7 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
   ledger: ["记账", "账本", "花", "花了", "赚", "收入", "支出", "报销", "元"],
   schedule: ["日程", "待办", "安排", "计划", "今天", "晚上", "完成"],
   news: ["热点", "新闻", "热搜", "分析", "快讯"],
-  topics: ["选题", "自媒体", "内容", "视频", "公众号", "爆款"],
-  summary: ["总结", "复盘", "日志", "记录", "每日总结", "周总结", "月总结", "年总结"],
-  classic_shot_recreation: ["经典电影镜头", "经典镜头", "复刻", "还原", "出处", "电影出处"],
-  film_reference_analysis: ["导演", "电影名", "上映年份", "镜头位置", "镜头出处"],
-  ai_video_storyboard_prompt: ["AI 视频", "视频生成", "分镜提示词", "Runway", "可灵", "即梦", "Seedance", "剪映"],
-  long_take_continuity_design: ["长镜头", "连贯镜头", "连续镜头", "跟拍", "横移", "运镜衔接"],
-  cinematic_storyboard: ["电影感", "分镜", "镜头", "视频提示词", "视频文案", "构图", "光影", "氛围"],
-  cinematic_prompt_generation: ["提示词", "视频提示词", "Runway", "Sora", "Kling", "可灵"],
-  video_structure_analysis: ["视频结构", "节奏", "转场", "高潮", "留白"],
-  shot_design: ["镜头设计", "景别", "摄影机", "焦段", "运动镜头"],
-  visual_mood_design: ["情绪", "氛围", "色彩", "美术风格", "电影语言"]
+  summary: ["总结", "复盘", "日志", "记录", "每日总结", "周总结", "月总结", "年总结"]
 };
 
 function scoreManifest(manifest: AgentManifest, input: RouteInput): number {

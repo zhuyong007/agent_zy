@@ -13,12 +13,7 @@ export type BuiltInHomeModuleId =
   | "todo"
   | "ledger"
   | "mhxy"
-  | "topics"
   | "history"
-  | "cinematic"
-  | "classicShots"
-  | "imageToVideo"
-  | "interview"
   | "summary";
 export type { HomeModuleId, HomeModulePreference, HomeModuleSize };
 
@@ -84,13 +79,6 @@ const CORE_HOME_MODULE_DEFINITIONS = [
     description: "人民币库存成本、收益与估值",
     defaultSize: "smaller",
     defaultVisible: true
-  },
-  {
-    id: "interview",
-    label: "面试训练",
-    description: "AI 全栈开发每日轮换题和答题报告",
-    defaultSize: "smaller",
-    defaultVisible: true
   }
 ] as const satisfies readonly HomeModuleDefinition[];
 
@@ -103,15 +91,10 @@ export const HOME_MODULE_DEFINITIONS = [
 const sizeValues = new Set<HomeModuleSize>(HOME_MODULE_SIZE_OPTIONS.map((item) => item.value));
 const HOME_MODULE_NAVIGATION_ROUTES = new Set<HomeModuleId>([
   "news",
-  "topics",
   "ledger",
   "mhxy",
   "todo",
   "history",
-  "cinematic",
-  "classicShots",
-  "imageToVideo",
-  "interview",
   "summary",
   "browserAutomation"
 ]);
