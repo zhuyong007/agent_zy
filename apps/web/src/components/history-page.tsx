@@ -450,6 +450,64 @@ export function HistoryPage() {
                 </div>
               </div>
 
+              {selectedPostPayload ? (
+                <section
+                  className="history-stage__section history-stage__section--publish"
+                  aria-labelledby="history-publish-heading"
+                >
+                  <div className="history-stage__heading history-publish-heading">
+                    <div>
+                      <p className="eyebrow">Ready to publish</p>
+                      <h2 id="history-publish-heading">发布文案</h2>
+                      <p>标题和正文已放在一起，可分别复制，也可一次复制全部。</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="history-copy-button history-copy-button--primary"
+                      aria-label="复制标题和正文"
+                      onClick={() =>
+                        void handleCopy(
+                          "post-all",
+                          `${selectedPostPayload.topic}\n\n${selectedPostPayload.xiaohongshuCaption}`
+                        )
+                      }
+                    >
+                      {copiedKey === "post-all" ? "已复制全部" : "复制全部"}
+                    </button>
+                  </div>
+                  <article className="history-publish-copy">
+                    <div className="history-publish-copy__field">
+                      <div className="history-publish-copy__label">
+                        <span>标题</span>
+                        <button
+                          type="button"
+                          className="history-copy-button"
+                          aria-label="复制标题"
+                          onClick={() => void handleCopy("post-title", selectedPostPayload.topic)}
+                        >
+                          {copiedKey === "post-title" ? "已复制" : "复制标题"}
+                        </button>
+                      </div>
+                      <h3>{selectedPostPayload.topic}</h3>
+                    </div>
+                    <div className="history-publish-copy__field">
+                      <div className="history-publish-copy__label">
+                        <span>正文</span>
+                        <button
+                          type="button"
+                          className="history-copy-button"
+                          aria-label="复制正文"
+                          onClick={() => void handleCopy("caption", selectedPostPayload.xiaohongshuCaption)}
+                        >
+                          {copiedKey === "caption" ? "已复制" : "复制正文"}
+                        </button>
+                      </div>
+                      <p>{selectedPostPayload.xiaohongshuCaption}</p>
+                    </div>
+                  </article>
+                </section>
+              ) : null}
+
               {selectedDynastyPayload ? (
                 <section className="history-stage__section history-stage__section--dynasty">
                   <div className="history-stage__heading">
@@ -475,18 +533,56 @@ export function HistoryPage() {
                           <span>{String(index + 1).padStart(2, "0")} · {module.type}</span>
                           <button
                             type="button"
-                            className="history-copy-button"
-                            aria-label={`复制${module.type}小红书正文`}
+                            className="history-copy-button history-copy-button--primary"
+                            aria-label={`复制${module.type}标题和正文`}
                             onClick={(event) => {
                               event.stopPropagation();
-                              void handleCopy(`dynasty-caption-${index}`, module.xiaohongshuCaption);
+                              void handleCopy(
+                                `dynasty-all-${index}`,
+                                `${module.topic}\n\n${module.xiaohongshuCaption}`
+                              );
                             }}
                           >
-                            {copiedKey === `dynasty-caption-${index}` ? "已复制" : "正文"}
+                            {copiedKey === `dynasty-all-${index}` ? "已复制全部" : "复制全部"}
                           </button>
                         </div>
-                        <strong>{module.topic}</strong>
-                        <p>{module.summary}</p>
+                        <div className="history-publish-copy history-publish-copy--compact">
+                          <div className="history-publish-copy__field">
+                            <div className="history-publish-copy__label">
+                              <span>标题</span>
+                              <button
+                                type="button"
+                                className="history-copy-button"
+                                aria-label={`复制${module.type}标题`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleCopy(`dynasty-title-${index}`, module.topic);
+                                }}
+                              >
+                                {copiedKey === `dynasty-title-${index}` ? "已复制" : "复制标题"}
+                              </button>
+                            </div>
+                            <h3>{module.topic}</h3>
+                          </div>
+                          <div className="history-publish-copy__field">
+                            <div className="history-publish-copy__label">
+                              <span>正文</span>
+                              <button
+                                type="button"
+                                className="history-copy-button"
+                                aria-label={`复制${module.type}小红书正文`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleCopy(`dynasty-caption-${index}`, module.xiaohongshuCaption);
+                                }}
+                              >
+                                {copiedKey === `dynasty-caption-${index}` ? "已复制" : "复制正文"}
+                              </button>
+                            </div>
+                            <p>{module.xiaohongshuCaption}</p>
+                          </div>
+                        </div>
+                        <p className="history-dynasty-summary">{module.summary}</p>
                         {module.cover ? (
                           <div className="history-dynasty-cover">
                             <div className="history-dynasty-cover__head">
@@ -530,23 +626,6 @@ export function HistoryPage() {
                               </button>
                             </div>
                           ))}
-                        </div>
-                        <div className="history-caption-card history-caption-card--compact">
-                          <div className="history-caption-card__head">
-                            <span>小红书正文</span>
-                            <button
-                              type="button"
-                              className="history-copy-button"
-                              aria-label={`复制${module.type}末尾正文`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void handleCopy(`dynasty-caption-${index}`, module.xiaohongshuCaption);
-                              }}
-                            >
-                              {copiedKey === `dynasty-caption-${index}` ? "已复制" : "复制正文"}
-                            </button>
-                          </div>
-                          <p>{module.xiaohongshuCaption}</p>
                         </div>
                       </article>
                     ))}
@@ -629,25 +708,6 @@ export function HistoryPage() {
                 </section>
               ) : null}
 
-              {selectedPostPayload ? (
-                <section className="history-stage__section history-stage__section--caption">
-                  <div className="history-stage__heading">
-                    <p className="eyebrow">Caption</p>
-                    <h2>小红书正文</h2>
-                    <button
-                      type="button"
-                      className="history-copy-button"
-                      aria-label="复制正文"
-                      onClick={() => void handleCopy("caption", selectedPostPayload.xiaohongshuCaption)}
-                    >
-                      {copiedKey === "caption" ? "已复制" : "复制"}
-                    </button>
-                  </div>
-                  <article className="history-caption-card">
-                    <p>{selectedPostPayload.xiaohongshuCaption}</p>
-                  </article>
-                </section>
-              ) : null}
             </>
           ) : (
             <div className="edge-empty">还没有历史知识推送，等下一次定时生成后这里会出现内容。</div>

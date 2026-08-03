@@ -364,10 +364,35 @@ describe("HistoryPage", () => {
     const secondCopyPromptButton = container.querySelector(
       'button[aria-label="复制第2张生图提示词"]'
     ) as HTMLButtonElement | null;
+    const copyTitleButton = container.querySelector(
+      'button[aria-label="复制标题"]'
+    ) as HTMLButtonElement | null;
+    const copyAllButton = container.querySelector(
+      'button[aria-label="复制标题和正文"]'
+    ) as HTMLButtonElement | null;
 
     expect(copyCaptionButton).toBeTruthy();
     expect(copyPromptButton).toBeTruthy();
     expect(secondCopyPromptButton).toBeTruthy();
+    expect(copyTitleButton).toBeTruthy();
+    expect(copyAllButton).toBeTruthy();
+
+    const publishCopy = container.querySelector(".history-publish-copy");
+    expect(publishCopy?.textContent?.indexOf("Silk Road")).toBeLessThan(
+      publishCopy?.textContent?.indexOf("Caption body for history post") ?? -1
+    );
+
+    await act(async () => {
+      copyTitleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith("Silk Road");
+
+    await act(async () => {
+      copyAllButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith("Silk Road\n\nCaption body for history post");
 
     await act(async () => {
       copyCaptionButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -772,22 +797,41 @@ describe("HistoryPage", () => {
     let copyCoverPromptButton = container.querySelector(
       'button[aria-label="复制王朝兴衰录封面生图提示词"]'
     ) as HTMLButtonElement | null;
-    let copyFinalContentButton = container.querySelector(
-      'button[aria-label="复制王朝兴衰录末尾正文"]'
+    const copyTitleButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录标题"]'
+    ) as HTMLButtonElement | null;
+    const copyAllButton = container.querySelector(
+      'button[aria-label="复制王朝兴衰录标题和正文"]'
     ) as HTMLButtonElement | null;
 
     expect(copyJsonButton).toBeTruthy();
     expect(copyContentButton).toBeTruthy();
     expect(copyPromptButton).toBeTruthy();
     expect(copyCoverPromptButton).toBeTruthy();
-    expect(copyFinalContentButton).toBeTruthy();
+    expect(copyTitleButton).toBeTruthy();
+    expect(copyAllButton).toBeTruthy();
+    expect(container.querySelector('button[aria-label="复制王朝兴衰录末尾正文"]')).toBeNull();
+
+    await act(async () => {
+      copyTitleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith("东汉是怎么一步步走向灭亡的");
+
+    await act(async () => {
+      copyAllButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenLastCalledWith(
+      "东汉是怎么一步步走向灭亡的\n\n东汉是怎么一步步走向灭亡的 小红书正文"
+    );
 
     await act(async () => {
       copyJsonButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     const copyCalls = writeText.mock.calls as unknown as string[][];
-    expect(JSON.parse(String(copyCalls[0]?.[0]))).toEqual(dynastyNotification.payload);
+    expect(JSON.parse(String(copyCalls.at(-1)?.[0]))).toEqual(dynastyNotification.payload);
 
     copyContentButton = container.querySelector(
       'button[aria-label="复制王朝兴衰录小红书正文"]'
@@ -829,16 +873,6 @@ describe("HistoryPage", () => {
     expect(copyCoverPromptButton?.classList.contains("history-copy-button--copied")).toBe(true);
     expect(copyCoverPromptButton?.textContent).toContain("已复制");
 
-    copyFinalContentButton = container.querySelector(
-      'button[aria-label="复制王朝兴衰录末尾正文"]'
-    ) as HTMLButtonElement | null;
-
-    await act(async () => {
-      copyFinalContentButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(writeText).toHaveBeenLastCalledWith("东汉是怎么一步步走向灭亡的 小红书正文");
-    expect(copyFinalContentButton?.textContent).toContain("已复制");
   });
 
   it("keeps the history archive list independently scrollable", () => {
