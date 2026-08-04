@@ -777,7 +777,10 @@ export const agent = defineAgent({
               title: `朝代四件套：${payload.dynasty}`,
               body: `已生成${payload.dynasty}朝代四件套。`,
               persistent: true,
-              payload
+              payload: {
+                ...payload,
+                category: "朝代"
+              }
             }
           ],
           domainUpdates: {
@@ -850,7 +853,10 @@ export const agent = defineAgent({
               title: `“最”系列：${payload.topic}`,
               body: payload.summary,
               persistent: true,
-              payload
+              payload: {
+                ...payload,
+                category: "最"
+              }
             }
           ],
           domainUpdates: {
@@ -912,7 +918,10 @@ export const agent = defineAgent({
             title: `每日历史知识点：${payload.topic}`,
             body: payload.summary,
             persistent: true,
-            payload
+            payload: {
+              ...payload,
+              category: "主题"
+            }
           }
         ],
         domainUpdates: {

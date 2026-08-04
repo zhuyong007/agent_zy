@@ -175,7 +175,7 @@ function createHistoryAdapter(options: {
           engagementRate: null
         },
         lastSyncedAt: meta?.lastSyncedAt ?? null,
-        sourceUrl: meta?.sourceUrl ?? currentXhs?.sourceUrl ?? "https://creator.xiaohongshu.com/statistics/data-analysis",
+        sourceUrl: meta?.sourceUrl ?? currentXhs?.sourceUrl ?? "等待导入 Excel",
         status: currentXhs?.status ?? "idle",
         lastError: currentXhs?.lastError ?? null
       };

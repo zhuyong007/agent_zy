@@ -161,6 +161,48 @@ const dynastyDashboard: DashboardData = {
   notifications: [dynastyNotification]
 } as unknown as DashboardData;
 
+const mostNotification: NotificationRecord = {
+  ...historyNotification,
+  id: "history-most-1",
+  title: "“最”系列：历史上最漫长的战争",
+  createdAt: "2026-05-24T08:30:00.000Z",
+  payload: {
+    ...(historyNotification.payload as HistoryPostPayload),
+    category: "最",
+    topic: "历史上最漫长的战争",
+    summary: "限定比较范围与战争持续时间口径后得到的历史比较。",
+    generatedAt: "2026-05-24T08:30:00.000Z"
+  }
+};
+
+const futureCategoryNotification: NotificationRecord = {
+  ...historyNotification,
+  id: "history-figure-1",
+  title: "人物：改变历史的人",
+  createdAt: "2026-05-25T09:45:00.000Z",
+  payload: {
+    ...(historyNotification.payload as HistoryPostPayload),
+    category: "人物",
+    topic: "改变历史的人",
+    summary: "这是一段用于验证缩略展示的很长摘要，历史记录里只需要看到足以识别内容的部分，剩余图文结构、生图提示词与完整正文都应在点击后进入主工作区查看，避免侧栏被大量细节占满并影响浏览效率。",
+    generatedAt: "2026-05-25T09:45:00.000Z"
+  }
+};
+
+const groupedArchiveDashboard: DashboardData = {
+  ...dashboard,
+  notifications: [historyNotification, dynastyNotification, mostNotification, futureCategoryNotification]
+} as unknown as DashboardData;
+
+const historyErrorDashboard: DashboardData = {
+  ...dashboard,
+  historyXhs: {
+    ...dashboard.historyXhs!,
+    status: "failed",
+    lastError: "历史数据同步失败"
+  }
+};
+
 const dashboardAfterDelete: DashboardData = {
   ...dashboard,
   notifications: []
@@ -317,6 +359,70 @@ describe("HistoryPage", () => {
 
     expect(container.querySelector(".history-archive__toggle")?.getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector(".history-archive__list")).toBeNull();
+  });
+
+  it("groups archive previews by category and opens the full selected result", async () => {
+    await renderHistoryPage(groupedArchiveDashboard);
+
+    const archiveToggle = container.querySelector(".history-archive__toggle") as HTMLButtonElement | null;
+    await act(async () => {
+      archiveToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const categoryTabs = Array.from(
+      container.querySelectorAll(".history-archive__category-tabs button")
+    ) as HTMLButtonElement[];
+    const archiveList = container.querySelector(".history-archive__list");
+    expect(archiveList?.previousElementSibling?.classList.contains("history-archive__category-tabs")).toBe(true);
+    expect(archiveList?.querySelector(".history-archive__category-tabs")).toBeNull();
+    expect(categoryTabs.map((button) => button.querySelector("span")?.textContent)).toEqual([
+      "朝代",
+      "最",
+      "人物",
+      "主题"
+    ]);
+    expect(categoryTabs.find((button) => button.textContent?.startsWith("主题"))?.getAttribute("aria-selected")).toBe("true");
+    expect(container.querySelector('button[aria-label="查看完整内容 东汉"]')).toBeNull();
+
+    const figureTab = categoryTabs.find((button) => button.textContent?.startsWith("人物"));
+    await act(async () => {
+      figureTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const futurePreviewButton = container.querySelector(
+      'button[aria-label="查看完整内容 改变历史的人"]'
+    ) as HTMLButtonElement | null;
+    const futurePreview = futurePreviewButton?.querySelector("p")?.textContent ?? "";
+    expect(futurePreview.endsWith("…")).toBe(true);
+    expect(futurePreview.length).toBeLessThanOrEqual(72);
+
+    const dynastyTab = categoryTabs.find((button) => button.textContent?.startsWith("朝代"));
+    await act(async () => {
+      dynastyTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector('time[datetime="2026-05-23T08:00:00.000Z"]')).not.toBeNull();
+
+    const dynastyPreviewButton = container.querySelector(
+      'button[aria-label="查看完整内容 东汉"]'
+    ) as HTMLButtonElement | null;
+    expect(dynastyPreviewButton).toBeTruthy();
+
+    await act(async () => {
+      dynastyPreviewButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector(".history-archive__toggle")?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector(".history-archive__list")).toBeNull();
+    expect(container.querySelector(".history-stage__hero h1")?.textContent).toBe("东汉");
+    expect(container.textContent).toContain("朝代四件套");
+  });
+
+  it("does not render obsolete persisted xiaohongshu errors", async () => {
+    await renderHistoryPage(historyErrorDashboard);
+
+    expect(container.textContent).not.toContain("历史数据同步失败");
+    expect(container.querySelector('button[aria-label="关闭小红书数据错误"]')).toBeNull();
   });
 
   it("submits the most series without a topic input", async () => {

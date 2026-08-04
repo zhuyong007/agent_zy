@@ -16,6 +16,7 @@ import {
   updateHistoryCommentReply
 } from "../api";
 import { isHistoryDynastyPayload, isHistoryPostPayload } from "../history-view";
+import { HistoryErrorNotice } from "./history-error-notice";
 
 type ReplyMode = "manual" | "screenshot";
 
@@ -235,7 +236,17 @@ export function HistoryCommentReplyPanel(props: {
         ? errorMessage(createMutation.error, "评论回复生成失败")
         : updateMutation.isError
           ? errorMessage(updateMutation.error, "评论回复重新校验失败")
-          : null);
+          : deleteMutation.isError
+            ? errorMessage(deleteMutation.error, "评论回复删除失败")
+            : null);
+
+  function dismissVisibleError() {
+    setLocalError(null);
+    extractionMutation.reset();
+    createMutation.reset();
+    updateMutation.reset();
+    deleteMutation.reset();
+  }
   const canCopy = Boolean(activeRecord && activeRecord.factualStatus === "ready" && !replyDirty && replyText);
 
   return (
@@ -461,7 +472,13 @@ export function HistoryCommentReplyPanel(props: {
         </div>
       </div>
 
-      {visibleError ? <div className="news-error">{visibleError}</div> : null}
+      {visibleError ? (
+        <HistoryErrorNotice
+          message={visibleError}
+          dismissLabel="关闭评论回复错误"
+          onDismiss={dismissVisibleError}
+        />
+      ) : null}
 
       {props.records.length > 0 ? (
         <div className="history-reply-drafts">

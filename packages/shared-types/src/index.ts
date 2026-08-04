@@ -776,6 +776,7 @@ export interface HistoryPostCover {
 }
 
 export interface HistoryPostPayload {
+  category?: string;
   topic: string;
   summary: string;
   cover?: HistoryPostCover;
@@ -796,6 +797,7 @@ export interface HistoryDynastyModule extends HistoryPostPayload {
 }
 
 export interface HistoryDynastyPayload {
+  category?: string;
   dynasty: string;
   modules: HistoryDynastyModule[];
 }

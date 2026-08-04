@@ -354,7 +354,7 @@ function createEmptySummaryState(): SummaryState {
   };
 }
 
-const XHS_ANALYTICS_URL = "https://creator.xiaohongshu.com/statistics/data-analysis";
+const XHS_ANALYTICS_SOURCE_LABEL = "等待导入 Excel";
 
 function createEmptyHistoryXhsState(): HistoryXhsState {
   return {
@@ -371,7 +371,7 @@ function createEmptyHistoryXhsState(): HistoryXhsState {
     lastSyncedAt: null,
     status: "idle",
     lastError: null,
-    sourceUrl: XHS_ANALYTICS_URL
+    sourceUrl: XHS_ANALYTICS_SOURCE_LABEL
   };
 }
 
@@ -1516,7 +1516,7 @@ function normalizeHistoryXhsState(historyXhs: Partial<HistoryXhsState> | undefin
     sourceUrl:
       typeof historyXhs?.sourceUrl === "string" && historyXhs.sourceUrl
         ? historyXhs.sourceUrl
-        : XHS_ANALYTICS_URL
+        : XHS_ANALYTICS_SOURCE_LABEL
   };
 }
 

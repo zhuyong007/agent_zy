@@ -30,16 +30,14 @@ function buildOverview(posts: HistoryXhsPostMetrics[]): HistoryXhsState["overvie
 export function buildHistoryXhsState(input: {
   posts: HistoryXhsPostMetrics[];
   syncedAt?: string;
-  status?: HistoryXhsState["status"];
-  lastError?: string | null;
   sourceUrl?: string;
 }): HistoryXhsState {
   return {
     posts: input.posts,
     overview: buildOverview(input.posts),
     lastSyncedAt: input.syncedAt ?? new Date().toISOString(),
-    status: input.status ?? "idle",
-    lastError: input.lastError ?? null,
+    status: "idle",
+    lastError: null,
     sourceUrl: input.sourceUrl ?? DEFAULT_SOURCE_LABEL
   };
 }
@@ -131,12 +129,7 @@ export function parseHistoryXhsWorkbook(buffer: Buffer, fileName = DEFAULT_SOURC
   const sheet = sheetName ? workbook.Sheets[sheetName] : null;
 
   if (!sheet) {
-    return buildHistoryXhsState({
-      posts: [],
-      status: "failed",
-      lastError: "Excel 文件中没有可读取的工作表。",
-      sourceUrl: fileName
-    });
+    throw new Error("Excel 文件中没有可读取的工作表。");
   }
 
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -146,12 +139,7 @@ export function parseHistoryXhsWorkbook(buffer: Buffer, fileName = DEFAULT_SOURC
   const headerRowIndex = findHeaderRow(rows);
 
   if (headerRowIndex < 0) {
-    return buildHistoryXhsState({
-      posts: [],
-      status: "failed",
-      lastError: "没有在 Excel 中找到“笔记标题”表头，请导入小红书笔记列表明细表。",
-      sourceUrl: fileName
-    });
+    throw new Error("没有在 Excel 中找到“笔记标题”表头，请导入小红书笔记列表明细表。");
   }
 
   const headers = rows[headerRowIndex]?.map(normalizeHeader) ?? [];
@@ -187,12 +175,7 @@ export function parseHistoryXhsWorkbook(buffer: Buffer, fileName = DEFAULT_SOURC
     .filter((post): post is HistoryXhsPostMetrics => Boolean(post));
 
   if (posts.length === 0) {
-    return buildHistoryXhsState({
-      posts: [],
-      status: "failed",
-      lastError: "Excel 中没有识别到任何笔记数据。",
-      sourceUrl: fileName
-    });
+    throw new Error("Excel 中没有识别到任何笔记数据。");
   }
 
   return buildHistoryXhsState({

@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCaptionExcerpt,
+  getHistoryNotificationCategory,
   getHistoryHomePreviewRule,
   getHistoryNotifications,
+  groupHistoryNotifications,
   isHistoryDynastyPayload
 } from "./history-view";
 
@@ -67,5 +69,76 @@ describe("history view helpers", () => {
     ];
 
     expect(getHistoryNotifications(notifications)).toHaveLength(0);
+  });
+
+  it("groups old and future history categories without relying on topic wording", () => {
+    const postPayload = {
+      topic: "丝绸之路",
+      summary: "一段摘要",
+      cardCount: 0,
+      cards: [],
+      xiaohongshuCaption: "正文",
+      generatedAt: "2026-06-03T10:00:00.000Z"
+    };
+    const notifications = getHistoryNotifications([
+      {
+        id: "topic",
+        kind: "history-post",
+        title: "每日历史知识点：丝绸之路",
+        body: "一段摘要",
+        createdAt: "2026-06-03T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: postPayload
+      },
+      {
+        id: "most-old",
+        kind: "history-post",
+        title: "“最”系列：历史上最漫长的战争",
+        body: "旧数据没有 category",
+        createdAt: "2026-06-04T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          ...postPayload,
+          topic: "历史上最漫长的战争"
+        }
+      },
+      {
+        id: "future-category",
+        kind: "history-post",
+        title: "改变历史的人",
+        body: "未来新增类别",
+        createdAt: "2026-06-05T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          ...postPayload,
+          category: "人物",
+          topic: "改变历史的人"
+        }
+      },
+      {
+        id: "dynasty-old",
+        kind: "history-post",
+        title: "朝代四件套：东汉",
+        body: "旧朝代数据没有 category",
+        createdAt: "2026-06-06T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          dynasty: "东汉",
+          modules: []
+        }
+      }
+    ]);
+
+    expect(getHistoryNotificationCategory(notifications[1]!)).toBe("最");
+    expect(groupHistoryNotifications(notifications).map((group) => group.category)).toEqual([
+      "朝代",
+      "最",
+      "人物",
+      "主题"
+    ]);
   });
 });

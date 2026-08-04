@@ -2,6 +2,13 @@ import type { HistoryDynastyPayload, HistoryNotificationPayload, HistoryPostPayl
 
 import type { HomeModuleSize } from "./home-layout";
 
+export type HistoryNotificationRecord = NotificationRecord & { payload: HistoryNotificationPayload };
+
+export interface HistoryArchiveGroup {
+  category: string;
+  notifications: HistoryNotificationRecord[];
+}
+
 export interface HistoryHomePreviewRule {
   visibleCards: number;
   showSummary: boolean;
@@ -60,10 +67,60 @@ export function getHistoryHomePreviewRule(size: HomeModuleSize) {
 
 export function getHistoryNotifications(notifications: NotificationRecord[]) {
   return notifications.filter(
-    (notification): notification is NotificationRecord & { payload: HistoryNotificationPayload } =>
+    (notification): notification is HistoryNotificationRecord =>
       notification.kind === "history-post" &&
       (isHistoryPostPayload(notification.payload) || isHistoryDynastyPayload(notification.payload))
   );
+}
+
+export function getHistoryNotificationCategory(notification: HistoryNotificationRecord) {
+  const explicitCategory = notification.payload.category?.trim();
+
+  if (explicitCategory) {
+    return explicitCategory;
+  }
+
+  if (isHistoryDynastyPayload(notification.payload)) {
+    return "朝代";
+  }
+
+  if (/^[“"]?最[”"]?系列[：:]/u.test(notification.title.trim())) {
+    return "最";
+  }
+
+  return "主题";
+}
+
+function getHistoryCategoryOrder(category: string) {
+  if (category === "朝代") {
+    return 0;
+  }
+  if (category === "最") {
+    return 1;
+  }
+  if (category === "主题") {
+    return 99;
+  }
+  return 50;
+}
+
+export function groupHistoryNotifications(notifications: HistoryNotificationRecord[]): HistoryArchiveGroup[] {
+  const groups = new Map<string, HistoryNotificationRecord[]>();
+
+  for (const notification of notifications) {
+    const category = getHistoryNotificationCategory(notification);
+    const group = groups.get(category) ?? [];
+    group.push(notification);
+    groups.set(category, group);
+  }
+
+  return Array.from(groups, ([category, groupedNotifications]) => ({
+    category,
+    notifications: groupedNotifications
+  })).sort((left, right) => {
+    const order = getHistoryCategoryOrder(left.category) - getHistoryCategoryOrder(right.category);
+    return order !== 0 ? order : left.category.localeCompare(right.category, "zh-CN");
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

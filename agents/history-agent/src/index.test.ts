@@ -266,6 +266,7 @@ describe("history agent", () => {
         persistent: true,
         title: "每日历史知识点：玄奘取经为什么重要",
         payload: expect.objectContaining({
+          category: "主题",
           topic: "玄奘取经为什么重要",
           cover: expect.objectContaining({
             title: "玄奘取经为什么重要，一眼看懂",
@@ -858,6 +859,7 @@ ${JSON.stringify({
       kind: "history-post",
       title: "“最”系列：谁是中国历史上最富有的商人？",
       payload: expect.objectContaining({
+        category: "最",
         topic: "谁是中国历史上最富有的商人？"
       })
     });
@@ -999,6 +1001,7 @@ ${JSON.stringify({
         persistent: true,
         title: "朝代四件套：东汉",
         payload: expect.objectContaining({
+          category: "朝代",
           dynasty: "东汉",
           modules: [
             expect.objectContaining({

@@ -640,6 +640,7 @@ describe("importHistoryXhsAnalytics", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/dashboard");
     expect(dashboard.historyXhs?.overview.totalViews).toBe(1200);
   });
+
 });
 
 describe("history comment reply API", () => {

@@ -5,6 +5,9 @@ import type { HistoryDynastyPayload, HistoryPostPayload } from "@agent-zy/shared
 
 import { cancelNotification, fetchDashboard, generateHistory, importHistoryXhsAnalytics, openDashboardStream, reportClientEvent } from "../api";
 import {
+  buildCaptionExcerpt,
+  getHistoryNotificationCategory,
+  groupHistoryNotifications,
   getHistoryNotifications,
   getHistoryPayloadSummary,
   getHistoryPayloadTitle,
@@ -15,6 +18,7 @@ import {
 import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference } from "./dashboard-page";
 import { DataSyncControl } from "./data-sync-control";
 import { HistoryCommentReplyPanel } from "./history-comment-reply-panel";
+import { HistoryErrorNotice } from "./history-error-notice";
 
 function formatDateTime(timestamp?: string | null) {
   if (!timestamp) {
@@ -26,6 +30,17 @@ function formatDateTime(timestamp?: string | null) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
+  });
+}
+
+function formatArchiveDateTime(timestamp: string) {
+  return new Date(timestamp).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
   });
 }
 
@@ -86,6 +101,7 @@ export function HistoryPage() {
   const [topicInput, setTopicInput] = useState("");
   const [generationMode, setGenerationMode] = useState<"topic" | "dynasty" | "most">("topic");
   const [archiveExpanded, setArchiveExpanded] = useState(false);
+  const [activeArchiveCategory, setActiveArchiveCategory] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedPromptKeys, setCopiedPromptKeys] = useState<Set<string>>(() => new Set());
   const xhsFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -197,6 +213,10 @@ export function HistoryPage() {
     () => getHistoryNotifications(dashboard?.notifications ?? []),
     [dashboard?.notifications]
   );
+  const historyArchiveGroups = useMemo(
+    () => groupHistoryNotifications(historyNotifications),
+    [historyNotifications]
+  );
 
   useEffect(() => {
     if (historyNotifications[0] && !historyNotifications.some((item) => item.id === selectedId)) {
@@ -206,6 +226,29 @@ export function HistoryPage() {
 
   const selectedNotification =
     historyNotifications.find((notification) => notification.id === selectedId) ?? historyNotifications[0] ?? null;
+  const selectedArchiveCategory = selectedNotification
+    ? getHistoryNotificationCategory(selectedNotification)
+    : null;
+
+  useEffect(() => {
+    setActiveArchiveCategory((current) => {
+      if (current && historyArchiveGroups.some((group) => group.category === current)) {
+        return current;
+      }
+
+      return historyArchiveGroups.find((group) => group.category === selectedArchiveCategory)?.category
+        ?? historyArchiveGroups[0]?.category
+        ?? null;
+    });
+  }, [historyArchiveGroups, selectedArchiveCategory]);
+
+  const activeArchiveGroup =
+    historyArchiveGroups.find((group) => group.category === activeArchiveCategory)
+    ?? historyArchiveGroups[0]
+    ?? null;
+  const activeArchiveGroupIndex = activeArchiveGroup
+    ? historyArchiveGroups.findIndex((group) => group.category === activeArchiveGroup.category)
+    : -1;
 
   useEffect(() => {
     setCopiedPromptKeys(loadCopiedPromptKeys(selectedNotification?.id));
@@ -222,6 +265,16 @@ export function HistoryPage() {
   const selectedTitle = selectedPayload ? getHistoryPayloadTitle(selectedPayload) : null;
   const selectedSummary = selectedPayload ? getHistoryPayloadSummary(selectedPayload) : null;
   const selectedUpdatedAt = selectedNotification ? getHistoryPayloadUpdatedAt(selectedNotification) : null;
+  const xhsErrorMessage = historyXhsImportMutation.isError
+    ? historyXhsImportMutation.error instanceof Error
+      ? historyXhsImportMutation.error.message
+      : "导入小红书数据失败"
+    : null;
+  const historyGenerateErrorMessage = historyGenerateMutation.isError
+    ? historyGenerateMutation.error instanceof Error
+      ? historyGenerateMutation.error.message
+      : "历史知识生成失败，请稍后重试。"
+    : null;
   const totalCards = historyNotifications.reduce(
     (count, notification) =>
       count +
@@ -418,13 +471,12 @@ export function HistoryPage() {
                 ))}
               </div>
             ) : null}
-            {historyXhs?.lastError || historyXhsImportMutation.isError ? (
-              <div className="news-error">
-                {historyXhs?.lastError ??
-                  (historyXhsImportMutation.error instanceof Error
-                    ? historyXhsImportMutation.error.message
-                    : "导入小红书数据失败")}
-              </div>
+            {xhsErrorMessage ? (
+              <HistoryErrorNotice
+                message={xhsErrorMessage}
+                dismissLabel="关闭小红书数据错误"
+                onDismiss={() => historyXhsImportMutation.reset()}
+              />
             ) : null}
           </section>
 
@@ -712,13 +764,12 @@ export function HistoryPage() {
           ) : (
             <div className="edge-empty">还没有历史知识推送，等下一次定时生成后这里会出现内容。</div>
           )}
-          {historyGenerateMutation.isError ? (
-            <div className="news-error">
-              错误：
-              {historyGenerateMutation.error instanceof Error
-                ? historyGenerateMutation.error.message
-                : "历史知识生成失败，请稍后重试。"}
-            </div>
+          {historyGenerateErrorMessage ? (
+            <HistoryErrorNotice
+              message={`错误：${historyGenerateErrorMessage}`}
+              dismissLabel="关闭历史生成错误"
+              onDismiss={() => historyGenerateMutation.reset()}
+            />
           ) : null}
         </section>
 
@@ -743,40 +794,79 @@ export function HistoryPage() {
           </div>
           {archiveExpanded ? (
             <>
+              {historyNotifications.length > 0 ? (
+                <div className="history-archive__category-tabs" role="tablist" aria-label="历史记录分类">
+                  {historyArchiveGroups.map((group, groupIndex) => (
+                    <button
+                      key={group.category}
+                      id={`history-archive-tab-${groupIndex}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={group.category === activeArchiveGroup?.category}
+                      aria-controls="history-archive-category-panel"
+                      className={group.category === activeArchiveGroup?.category ? "is-active" : ""}
+                      onClick={() => setActiveArchiveCategory(group.category)}
+                    >
+                      <span>{group.category}</span>
+                      <strong>{group.notifications.length}</strong>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div id="history-archive-content" className="history-archive__list">
                 {historyNotifications.length > 0 ? (
-                  historyNotifications.map((notification) => {
-                    const active = notification.id === selectedNotification?.id;
-                    const title = getHistoryPayloadTitle(notification.payload);
-                    const summary = getHistoryPayloadSummary(notification.payload);
-                    const updatedAt = getHistoryPayloadUpdatedAt(notification);
-
-                    return (
-                      <article
-                        key={notification.id}
-                        className={`history-archive__item${active ? " is-active" : ""}`}
+                  activeArchiveGroup ? (
+                      <section
+                        key={activeArchiveGroup.category}
+                        id="history-archive-category-panel"
+                        className="history-archive__group"
+                        role="tabpanel"
+                        aria-labelledby={`history-archive-tab-${activeArchiveGroupIndex}`}
                       >
-                        <button
-                          type="button"
-                          className="history-archive__select"
-                          onClick={() => setSelectedId(notification.id)}
-                        >
-                          <span>{formatDateTime(updatedAt)}</span>
-                          <strong>{title}</strong>
-                          <p>{summary}</p>
-                        </button>
-                        <button
-                          type="button"
-                          className="history-archive__delete"
-                          aria-label={`删除 ${title}`}
-                          disabled={historyDeleteMutation.isPending}
-                          onClick={() => historyDeleteMutation.mutate(notification.id)}
-                        >
-                          删除
-                        </button>
-                      </article>
-                    );
-                  })
+                        <div className="history-archive__group-items">
+                          {activeArchiveGroup.notifications.map((notification) => {
+                            const active = notification.id === selectedNotification?.id;
+                            const title = getHistoryPayloadTitle(notification.payload);
+                            const summary = getHistoryPayloadSummary(notification.payload);
+                            const preview = buildCaptionExcerpt(summary.replace(/\s+/gu, " ").trim(), 72);
+                            const updatedAt = getHistoryPayloadUpdatedAt(notification);
+
+                            return (
+                              <article
+                                key={notification.id}
+                                className={`history-archive__item${active ? " is-active" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="history-archive__select"
+                                  aria-label={`查看完整内容 ${title}`}
+                                  onClick={() => {
+                                    setSelectedId(notification.id);
+                                    setArchiveExpanded(false);
+                                  }}
+                                >
+                                  <time dateTime={updatedAt}>{formatArchiveDateTime(updatedAt)}</time>
+                                  <strong>{title}</strong>
+                                  <p>{preview}</p>
+                                  <span className="history-archive__open">
+                                    查看完整内容 <span aria-hidden="true">→</span>
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="history-archive__delete"
+                                  aria-label={`删除 ${title}`}
+                                  disabled={historyDeleteMutation.isPending}
+                                  onClick={() => historyDeleteMutation.mutate(notification.id)}
+                                >
+                                  删除
+                                </button>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ) : null
                 ) : (
                   <div className="edge-empty">暂无历史知识存档。</div>
                 )}

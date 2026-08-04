@@ -54,15 +54,12 @@ describe("history xiaohongshu workbook import", () => {
     });
   });
 
-  it("returns a clear failure when the workbook has no note title header", () => {
+  it("throws a clear failure when the workbook has no note title header", () => {
     const buffer = createWorkbookBuffer([
       ["标题", "观看量"],
       ["示例", 100]
     ]);
 
-    const state = parseHistoryXhsWorkbook(buffer, "bad.xlsx");
-
-    expect(state.status).toBe("failed");
-    expect(state.lastError).toContain("笔记标题");
+    expect(() => parseHistoryXhsWorkbook(buffer, "bad.xlsx")).toThrow("笔记标题");
   });
 });
