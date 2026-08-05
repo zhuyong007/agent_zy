@@ -8,6 +8,7 @@ import { getModelProvider, listModelProviders } from "./model-providers";
 describe("model provider registry", () => {
   afterEach(() => {
     delete process.env.DEEPSEEK_MODEL;
+    delete process.env.KIMI_MODEL;
   });
 
   it("defines built-in providers with capabilities and safe auth metadata", () => {
@@ -16,6 +17,7 @@ describe("model provider registry", () => {
     expect(providers.map((provider) => provider.id)).toEqual([
       "modelscope",
       "deepseek",
+      "kimi",
       "openai",
       "doubao",
       "ollama",
@@ -23,6 +25,12 @@ describe("model provider registry", () => {
     ]);
     expect(getModelProvider("modelscope")).toMatchObject({
       id: "modelscope",
+      requiresApiKey: true,
+      compatibleMode: "openai"
+    });
+    expect(getModelProvider("kimi")).toMatchObject({
+      id: "kimi",
+      defaultBaseUrl: "https://api.moonshot.cn/v1",
       requiresApiKey: true,
       compatibleMode: "openai"
     });
@@ -43,6 +51,9 @@ describe("model provider registry", () => {
     expect(envExample).toContain("MODELSCOPE_MODEL=");
     expect(envExample).toContain("DEEPSEEK_API_KEY=");
     expect(envExample).toContain("DEEPSEEK_BASE_URL=");
+    expect(envExample).toContain("KIMI_API_KEY=");
+    expect(envExample).toContain("KIMI_BASE_URL=");
+    expect(envExample).toContain("KIMI_MODEL=");
     expect(envExample).toContain("OPENAI_API_KEY=");
     expect(envExample).toContain("OPENAI_BASE_URL=");
     expect(envExample).toContain("DOUBAO_API_KEY=");

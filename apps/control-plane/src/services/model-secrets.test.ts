@@ -11,6 +11,7 @@ describe("model secrets repository", () => {
 
   afterEach(() => {
     delete process.env.OPENAI_API_KEY;
+    delete process.env.KIMI_API_KEY;
     for (const dataDir of dataDirs.splice(0)) {
       rmSync(dataDir, { recursive: true, force: true });
     }
@@ -61,6 +62,17 @@ describe("model secrets repository", () => {
       hasApiKey: false,
       maskedKey: null,
       apiKeySource: null
+    });
+  });
+
+  it("resolves Kimi credentials from KIMI_API_KEY", () => {
+    const repository = createModelSecretsRepository(createTempDataDir());
+    process.env.KIMI_API_KEY = "sk-kimi-secret-abcd";
+
+    expect(repository.resolve({ profileId: "profile-kimi", provider: "kimi" })).toMatchObject({
+      value: "sk-kimi-secret-abcd",
+      source: "env",
+      maskedKey: "sk-****abcd"
     });
   });
 });

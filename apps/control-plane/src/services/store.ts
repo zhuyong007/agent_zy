@@ -283,35 +283,46 @@ function createEnvModelScopeProfile(createdAt = nowIso()): ModelProfile {
   };
 }
 
+function createEnvKimiProfile(createdAt = nowIso()): ModelProfile {
+  return {
+    id: "kimi-default",
+    displayName: "Kimi default model",
+    provider: "kimi",
+    modelName: process.env.KIMI_MODEL ?? "kimi-k3",
+    baseUrl: process.env.KIMI_BASE_URL ?? "https://api.moonshot.cn/v1",
+    apiKeyRef: "env:KIMI_API_KEY",
+    capabilities: ["chat", "text", "vision"],
+    temperature: 1,
+    maxTokens: 2000,
+    enabled: true,
+    isDefault: false,
+    purpose: ["general", "summary", "vision"],
+    createdAt,
+    updatedAt: createdAt
+  };
+}
+
+function createEnvModelProfiles(createdAt = nowIso()): ModelProfile[] {
+  return [
+    ...(process.env.MODELSCOPE_API_KEY ? [createEnvModelScopeProfile(createdAt)] : []),
+    ...(process.env.KIMI_API_KEY ? [createEnvKimiProfile(createdAt)] : [])
+  ];
+}
+
 function createInitialModelSettingsState(): ModelSettingsState {
   const createdAt = nowIso();
+  const envProfiles = createEnvModelProfiles(createdAt);
 
-  if (process.env.MODELSCOPE_API_KEY) {
-    const profile: ModelProfile = {
-      id: "modelscope-default",
-      displayName: "ModelScope 默认模型",
-      provider: "modelscope",
-      modelName: process.env.MODELSCOPE_MODEL ?? "Qwen/Qwen3-235B-A22B",
-      baseUrl: process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1",
-      apiKeyRef: "env:MODELSCOPE_API_KEY",
-      capabilities: ["chat", "text", "vision"],
-      temperature: 0.7,
-      maxTokens: 2000,
-      enabled: true,
-      isDefault: true,
-      purpose: ["general", "summary", "vision"],
-      createdAt,
-      updatedAt: createdAt
-    };
+  if (envProfiles.length > 0) {
+    const defaultProfile = envProfiles[0];
 
     return {
-      profiles: [profile],
-      defaultProfileId: profile.id,
-      purposeDefaults: {
-        general: profile.id,
-        summary: profile.id,
-        vision: profile.id
-      },
+      profiles: envProfiles.map((profile) => ({
+        ...profile,
+        isDefault: profile.id === defaultProfile.id
+      })),
+      defaultProfileId: defaultProfile.id,
+      purposeDefaults: Object.fromEntries(defaultProfile.purpose.map((purpose) => [purpose, defaultProfile.id])),
       agentDefaults: {},
       lastUpdatedAt: createdAt
     };
@@ -1581,6 +1592,7 @@ function isModelProviderId(value: unknown): value is ModelProviderId {
   return (
     value === "modelscope" ||
     value === "deepseek" ||
+    value === "kimi" ||
     value === "openai" ||
     value === "doubao" ||
     value === "ollama" ||
@@ -1592,9 +1604,21 @@ function isModelPurpose(value: unknown): value is ModelPurpose {
   return MODEL_PURPOSES.includes(value as ModelPurpose);
 }
 
+function inferModelProvider(profile: Partial<ModelProfile>): ModelProviderId {
+  if (profile.provider === "modelscope" && typeof profile.baseUrl === "string" && /moonshot|kimi/i.test(profile.baseUrl)) {
+    return "kimi";
+  }
+
+  if (profile.provider === "modelscope" && typeof profile.modelName === "string" && /^kimi-|^moonshot-/i.test(profile.modelName)) {
+    return "kimi";
+  }
+
+  return isModelProviderId(profile.provider) ? profile.provider : "modelscope";
+}
+
 function normalizeModelProfile(profile: Partial<ModelProfile>, fallbackIndex: number): ModelProfile {
   const now = nowIso();
-  const provider = isModelProviderId(profile.provider) ? profile.provider : "modelscope";
+  const provider = inferModelProvider(profile);
   const providerDefinition = getModelProvider(provider);
   const capabilities = (profile.capabilities ?? []).filter((capability) =>
     providerDefinition?.supportedCapabilities.includes(capability)
@@ -1633,11 +1657,9 @@ function normalizeModelSettingsState(
   }
 
   let profiles = modelSettings.profiles.map(normalizeModelProfile);
-  const envProfile = process.env.MODELSCOPE_API_KEY
-    ? createEnvModelScopeProfile(modelSettings.lastUpdatedAt ?? nowIso())
-    : null;
+  const envProfiles = createEnvModelProfiles(modelSettings.lastUpdatedAt ?? nowIso());
 
-  if (envProfile) {
+  for (const envProfile of envProfiles) {
     const existingIndex = profiles.findIndex(
       (profile) => profile.id === envProfile.id || profile.apiKeyRef === envProfile.apiKeyRef
     );
@@ -1659,7 +1681,10 @@ function normalizeModelSettingsState(
       ? modelSettings.defaultProfileId
       : null;
   const defaultProfileId =
-    storedDefaultProfileId ?? envProfile?.id ?? profiles.find((profile) => profile.isDefault && profile.enabled)?.id ?? null;
+    storedDefaultProfileId ??
+    envProfiles[0]?.id ??
+    profiles.find((profile) => profile.isDefault && profile.enabled)?.id ??
+    null;
   const purposeDefaults = Object.fromEntries(
     Object.entries(modelSettings.purposeDefaults ?? {}).filter(
       ([purpose, profileId]) =>
@@ -1669,9 +1694,11 @@ function normalizeModelSettingsState(
     )
   );
 
-  if (envProfile && defaultProfileId === envProfile.id) {
-    for (const purpose of envProfile.purpose) {
-      purposeDefaults[purpose] = envProfile.id;
+  for (const envProfile of envProfiles) {
+    if (defaultProfileId === envProfile.id) {
+      for (const purpose of envProfile.purpose) {
+        purposeDefaults[purpose] = envProfile.id;
+      }
     }
   }
 

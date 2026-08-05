@@ -1773,6 +1773,7 @@ export interface InterviewOverview {
 export type ModelProviderId =
   | "modelscope"
   | "deepseek"
+  | "kimi"
   | "openai"
   | "doubao"
   | "ollama"

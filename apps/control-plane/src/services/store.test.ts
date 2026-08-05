@@ -1024,6 +1024,68 @@ describe("control-plane store", () => {
     }
   });
 
+  it("bootstraps model settings from Kimi environment variables", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    delete process.env.MODELSCOPE_API_KEY;
+    process.env.KIMI_API_KEY = "sk-kimi-env-secret";
+    process.env.KIMI_BASE_URL = "https://api.moonshot.cn/v1";
+    process.env.KIMI_MODEL = "kimi-k3";
+
+    try {
+      const store = createControlPlaneStore(dataDir);
+      const state = store.getState();
+
+      expect(state.modelSettings.profiles).toEqual([
+        expect.objectContaining({
+          id: "kimi-default",
+          provider: "kimi",
+          modelName: "kimi-k3",
+          baseUrl: "https://api.moonshot.cn/v1",
+          apiKeyRef: "env:KIMI_API_KEY",
+          enabled: true,
+          isDefault: true,
+          purpose: expect.arrayContaining(["general", "vision"])
+        })
+      ]);
+      expect(state.modelSettings.defaultProfileId).toBe("kimi-default");
+    } finally {
+      delete process.env.KIMI_API_KEY;
+      delete process.env.KIMI_BASE_URL;
+      delete process.env.KIMI_MODEL;
+    }
+  });
+
+  it("migrates Moonshot endpoints saved under ModelScope to Kimi", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    delete process.env.MODELSCOPE_API_KEY;
+    delete process.env.KIMI_API_KEY;
+
+    const store = createControlPlaneStore(dataDir);
+    const profile = store.createModelProfile({
+      id: "model-kimi-legacy",
+      displayName: "Kimi legacy",
+      provider: "modelscope",
+      modelName: "kimi-k3",
+      baseUrl: "https://api.moonshot.cn/v1",
+      apiKeyRef: "secret:model-kimi-legacy",
+      capabilities: ["chat", "text"],
+      temperature: 0.7,
+      maxTokens: 2000,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general"]
+    });
+
+    expect(profile).toMatchObject({
+      id: "model-kimi-legacy",
+      provider: "kimi",
+      modelName: "kimi-k3",
+      baseUrl: "https://api.moonshot.cn/v1"
+    });
+  });
+
   it("migrates an existing disabled ModelScope example when environment credentials are added later", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);

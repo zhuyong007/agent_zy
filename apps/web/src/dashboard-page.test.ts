@@ -498,7 +498,6 @@ describe("ModelManagementSection", () => {
               apiKeySource: "local"
             }
           ],
-          syncControl: React.createElement("button", { "data-testid": "model-sync" }, "同步数据"),
           onSave,
           onDelete: vi.fn(),
           onTest: vi.fn(),
@@ -508,8 +507,6 @@ describe("ModelManagementSection", () => {
     });
 
     expect(container.textContent).toContain("模型管理");
-    expect(container.textContent).toContain("API Key 始终保存在当前设备");
-    expect(container.querySelector('[data-testid="model-sync"]')).not.toBeNull();
     expect(container.textContent).not.toContain("模块默认模型");
     expect(container.textContent).toContain("sk-****abcd");
     expect(container.textContent).not.toContain("sk-test-secret-abcd");

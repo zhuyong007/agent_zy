@@ -299,6 +299,57 @@ describe("model runtime", () => {
     });
   });
 
+  it("forces Kimi K3 temperature to the only value accepted by the provider", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-test-"));
+    tempDirs.push(dataDir);
+    const store = createControlPlaneStore(dataDir);
+    const secrets = createModelSecretsRepository(dataDir);
+    const profile = store.createModelProfile({
+      id: "kimi-profile",
+      displayName: "Kimi profile",
+      provider: "kimi",
+      modelName: "kimi-k3",
+      baseUrl: "https://api.moonshot.cn/v1",
+      apiKeyRef: "secret:kimi-profile",
+      capabilities: ["chat", "text"],
+      temperature: 0.7,
+      maxTokens: 128,
+      enabled: true,
+      isDefault: true,
+      purpose: ["general"]
+    });
+    secrets.save(profile.id, "sk-kimi-secret");
+    const runtime = createModelRuntime({
+      store,
+      secrets,
+      timeoutMs: 1000,
+      retries: 0
+    });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "pong" } }] }), {
+        status: 200
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runtime.chat({
+      kind: "chat",
+      profileId: profile.id,
+      messages: [{ role: "user", content: "ping" }],
+      temperature: 0,
+      maxTokens: 8
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(requestInit.body as string)).toMatchObject({
+      model: "kimi-k3",
+      temperature: 1,
+      max_completion_tokens: 32_768,
+      reasoning_effort: "low"
+    });
+    expect(JSON.parse(requestInit.body as string)).not.toHaveProperty("max_tokens");
+  });
+
   it("sends OpenAI-compatible multimodal messages with image URLs", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-model-runtime-vision-test-"));
     tempDirs.push(dataDir);

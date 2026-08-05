@@ -554,7 +554,7 @@ async function generateWithModelRuntime(
     });
 
     if (!rawContent) {
-      throw new Error("ModelScope 返回内容为空");
+      throw new Error("模型返回内容为空");
     }
 
     try {
@@ -634,7 +634,7 @@ cover 必须包含 title、subtitle、imageText、prompt；cards 根据内容输
     const normalizedPayloadInput = normalizePayloadInput(rawContent);
 
     if (!rawContent) {
-      throw new Error("ModelScope 返回内容为空");
+      throw new Error("模型返回内容为空");
     }
 
     try {
@@ -711,7 +711,7 @@ async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: str
     });
 
     if (!rawContent) {
-      throw new Error("ModelScope 返回内容为空");
+      throw new Error("模型返回内容为空");
     }
 
     try {
@@ -799,7 +799,7 @@ export const agent = defineAgent({
         return {
           status: "failed",
           summary: error instanceof Error ? error.message : "朝代四件套生成失败",
-          assistantMessage: "朝代四件套生成失败，请检查 ModelScope 配置或稍后重试。"
+          assistantMessage: "朝代四件套生成失败，请检查模型配置或稍后重试。"
         };
       }
     }
@@ -939,7 +939,7 @@ export const agent = defineAgent({
       return {
         status: "failed",
         summary: error instanceof Error ? error.message : "历史知识点生成失败",
-        assistantMessage: "历史知识点生成失败，请检查 ModelScope 配置或稍后重试。"
+        assistantMessage: "历史知识点生成失败，请检查模型配置或稍后重试。"
       };
     }
   }

@@ -19,6 +19,7 @@ type SecretsFile = {
 const ENV_BY_PROVIDER: Record<ModelProviderId, string | null> = {
   modelscope: "MODELSCOPE_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
+  kimi: "KIMI_API_KEY",
   openai: "OPENAI_API_KEY",
   doubao: "DOUBAO_API_KEY",
   ollama: null,

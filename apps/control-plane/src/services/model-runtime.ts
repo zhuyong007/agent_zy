@@ -71,6 +71,7 @@ export interface ModelRuntime {
 
 export const DEFAULT_MODEL_TIMEOUT_MS = 120_000;
 export const DEFAULT_MODEL_RETRIES = 0;
+const KIMI_K3_MIN_COMPLETION_TOKENS = 32_768;
 
 function redactSecrets(message: string, secrets: string[]): string {
   return secrets.reduce((result, secret) => result.split(secret).join("[redacted]"), message);
@@ -82,6 +83,31 @@ function profileEndpoint(profile: ModelProfile, path: string) {
 
 function supportsJsonResponseFormat(profile: ModelProfile) {
   return profile.provider === "deepseek";
+}
+
+function isKimiK3(profile: ModelProfile) {
+  return profile.provider === "kimi" && /^kimi-k3\b/i.test(profile.modelName);
+}
+
+function resolveTemperature(profile: ModelProfile, temperature: number | null | undefined) {
+  if (isKimiK3(profile)) {
+    return 1;
+  }
+
+  return temperature ?? undefined;
+}
+
+function resolveOpenAiCompatibleTokenOptions(profile: ModelProfile, maxTokens: number | null | undefined) {
+  if (!isKimiK3(profile)) {
+    return {
+      max_tokens: maxTokens ?? undefined
+    };
+  }
+
+  return {
+    max_completion_tokens: Math.max(maxTokens ?? 0, KIMI_K3_MIN_COMPLETION_TOKENS),
+    reasoning_effort: "low"
+  };
 }
 
 function extractText(data: any): string {
@@ -260,8 +286,8 @@ export function createModelRuntime(options: {
         : {
             model: profile.modelName,
             messages: input.messages,
-            temperature: input.temperature ?? profile.temperature ?? undefined,
-            max_tokens: input.maxTokens ?? profile.maxTokens ?? undefined,
+            temperature: resolveTemperature(profile, input.temperature ?? profile.temperature),
+            ...resolveOpenAiCompatibleTokenOptions(profile, input.maxTokens ?? profile.maxTokens),
             ...(input.responseFormat === "json" && supportsJsonResponseFormat(profile)
               ? { response_format: { type: "json_object" } }
               : {})
