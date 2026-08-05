@@ -150,7 +150,7 @@ const dynastyNotification: NotificationRecord = {
     modules: [
       createDynastyModule("王朝兴衰录", "东汉是怎么一步步走向灭亡的"),
       createDynastyModule("皇帝图鉴", "看懂东汉只需要认识这几位皇帝"),
-      createDynastyModule("风云人物", "改变东汉命运的5个人"),
+      createDynastyModule("风云人物", "从朝堂到民间：读懂东汉群像"),
       createDynastyModule("历史冷知识", "东汉公务员一个月赚多少钱？")
     ]
   }
