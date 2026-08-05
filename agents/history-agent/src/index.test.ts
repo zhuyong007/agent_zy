@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import type { AgentExecutionRequest } from "@agent-zy/agent-sdk";
-import type { AppState, HistoryPostPayload } from "@agent-zy/shared-types";
+import type { AppState, HistoryDynastyPayload, HistoryPostPayload } from "@agent-zy/shared-types";
 
 import { agent } from "./index";
 
@@ -109,6 +109,10 @@ function getPostPayload(result: Awaited<ReturnType<typeof agent.execute>>): Hist
   return result.notifications?.[0]?.payload as HistoryPostPayload;
 }
 
+function getDynastyPayload(result: Awaited<ReturnType<typeof agent.execute>>): HistoryDynastyPayload {
+  return result.notifications?.[0]?.payload as HistoryDynastyPayload;
+}
+
 function longImagePrompt(topic: string) {
   return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
 }
@@ -165,8 +169,8 @@ function createDynastyModules(dynasty: string) {
     },
     {
       type: "风云人物",
-      topic: `改变${dynasty}命运的关键群像`,
-      summary: `覆盖更多有代表性的人物，用较少卡片合并呈现，降低榜单式入选争议。`,
+      topic: `从朝堂到民间：读懂${dynasty}群像`,
+      summary: `按政治、军事、制度和文化影响分层选择代表性人物，区分直接影响与间接影响。`,
       cover: createHistoryCover(`${dynasty}风云人物`),
       cardCount: 3,
       cards: createHistoryCards(`${dynasty}风云人物`),
@@ -208,6 +212,25 @@ function mockModelResponse(content: unknown) {
 
 function mockStructuredModelResponse(content: unknown) {
   return mockModelRuntimeText(JSON.stringify(content));
+}
+
+function expectSharedEditorialContract(prompt: string) {
+  expect(prompt).toContain("明确区分可核查史实、主流解释、争议观点与传说");
+  expect(prompt).toContain("证据不足或存在争议时必须明确限定");
+  expect(prompt).toContain("不得编造日期、数字、引语、史料名称、页码或因果关系");
+  expect(prompt).toContain("比较和“最”类判断必须说明范围、指标与统计口径");
+  expect(prompt).toContain("可核查的反差、具体生活细节和因果推进");
+  expect(prompt).toContain("不得用夸张绝对词、现代价值硬套或虚构戏剧冲突换取点击");
+  expect(prompt).toContain("不得确定性描绘无法确认的服饰、器物或场景");
+  expect(prompt).toContain("小红书发布数据只能调整选题包装、标题节奏和排版");
+  expect(prompt).toContain("不能覆盖史实规则，也不能充当历史证据");
+  expect(prompt).toContain("输出 JSON 前在内部静默自检");
+  expect(prompt).toContain("每个关键事实是否有可核查的信息锚点");
+  expect(prompt).toContain("行动或条件 → 作用对象 → 结果");
+  expect(prompt).toContain("相关性不能冒充因果");
+  expect(prompt).toContain("每张卡片只承担一个清楚问题");
+  expect(prompt).toContain("至少包含一个具体而可信的细节");
+  expect(prompt).toContain("钩子是否与正文结论一致");
 }
 
 describe("history agent", () => {
@@ -505,6 +528,25 @@ describe("history agent", () => {
     expect(result.status).toBe("completed");
   });
 
+  it("applies the shared accuracy and interest contract to topic generation", async () => {
+    const restore = mockModelRuntimeText((prompt) => {
+      expectSharedEditorialContract(prompt);
+
+      return JSON.stringify({
+        topic: "普通主题质量契约",
+        summary: "检查普通主题是否收到统一编辑规则。",
+        cardCount: 3,
+        cards: createHistoryCards("普通主题质量契约"),
+        xiaohongshuCaption: "普通主题质量契约正文"
+      });
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+  });
+
   it("requests enough budget for the long JSON response from the shared model runtime", async () => {
     const generateText = vi.fn(async () => ({
       text: JSON.stringify({
@@ -562,6 +604,9 @@ describe("history agent", () => {
     expect(result.status).toBe("completed");
     expect(generateText).toHaveBeenCalledTimes(2);
     expect(generateText.mock.calls[1]?.[0]?.prompt).toContain("上一次输出不完整");
+    expectSharedEditorialContract(
+      `${generateText.mock.calls[1]?.[0]?.systemPrompt ?? ""}\n${generateText.mock.calls[1]?.[0]?.prompt ?? ""}`
+    );
   });
 
   it("passes xiaohongshu analytics to the model as adaptive guidance", async () => {
@@ -878,6 +923,22 @@ ${JSON.stringify({
     });
   });
 
+  it("applies the shared accuracy and interest contract to most-series generation", async () => {
+    const restore = mockModelRuntimeText((prompt) => {
+      expectSharedEditorialContract(prompt);
+
+      return JSON.stringify(createMostPayload());
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "most" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+  });
+
   it("uses world history for every fifth successful most-series generation", async () => {
     writeFileSync(
       process.env.HISTORY_TOPIC_ARCHIVE_PATH!,
@@ -917,8 +978,13 @@ ${JSON.stringify({
 
   it("retries most-series generation when the topic omits the superlative", async () => {
     let attempts = 0;
-    const restore = mockModelRuntimeText(() => {
+    const restore = mockModelRuntimeText((prompt) => {
       attempts += 1;
+
+      if (attempts === 2) {
+        expectSharedEditorialContract(prompt);
+      }
+
       return JSON.stringify(
         attempts === 1
           ? createMostPayload("中国古代富有的商人是谁？")
@@ -965,10 +1031,13 @@ ${JSON.stringify({
       expect(prompt).toContain("每张卡片聚焦一个事件");
       expect(prompt).toContain("人物只作为事件参与者简要出现");
       expect(prompt).toContain("避免与“皇帝图鉴”和“风云人物”重复");
-      expect(prompt).toContain("不要做“前 5 名”“最强几人”这类容易引发“为什么某某没有入榜”的榜单式选题");
-      expect(prompt).toContain("史料足够的朝代优先覆盖 8-12 人");
-      expect(prompt).toContain("最终图片数量不要因为人数增多而增加");
-      expect(prompt).toContain("每张卡片可以按身份、阶段或影响类型合并 2-3 位人物");
+      expect(prompt).toContain("不要做“前 5 名”“最强几人”等榜单");
+      expect(prompt).toContain("人数服从史料和解释质量");
+      expect(prompt).toContain("具体行动 → 直接作用对象 → 可观察结果");
+      expect(prompt).toContain("李白可以作为盛唐文化表达和后世盛唐想象的代表");
+      expect(prompt).toContain("不得说李白改变或决定唐朝命运");
+      expect(prompt).toContain("明确区分直接政治影响与间接文化影响");
+      expect(prompt).toContain("从朝堂到诗坛：读懂唐朝群像");
       expect(prompt).toContain("代表性人物，不是完整排名");
       expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
@@ -1025,7 +1094,7 @@ ${JSON.stringify({
             }),
             expect.objectContaining({
               type: "风云人物",
-              topic: "改变东汉命运的关键群像",
+              topic: "从朝堂到民间：读懂东汉群像",
               cardCount: 3
             }),
             expect.objectContaining({
@@ -1036,6 +1105,64 @@ ${JSON.stringify({
         })
       })
     ]);
+  });
+
+  it("applies the shared accuracy and interest contract to dynasty generation", async () => {
+    const restore = mockModelRuntimeText((prompt) => {
+      expectSharedEditorialContract(prompt);
+
+      return JSON.stringify({
+        dynasty: "东汉",
+        modules: createDynastyModules("东汉")
+      });
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        mode: "dynasty",
+        dynasty: "东汉"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+  });
+
+  it("retries dynasty output when the figure module overclaims that every person changed the dynasty", async () => {
+    let attempts = 0;
+    const restore = mockModelRuntimeText((prompt) => {
+      attempts += 1;
+      const modules = createDynastyModules("唐朝");
+
+      if (attempts === 1) {
+        modules[2] = {
+          ...modules[2],
+          topic: "决定唐朝命运的12张面孔"
+        };
+      } else {
+        expect(prompt).toContain("标题不得笼统声称所有人物改变或决定王朝命运");
+        expectSharedEditorialContract(prompt);
+      }
+
+      return JSON.stringify({
+        dynasty: "唐朝",
+        modules
+      });
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        mode: "dynasty",
+        dynasty: "唐朝"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(attempts).toBe(2);
+    expect(getDynastyPayload(result).modules[2]?.topic).toBe("从朝堂到民间：读懂唐朝群像");
   });
 
   it("rejects dynasty output when required modules are missing", async () => {
