@@ -113,6 +113,24 @@ function getDynastyPayload(result: Awaited<ReturnType<typeof agent.execute>>): H
   return result.notifications?.[0]?.payload as HistoryDynastyPayload;
 }
 
+function expectThreeFourAspectRatio(payload: HistoryPostPayload) {
+  const cover = payload.cover;
+
+  expect(cover).toBeDefined();
+
+  if (!cover) {
+    throw new Error("历史知识输出缺少封面");
+  }
+
+  expect(cover.prompt).toMatch(/^3:4竖版构图/u);
+  expect(cover.prompt).not.toMatch(/横版|横向(?:画幅|画面|构图)|宽幅|方形(?:画幅|画面|构图)/u);
+
+  for (const card of payload.cards) {
+    expect(card.prompt).toMatch(/^3:4竖版构图/u);
+    expect(card.prompt).not.toMatch(/横版|横向(?:画幅|画面|构图)|宽幅|方形(?:画幅|画面|构图)/u);
+  }
+}
+
 function longImagePrompt(topic: string) {
   return `${topic}，竖版小红书历史知识卡片，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留中文标题区域，下方保留解释文字空间，质感像博物馆展陈海报，细节丰富但不拥挤。`;
 }
@@ -224,6 +242,8 @@ function expectSharedEditorialContract(prompt: string) {
   expect(prompt).toContain("不得确定性描绘无法确认的服饰、器物或场景");
   expect(prompt).toContain("小红书发布数据只能调整选题包装、标题节奏和排版");
   expect(prompt).toContain("不能覆盖史实规则，也不能充当历史证据");
+  expect(prompt).toContain("所有 cover.prompt 和 cards[].prompt 必须明确使用 3:4 竖版构图");
+  expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
   expect(prompt).toContain("输出 JSON 前在内部静默自检");
   expect(prompt).toContain("每个关键事实是否有可核查的信息锚点");
   expect(prompt).toContain("行动或条件 → 作用对象 → 结果");
@@ -492,6 +512,43 @@ describe("history agent", () => {
     expect(prompt).not.toMatch(/\d+\s*(?:个)?(?:中文)?(?:字|字符)/u);
   });
 
+  it("enforces 3:4 portrait prompts and removes conflicting canvas directions", async () => {
+    const payload = {
+      topic: "画幅约束测试",
+      summary: "历史知识模块的所有图片都应采用统一画幅。",
+      cover: {
+        ...createHistoryCover("画幅约束测试"),
+        prompt: "横版构图，主体居中，顶部留出标题区域，整体为小红书历史知识首图封面。"
+      },
+      cardCount: 3,
+      cards: [
+        {
+          title: "横版输入",
+          imageText: "横版输入会被修正",
+          prompt: "小红书知识卡片，横版，古代城市与人物群像，画面上方预留标题文字区域。"
+        },
+        {
+          title: "横向画幅输入",
+          imageText: "横向画幅会被修正",
+          prompt: "横向画幅展示历史时间线，中央放置关键人物，底部留出解释文字区域。"
+        },
+        {
+          title: "方形输入",
+          imageText: "方形画幅会被修正",
+          prompt: "方形画幅，小红书历史知识卡片，主体清晰，右侧放置具体知识标签。"
+        }
+      ],
+      xiaohongshuCaption: "画幅约束测试正文"
+    };
+    const restore = mockModelResponse(payload);
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    expect(result.status).toBe("completed");
+    expectThreeFourAspectRatio(getPostPayload(result));
+  });
+
   it("instructs the model to separate image description from text knowledge ranges in image prompts", async () => {
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
@@ -512,6 +569,8 @@ describe("history agent", () => {
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
       expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
       expect(prompt).toContain("3–5 个相关话题标签");
+      expect(prompt).toContain("3:4竖版构图");
+      expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
 
       return JSON.stringify({
         topic: "模板测试",
@@ -526,6 +585,7 @@ describe("history agent", () => {
     restore();
 
     expect(result.status).toBe("completed");
+    expectThreeFourAspectRatio(getPostPayload(result));
   });
 
   it("applies the shared accuracy and interest contract to topic generation", async () => {
@@ -885,6 +945,8 @@ ${JSON.stringify({
       expect(prompt).toContain("史料依据");
       expect(prompt).toContain("争议");
       expect(prompt).toContain("中国历史");
+      expect(prompt).toContain("3:4竖版构图");
+      expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
 
       return JSON.stringify(createMostPayload());
     });
@@ -899,6 +961,7 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
+    expectThreeFourAspectRatio(getPostPayload(result));
     expect(result.summary).toBe("生成“最”系列：谁是中国历史上最富有的商人？");
     expect(result.notifications?.[0]).toMatchObject({
       kind: "history-post",
@@ -1025,7 +1088,8 @@ ${JSON.stringify({
       expect(prompt).toContain("皇帝图鉴");
       expect(prompt).toContain("风云人物");
       expect(prompt).toContain("历史冷知识");
-      expect(prompt).toContain("竖版小红书知识卡片");
+      expect(prompt).toContain("3:4竖版构图");
+      expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
       expect(prompt).toContain("严格 JSON");
       expect(prompt).toContain("按时间顺序选择 5-8 个真正改变王朝走向的重大事件");
       expect(prompt).toContain("每张卡片聚焦一个事件");
@@ -1063,6 +1127,9 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
+    for (const module of getDynastyPayload(result).modules) {
+      expectThreeFourAspectRatio(module);
+    }
     expect(result.summary).toBe("生成朝代四件套：东汉");
     expect(result.notifications).toEqual([
       expect.objectContaining({
