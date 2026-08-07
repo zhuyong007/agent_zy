@@ -16,6 +16,7 @@ import {
   type HistoryCommentReplyService
 } from "./services/history-comment-reply-service";
 import { createHistoryXhsService, type HistoryXhsService } from "./services/history-xhs-service";
+import { createHistoryOperationsService } from "./services/history-operations-service";
 import { createLedgerReportService } from "./services/ledger-report-service";
 import { createLedgerSemanticService } from "./services/ledger-semantic-service";
 import { createModelSecretsRepository } from "./services/model-secrets";
@@ -148,6 +149,7 @@ export function createControlPlaneApp(options?: {
   const historyXhsService = options?.historyXhsService ?? createHistoryXhsService();
   const historyCommentReplyService =
     options?.historyCommentReplyService ?? createHistoryCommentReplyService({ store, modelRuntime });
+  const historyOperationsService = createHistoryOperationsService(store);
   const router = createHybridRouter({
     model: createHeuristicRouterModel()
   });
@@ -1167,6 +1169,80 @@ export function createControlPlaneApp(options?: {
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "小红书数据文件导入失败"
       });
+    }
+  });
+
+  app.put("/api/history/operations/strategy", async (request, reply) => {
+    try {
+      const next = historyOperationsService.updateStrategy((request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "账号策略更新失败" });
+    }
+  });
+
+  app.post("/api/history/operations/directions", async (request, reply) => {
+    try {
+      const next = historyOperationsService.createDirection((request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "内容方向创建失败" });
+    }
+  });
+
+  app.put("/api/history/operations/directions/:id", async (request, reply) => {
+    try {
+      const params = request.params as { id: string };
+      const next = historyOperationsService.updateDirection(params.id, (request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "内容方向更新失败" });
+    }
+  });
+
+  app.delete("/api/history/operations/directions/:id", async (request, reply) => {
+    try {
+      const params = request.params as { id: string };
+      const next = historyOperationsService.deleteDirection(params.id);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "内容方向删除失败" });
+    }
+  });
+
+  app.post("/api/history/operations/topics", async (request, reply) => {
+    try {
+      const next = historyOperationsService.createTopic((request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "选题创建失败" });
+    }
+  });
+
+  app.put("/api/history/operations/topics/:id", async (request, reply) => {
+    try {
+      const params = request.params as { id: string };
+      const next = historyOperationsService.updateTopic(params.id, (request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "选题更新失败" });
+    }
+  });
+
+  app.delete("/api/history/operations/topics/:id", async (request, reply) => {
+    try {
+      const params = request.params as { id: string };
+      const next = historyOperationsService.deleteTopic(params.id);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "选题删除失败" });
     }
   });
 

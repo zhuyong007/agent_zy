@@ -27,6 +27,10 @@ import type {
   HistoryCommentReplyRecord,
   HistoryCommentReplyState,
   HistoryDynastyModuleType,
+  HistoryAccountStrategy,
+  HistoryContentDirection,
+  HistoryEditorialTopic,
+  HistoryOperationsState,
   HistoryXhsState,
   GameCreatorState,
   HomeModulePreference,
@@ -919,6 +923,7 @@ export type HistoryGenerateInput = {
   mode?: "topic" | "dynasty" | "most";
   topic?: string;
   dynasty?: string;
+  editorialTopicId?: string;
 };
 
 export async function generateHistory(input: HistoryGenerateInput | string = "manual"): Promise<DashboardData> {
@@ -931,7 +936,8 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
           reason: input.reason ?? "manual",
           mode: input.mode === "dynasty" || input.mode === "most" ? input.mode : undefined,
           topic: input.topic?.trim() || undefined,
-          dynasty: input.dynasty?.trim() || undefined
+          dynasty: input.dynasty?.trim() || undefined,
+          editorialTopicId: input.editorialTopicId?.trim() || undefined
         };
 
   console.info("[history-generate] request:start", {
@@ -1016,6 +1022,44 @@ export async function importHistoryXhsAnalytics(file: File): Promise<DashboardDa
     ...dashboard,
     historyXhs
   };
+}
+
+async function requestHistoryOperation<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}/api/history/operations/${path}`, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  if (!response.ok) throw new Error(await readApiError(response, "历史运营操作失败"));
+  return response.json();
+}
+
+export function updateHistoryStrategy(input: Partial<HistoryAccountStrategy>) {
+  return requestHistoryOperation<HistoryOperationsState>("strategy", "PUT", input);
+}
+
+export function createHistoryDirection(input: Pick<HistoryContentDirection, "name" | "description">) {
+  return requestHistoryOperation<HistoryContentDirection>("directions", "POST", input);
+}
+
+export function updateHistoryDirection(id: string, input: Partial<HistoryContentDirection>) {
+  return requestHistoryOperation<HistoryContentDirection>(`directions/${encodeURIComponent(id)}`, "PUT", input);
+}
+
+export function deleteHistoryDirection(id: string) {
+  return requestHistoryOperation<HistoryOperationsState>(`directions/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export function createHistoryTopic(input: Partial<HistoryEditorialTopic>) {
+  return requestHistoryOperation<HistoryEditorialTopic>("topics", "POST", input);
+}
+
+export function updateHistoryTopic(id: string, input: Partial<HistoryEditorialTopic>) {
+  return requestHistoryOperation<HistoryEditorialTopic>(`topics/${encodeURIComponent(id)}`, "PUT", input);
+}
+
+export function deleteHistoryTopic(id: string) {
+  return requestHistoryOperation<HistoryOperationsState>(`topics/${encodeURIComponent(id)}`, "DELETE");
 }
 
 export type HistoryCommentReplyCreateRequest = {

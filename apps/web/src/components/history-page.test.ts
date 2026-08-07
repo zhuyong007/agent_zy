@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   DashboardData,
   HistoryDynastyModuleType,
+  HistoryOperationsDashboard,
+  HistoryOperationsState,
   HistoryPostPayload,
   NotificationRecord
 } from "@agent-zy/shared-types";
@@ -103,10 +105,59 @@ function createDynastyModule(type: HistoryDynastyModuleType, topic: string) {
   };
 }
 
+const historyOperations: HistoryOperationsState = {
+  strategy: {
+    accountName: "历史知识",
+    audience: "对历史感兴趣的普通读者",
+    promise: "用可靠史料讲清历史",
+    weeklyCadence: 5
+  },
+  directions: [],
+  topics: [],
+  lastUpdatedAt: "2026-05-24T08:00:00.000Z"
+};
+
+const historyOperationsDashboard: HistoryOperationsDashboard = {
+  pipeline: { idea: 0, researching: 0, ready: 0, drafting: 0, scheduled: 0, published: 0, archived: 0 },
+  activeDirectionCount: 0,
+  readyToProduceCount: 0,
+  scheduledCount: 0,
+  evidenceCoverage: null,
+  performance: [{
+    id: "note-1",
+    title: "张骞出使西域",
+    publishedAt: "2026-05-20T08:00:00.000Z",
+    url: "https://www.xiaohongshu.com/explore/note-1",
+    views: 1200,
+    likes: 88,
+    collects: 19,
+    comments: 7,
+    shares: 3,
+    likeRate: 88 / 1200,
+    collectRate: 19 / 1200,
+    commentRate: 7 / 1200,
+    shareRate: 3 / 1200,
+    engagementRate: 117 / 1200,
+    matchedTopicId: null,
+    directionId: null
+  }],
+  benchmarks: {
+    medianViews: 1200,
+    medianLikeRate: 88 / 1200,
+    medianCollectRate: 19 / 1200,
+    medianCommentRate: 7 / 1200,
+    medianShareRate: 3 / 1200
+  },
+  recommendations: ["继续观察收藏率"],
+  commentSignals: []
+};
+
 const dashboard: DashboardData = {
   notifications: [historyNotification],
   homeLayout: [],
   recentTasks: [],
+  historyOperations,
+  historyOperationsDashboard,
   historyXhs: {
     posts: [
       {
@@ -261,6 +312,13 @@ vi.mock("../api", () => ({
   })),
   updateHistoryCommentReply: vi.fn(),
   deleteHistoryCommentReply: vi.fn(async () => ({ records: [] })),
+  updateHistoryStrategy: vi.fn(async () => ({})),
+  createHistoryDirection: vi.fn(async () => ({})),
+  updateHistoryDirection: vi.fn(async () => ({})),
+  deleteHistoryDirection: vi.fn(async () => ({})),
+  createHistoryTopic: vi.fn(async () => ({})),
+  updateHistoryTopic: vi.fn(async () => ({})),
+  deleteHistoryTopic: vi.fn(async () => ({})),
   cancelNotification: vi.fn(async () => dashboardAfterDelete),
   openDashboardStream: vi.fn(() => () => undefined),
   restartProject: vi.fn(async () => ({ ok: true }))
@@ -293,7 +351,10 @@ describe("HistoryPage", () => {
     vi.clearAllMocks();
   });
 
-  async function renderHistoryPage(currentDashboard = dashboard) {
+  async function renderHistoryPage(
+    currentDashboard = dashboard,
+    workspace: "production" | "analytics" | "insights" | null = "production"
+  ) {
     vi.mocked(fetchDashboard).mockResolvedValueOnce(currentDashboard);
 
     const queryClient = new QueryClient({
@@ -323,7 +384,35 @@ describe("HistoryPage", () => {
         )
       );
     });
+
+    if (workspace) {
+      const workspaceLabels = {
+        production: "内容生产",
+        analytics: "数据复盘",
+        insights: "评论洞察"
+      } as const;
+      const workspaceButton = Array.from(container.querySelectorAll(".history-ops-nav button"))
+        .find((button) => button.textContent?.includes(workspaceLabels[workspace]));
+      await act(async () => {
+        workspaceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
   }
+
+  it("opens the redesigned editorial workspace before production", async () => {
+    await renderHistoryPage(dashboard, null);
+    expect(container.textContent).toContain("今日工作台");
+    expect(container.textContent).toContain("选题库");
+    expect(container.textContent).toContain("发布日历");
+    expect(container.textContent).toContain("数据复盘");
+    expect(container.textContent).toContain("评论洞察");
+  });
+
+  it("keeps analytics and comment operations out of content production", async () => {
+    await renderHistoryPage();
+    expect(container.textContent).not.toContain("小红书数据总览");
+    expect(container.textContent).not.toContain("评论回复");
+  });
 
   it("shows the history data synchronization control", async () => {
     await renderHistoryPage();
@@ -620,7 +709,7 @@ describe("HistoryPage", () => {
   });
 
   it("shows xiaohongshu analytics and imports them from an Excel file", async () => {
-    await renderHistoryPage();
+    await renderHistoryPage(dashboard, "analytics");
 
     expect(container.textContent).toContain("小红书数据总览");
     expect(container.textContent).toContain("张骞出使西域");
@@ -646,7 +735,7 @@ describe("HistoryPage", () => {
   });
 
   it("generates a grounded manual reply and requires re-verification after editing", async () => {
-    await renderHistoryPage();
+    await renderHistoryPage(dashboard, "insights");
 
     expect(container.textContent).toContain("评论回复");
     const targetSelect = container.querySelector(
@@ -729,7 +818,7 @@ describe("HistoryPage", () => {
       ],
       warnings: []
     });
-    await renderHistoryPage();
+    await renderHistoryPage(dashboard, "insights");
 
     const screenshotTab = container.querySelector(
       'button[aria-label="截图识别评论"]'
@@ -788,7 +877,7 @@ describe("HistoryPage", () => {
       ],
       warnings: []
     });
-    await renderHistoryPage();
+    await renderHistoryPage(dashboard, "insights");
 
     const screenshotTab = container.querySelector(
       'button[aria-label="截图识别评论"]'
@@ -835,7 +924,7 @@ describe("HistoryPage", () => {
       replyText: editedReply,
       updatedAt: "2026-06-29T09:00:00.000Z"
     });
-    await renderHistoryPage(replyDashboard);
+    await renderHistoryPage(replyDashboard, "insights");
 
     const draftButton = container.querySelector(
       ".history-reply-drafts article > button:first-child"

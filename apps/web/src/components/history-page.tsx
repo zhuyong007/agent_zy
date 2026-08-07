@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HistoryDynastyPayload, HistoryPostPayload } from "@agent-zy/shared-types";
+import type { HistoryDynastyPayload, HistoryEditorialTopic, HistoryPostPayload } from "@agent-zy/shared-types";
 
-import { cancelNotification, fetchDashboard, generateHistory, importHistoryXhsAnalytics, openDashboardStream, reportClientEvent } from "../api";
+import { cancelNotification, fetchDashboard, generateHistory, importHistoryXhsAnalytics, openDashboardStream, reportClientEvent, updateHistoryTopic } from "../api";
 import {
   buildCaptionExcerpt,
   getHistoryNotificationCategory,
@@ -19,6 +19,11 @@ import { CommandRail, useHomeLayoutPreferences, useLiveClock, useThemePreference
 import { DataSyncControl } from "./data-sync-control";
 import { HistoryCommentReplyPanel } from "./history-comment-reply-panel";
 import { HistoryErrorNotice } from "./history-error-notice";
+import {
+  HistoryOperationsNavigation,
+  HistoryOperationsWorkspace,
+  type HistoryWorkspaceView
+} from "./history-operations-workspace";
 
 function formatDateTime(timestamp?: string | null) {
   if (!timestamp) {
@@ -100,6 +105,8 @@ export function HistoryPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicInput, setTopicInput] = useState("");
   const [generationMode, setGenerationMode] = useState<"topic" | "dynasty" | "most">("topic");
+  const [activeWorkspace, setActiveWorkspace] = useState<HistoryWorkspaceView>("today");
+  const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [activeArchiveCategory, setActiveArchiveCategory] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -112,10 +119,10 @@ export function HistoryPage() {
     queryFn: fetchDashboard
   });
   const historyGenerateMutation = useMutation({
-    mutationFn: (input: { mode: "topic" | "dynasty" | "most"; value?: string }) => {
+    mutationFn: async (input: { mode: "topic" | "dynasty" | "most"; value?: string; editorialTopicId?: string }) => {
       const value = input.value?.trim() || undefined;
 
-      return generateHistory(
+      const nextDashboard = await generateHistory(
         input.mode === "dynasty"
           ? {
               reason: "manual",
@@ -129,9 +136,21 @@ export function HistoryPage() {
               }
           : {
               reason: "manual",
-              topic: value
+              topic: value,
+              editorialTopicId: input.editorialTopicId
             }
       );
+      if (input.editorialTopicId) {
+        const linkedNotification = getHistoryNotifications(nextDashboard.notifications)
+          .find((notification) => isHistoryPostPayload(notification.payload)
+            && notification.payload.workflow?.editorialTopicId === input.editorialTopicId);
+        await updateHistoryTopic(input.editorialTopicId, {
+          status: "drafting",
+          linkedNotificationId: linkedNotification?.id ?? null
+        });
+        return fetchDashboard();
+      }
+      return nextDashboard;
     },
     onSuccess: (nextDashboard) => {
       console.info("[history-page] generate:onSuccess", {
@@ -143,8 +162,11 @@ export function HistoryPage() {
       const nextNotifications = getHistoryNotifications(nextDashboard.notifications);
       setSelectedId(nextNotifications[0]?.id ?? null);
       setTopicInput("");
+      setGeneratingTopicId(null);
+      setActiveWorkspace("production");
     },
     onError: (error) => {
+      setGeneratingTopicId(null);
       console.error("[history-page] generate:onError", error);
     }
   });
@@ -197,6 +219,15 @@ export function HistoryPage() {
     return copiedPromptKeys.has(key)
       ? "history-copy-button history-copy-button--copied"
       : "history-copy-button";
+  }
+
+  function handleGenerateEditorialTopic(topic: HistoryEditorialTopic) {
+    setGeneratingTopicId(topic.id);
+    historyGenerateMutation.mutate({
+      mode: "topic",
+      value: topic.title,
+      editorialTopicId: topic.id
+    });
   }
 
   useEffect(() => {
@@ -288,6 +319,76 @@ export function HistoryPage() {
     return <div className="loading-shell">正在连接历史知识工作台...</div>;
   }
 
+  const xhsAnalyticsDetail = (
+    <section className="history-xhs-panel">
+      <div className="history-stage__heading">
+        <p className="eyebrow">Xiaohongshu Analytics</p>
+        <h2>小红书数据总览</h2>
+        <button
+          type="button"
+          className="history-copy-button"
+          disabled={historyXhsImportMutation.isPending}
+          onClick={() => xhsFileInputRef.current?.click()}
+        >
+          {historyXhsImportMutation.isPending ? "导入中..." : "导入 Excel"}
+        </button>
+        <input
+          ref={xhsFileInputRef}
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) {
+              historyXhsImportMutation.mutate(file);
+            }
+          }}
+        />
+      </div>
+      <div className="history-xhs-panel__metrics">
+        <div><span>作品</span><strong>{historyXhs?.overview.postCount ?? 0}</strong></div>
+        <div><span>浏览</span><strong>{(historyXhs?.overview.totalViews ?? 0).toLocaleString("zh-CN")}</strong></div>
+        <div><span>点赞</span><strong>{(historyXhs?.overview.totalLikes ?? 0).toLocaleString("zh-CN")}</strong></div>
+        <div><span>收藏</span><strong>{(historyXhs?.overview.totalCollects ?? 0).toLocaleString("zh-CN")}</strong></div>
+        <div><span>评论</span><strong>{(historyXhs?.overview.totalComments ?? 0).toLocaleString("zh-CN")}</strong></div>
+        <div><span>分享</span><strong>{(historyXhs?.overview.totalShares ?? 0).toLocaleString("zh-CN")}</strong></div>
+      </div>
+      <div className="history-xhs-panel__footer">
+        <span>最近同步 {formatDateTime(historyXhs?.lastSyncedAt)}</span>
+        {historyXhsSourceIsUrl ? (
+          <a href={historyXhs?.sourceUrl} target="_blank" rel="noreferrer">打开数据来源</a>
+        ) : (
+          <span>{historyXhs?.sourceUrl ?? "等待导入 Excel"}</span>
+        )}
+      </div>
+      {historyXhs?.posts?.length ? (
+        <div className="history-xhs-panel__posts">
+          {historyXhs.posts.slice(0, 4).map((post) => (
+            <article key={post.id}>
+              <strong>{post.title}</strong>
+              <span>浏览 {post.views.toLocaleString("zh-CN")} / 点赞 {post.likes.toLocaleString("zh-CN")} / 收藏 {post.collects.toLocaleString("zh-CN")}</span>
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {xhsErrorMessage ? (
+        <HistoryErrorNotice
+          message={xhsErrorMessage}
+          dismissLabel="关闭小红书数据错误"
+          onDismiss={() => historyXhsImportMutation.reset()}
+        />
+      ) : null}
+    </section>
+  );
+
+  const commentReplyDetail = (
+    <HistoryCommentReplyPanel
+      notifications={historyNotifications}
+      records={dashboard.historyCommentReplies?.records ?? []}
+    />
+  );
+
   return (
     <main className="workspace history-workspace">
       <CommandRail
@@ -305,6 +406,13 @@ export function HistoryPage() {
         ]}
       />
 
+      <HistoryOperationsNavigation
+        active={activeWorkspace}
+        onChange={setActiveWorkspace}
+        dashboard={dashboard}
+      />
+
+      {activeWorkspace === "production" ? (
       <section className={`history-board${archiveExpanded ? " history-board--archive-expanded" : " history-board--archive-collapsed"}`}>
         <section className="history-stage">
           <header className="history-stage__hero">
@@ -396,95 +504,6 @@ export function HistoryPage() {
             </div>
           </header>
 
-          <section className="history-xhs-panel">
-            <div className="history-stage__heading">
-              <p className="eyebrow">Xiaohongshu Analytics</p>
-              <h2>小红书数据总览</h2>
-              <button
-                type="button"
-                className="history-copy-button"
-                disabled={historyXhsImportMutation.isPending}
-                onClick={() => xhsFileInputRef.current?.click()}
-              >
-                {historyXhsImportMutation.isPending ? "导入中..." : "导入 Excel"}
-              </button>
-              <input
-                ref={xhsFileInputRef}
-                type="file"
-                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-                style={{ display: "none" }}
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = "";
-                  if (file) {
-                    historyXhsImportMutation.mutate(file);
-                  }
-                }}
-              />
-            </div>
-            <div className="history-xhs-panel__metrics">
-              <div>
-                <span>作品</span>
-                <strong>{historyXhs?.overview.postCount ?? 0}</strong>
-              </div>
-              <div>
-                <span>浏览</span>
-                <strong>{(historyXhs?.overview.totalViews ?? 0).toLocaleString("zh-CN")}</strong>
-              </div>
-              <div>
-                <span>点赞</span>
-                <strong>{(historyXhs?.overview.totalLikes ?? 0).toLocaleString("zh-CN")}</strong>
-              </div>
-              <div>
-                <span>收藏</span>
-                <strong>{(historyXhs?.overview.totalCollects ?? 0).toLocaleString("zh-CN")}</strong>
-              </div>
-              <div>
-                <span>评论</span>
-                <strong>{(historyXhs?.overview.totalComments ?? 0).toLocaleString("zh-CN")}</strong>
-              </div>
-              <div>
-                <span>分享</span>
-                <strong>{(historyXhs?.overview.totalShares ?? 0).toLocaleString("zh-CN")}</strong>
-              </div>
-            </div>
-            <div className="history-xhs-panel__footer">
-              <span>最近同步 {formatDateTime(historyXhs?.lastSyncedAt)}</span>
-              {historyXhsSourceIsUrl ? (
-                <a href={historyXhs?.sourceUrl} target="_blank" rel="noreferrer">
-                  打开数据来源
-                </a>
-              ) : (
-                <span>{historyXhs?.sourceUrl ?? "等待导入 Excel"}</span>
-              )}
-            </div>
-            {historyXhs?.posts?.length ? (
-              <div className="history-xhs-panel__posts">
-                {historyXhs.posts.slice(0, 4).map((post) => (
-                  <article key={post.id}>
-                    <strong>{post.title}</strong>
-                    <span>
-                      浏览 {post.views.toLocaleString("zh-CN")} / 点赞 {post.likes.toLocaleString("zh-CN")} / 收藏{" "}
-                      {post.collects.toLocaleString("zh-CN")}
-                    </span>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-            {xhsErrorMessage ? (
-              <HistoryErrorNotice
-                message={xhsErrorMessage}
-                dismissLabel="关闭小红书数据错误"
-                onDismiss={() => historyXhsImportMutation.reset()}
-              />
-            ) : null}
-          </section>
-
-          <HistoryCommentReplyPanel
-            notifications={historyNotifications}
-            records={dashboard.historyCommentReplies?.records ?? []}
-          />
-
           {selectedNotification && selectedPayload ? (
             <>
               <div className="history-stage__metrics">
@@ -557,6 +576,46 @@ export function HistoryPage() {
                       <p>{selectedPostPayload.xiaohongshuCaption}</p>
                     </div>
                   </article>
+                </section>
+              ) : null}
+
+              {selectedPostPayload?.workflow || selectedPostPayload?.titleOptions?.length || selectedPostPayload?.voiceoverScript ? (
+                <section className="history-stage__section history-editorial-package">
+                  <div className="history-stage__heading">
+                    <div>
+                      <p className="eyebrow">Editorial package</p>
+                      <h2>运营素材包</h2>
+                    </div>
+                    {selectedPostPayload.workflow ? (
+                      <span className={selectedPostPayload.workflow.needsFactReview ? "history-review-badge is-warning" : "history-review-badge is-ready"}>
+                        {selectedPostPayload.workflow.needsFactReview ? "发布前需事实复核" : "资料检查通过"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="history-editorial-package__grid">
+                    <div>
+                      <span>候选标题</span>
+                      {(selectedPostPayload.titleOptions ?? [selectedPostPayload.topic]).map((title, index) => (
+                        <button key={title} type="button" onClick={() => void handleCopy(`title-option-${index}`, title)}>{title}<small>{copiedKey === `title-option-${index}` ? "已复制" : "复制"}</small></button>
+                      ))}
+                    </div>
+                    <div>
+                      <span>封面文字方案</span>
+                      {(selectedPostPayload.coverTextOptions ?? []).map((text, index) => (
+                        <button key={text} type="button" onClick={() => void handleCopy(`cover-option-${index}`, text)}>{text}<small>{copiedKey === `cover-option-${index}` ? "已复制" : "复制"}</small></button>
+                      ))}
+                    </div>
+                    <div>
+                      <span>可继续追更</span>
+                      {(selectedPostPayload.followUpIdeas ?? []).map((idea) => <p key={idea}>{idea}</p>)}
+                    </div>
+                  </div>
+                  {selectedPostPayload.voiceoverScript ? (
+                    <div className="history-editorial-package__voiceover"><div><span>60 秒口播稿</span><button type="button" className="history-copy-button" onClick={() => void handleCopy("voiceover", selectedPostPayload.voiceoverScript ?? "")}>{copiedKey === "voiceover" ? "已复制" : "复制口播稿"}</button></div><p>{selectedPostPayload.voiceoverScript}</p></div>
+                  ) : null}
+                  {selectedPostPayload.workflow ? (
+                    <footer><span>内容 ID {selectedPostPayload.workflow.contentId}</span><span>{selectedPostPayload.workflow.directionName ?? "未分类"}</span><span>{selectedPostPayload.workflow.sourceCount} 条资料</span><span>{selectedPostPayload.workflow.hasPrimarySource ? "含一手资料" : "暂无一手资料"}</span></footer>
+                  ) : null}
                 </section>
               ) : null}
 
@@ -878,6 +937,16 @@ export function HistoryPage() {
           ) : null}
         </aside>
       </section>
+      ) : (
+        <HistoryOperationsWorkspace
+          view={activeWorkspace}
+          dashboard={dashboard}
+          onGenerateTopic={handleGenerateEditorialTopic}
+          generatingTopicId={generatingTopicId}
+          analyticsDetail={xhsAnalyticsDetail}
+          insightsDetail={commentReplyDetail}
+        />
+      )}
     </main>
   );
 }

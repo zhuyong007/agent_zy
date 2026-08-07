@@ -23,6 +23,8 @@ import type {
   HistoryCommentReplyRecord,
   HistoryCommentReplyState,
   HistoryDynastyModuleType,
+  HistoryEditorialStage,
+  HistoryOperationsState,
   HistoryPushState,
   HistoryXhsState,
   ImageToVideoState,
@@ -53,6 +55,7 @@ import type {
 import type { AgentExecutionResult, AgentManifest } from "@agent-zy/agent-sdk";
 import { groupTasksByStatus } from "@agent-zy/task-core";
 
+import { buildHistoryOperationsDashboard, createDefaultHistoryOperationsState } from "./history-operations-service";
 import { createLedgerRepository } from "./ledger-repository";
 import { getModelProvider } from "./model-providers";
 
@@ -250,6 +253,7 @@ function createInitialState(): AppState {
     summary: createEmptySummaryState(),
     historyXhs: createEmptyHistoryXhsState(),
     historyCommentReplies: createEmptyHistoryCommentReplyState(),
+    historyOperations: createDefaultHistoryOperationsState(),
     historyPush: {
       lastTriggeredDate: null
     },
@@ -1570,6 +1574,73 @@ function normalizeHistoryCommentReplyState(
   };
 }
 
+const HISTORY_EDITORIAL_STAGES = new Set<HistoryEditorialStage>([
+  "idea",
+  "researching",
+  "ready",
+  "drafting",
+  "scheduled",
+  "published",
+  "archived"
+]);
+
+function normalizeHistoryOperationsState(value: Partial<HistoryOperationsState> | undefined): HistoryOperationsState {
+  const fallback = createDefaultHistoryOperationsState();
+  const directions = (value?.directions ?? fallback.directions).map((direction) => ({
+    id: direction.id,
+    name: direction.name,
+    description: direction.description,
+    active: direction.active !== false,
+    createdAt: direction.createdAt ?? nowIso(),
+    updatedAt: direction.updatedAt ?? nowIso()
+  }));
+  const directionIds = new Set(directions.map((direction) => direction.id));
+
+  return {
+    strategy: {
+      accountName: typeof value?.strategy?.accountName === "string" && value.strategy.accountName.trim()
+        ? value.strategy.accountName.trim()
+        : fallback.strategy.accountName,
+      audience: typeof value?.strategy?.audience === "string" && value.strategy.audience.trim()
+        ? value.strategy.audience.trim()
+        : fallback.strategy.audience,
+      promise: typeof value?.strategy?.promise === "string" && value.strategy.promise.trim()
+        ? value.strategy.promise.trim()
+        : fallback.strategy.promise,
+      weeklyCadence: typeof value?.strategy?.weeklyCadence === "number"
+        ? Math.max(1, Math.min(21, Math.round(value.strategy.weeklyCadence)))
+        : fallback.strategy.weeklyCadence
+    },
+    directions,
+    topics: (value?.topics ?? []).map((topic) => ({
+      ...topic,
+      directionId: topic.directionId && directionIds.has(topic.directionId) ? topic.directionId : null,
+      angle: topic.angle ?? "",
+      targetAudience: topic.targetAudience ?? fallback.strategy.audience,
+      hook: topic.hook ?? "",
+      status: HISTORY_EDITORIAL_STAGES.has(topic.status) ? topic.status : "idea",
+      scores: {
+        demand: topic.scores?.demand ?? 3,
+        curiosity: topic.scores?.curiosity ?? 3,
+        contrast: topic.scores?.contrast ?? 3,
+        collectability: topic.scores?.collectability ?? 3,
+        visualPotential: topic.scores?.visualPotential ?? 3,
+        evidenceStrength: topic.scores?.evidenceStrength ?? 3,
+        extensibility: topic.scores?.extensibility ?? 3,
+        risk: topic.scores?.risk ?? 2
+      },
+      sourceCards: topic.sourceCards ?? [],
+      riskNotes: topic.riskNotes ?? [],
+      scheduledFor: topic.scheduledFor ?? null,
+      linkedNotificationId: topic.linkedNotificationId ?? null,
+      publishedPostId: topic.publishedPostId ?? null,
+      createdAt: topic.createdAt ?? nowIso(),
+      updatedAt: topic.updatedAt ?? nowIso()
+    })),
+    lastUpdatedAt: value?.lastUpdatedAt ?? null
+  };
+}
+
 function normalizeHistoryPushState(
   historyPush: Partial<HistoryPushState> | undefined
 ): HistoryPushState {
@@ -1804,6 +1875,7 @@ function normalizeAppState(state: AppState): AppState {
     summary: normalizeSummaryState(state.summary),
     historyXhs: normalizeHistoryXhsState(state.historyXhs),
     historyCommentReplies: normalizeHistoryCommentReplyState(state.historyCommentReplies),
+    historyOperations: normalizeHistoryOperationsState(state.historyOperations),
     historyPush: normalizeHistoryPushState(state.historyPush),
     nightlyReview: state.nightlyReview ?? {
       lastTriggeredDate: null
@@ -1838,6 +1910,7 @@ export interface ControlPlaneStore {
   setSummaryState(summary: SummaryState): SummaryState;
   setHistoryXhsState(historyXhs: HistoryXhsState): HistoryXhsState;
   setHistoryCommentReplyState(historyCommentReplies: HistoryCommentReplyState): HistoryCommentReplyState;
+  setHistoryOperationsState(historyOperations: HistoryOperationsState): HistoryOperationsState;
   createModelProfile(profile: Omit<ModelProfile, "createdAt" | "updatedAt">): ModelProfile;
   updateModelProfile(id: string, patch: Partial<ModelProfile>): ModelProfile;
   deleteModelProfile(id: string): { ok: true };
@@ -2054,6 +2127,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
 
       return structuredClone(state.historyCommentReplies);
     },
+    setHistoryOperationsState(historyOperations) {
+      state.historyOperations = normalizeHistoryOperationsState(historyOperations);
+      persist();
+
+      return structuredClone(state.historyOperations);
+    },
     createModelProfile(profile) {
       const now = nowIso();
       const normalized = normalizeModelProfile(
@@ -2252,6 +2331,12 @@ export function createControlPlaneStore(dataDir: string): ControlPlaneStore {
         },
         historyXhs: state.historyXhs,
         historyCommentReplies: state.historyCommentReplies,
+        historyOperations: state.historyOperations,
+        historyOperationsDashboard: buildHistoryOperationsDashboard(
+          state.historyOperations ?? createDefaultHistoryOperationsState(),
+          state.historyXhs,
+          state.historyCommentReplies
+        ),
         modelSettingsDashboard: buildModelSettingsDashboard(state.modelSettings),
         agents: manifests.map((manifest) => {
           const runtimeView = runtimeViews.find((item) => item.id === manifest.id);

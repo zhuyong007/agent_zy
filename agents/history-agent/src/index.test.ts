@@ -721,6 +721,68 @@ describe("history agent", () => {
     expect(result.status).toBe("completed");
   });
 
+  it("uses editorial topic context and returns traceable workflow metadata", async () => {
+    const state = createState();
+    state.historyOperations = {
+      strategy: { accountName: "历史知识", audience: "城市史读者", promise: "用可靠材料讲清城市生活", weeklyCadence: 5 },
+      directions: [{ id: "city-history", name: "城市史", description: "街道与市场", active: true, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" }],
+      topics: [{
+        id: "topic-night-market",
+        title: "宋代夜市真的通宵吗",
+        directionId: "city-history",
+        angle: "从营业时间和城市管理切入",
+        targetAudience: "城市史读者",
+        hook: "通宵说法能否被史料支持",
+        status: "ready",
+        scores: { demand: 4, curiosity: 5, contrast: 4, collectability: 5, visualPotential: 4, evidenceStrength: 4, extensibility: 4, risk: 2 },
+        sourceCards: [{ id: "source-1", title: "东京梦华录", sourceType: "primary", citation: "卷二", url: null, claim: "记录夜市活动", confidence: "A", notes: "注意成书背景" }],
+        riskNotes: ["不要把个别记录扩大为所有城市"],
+        scheduledFor: null,
+        linkedNotificationId: null,
+        publishedPostId: null,
+        createdAt: "2026-08-01T00:00:00.000Z",
+        updatedAt: "2026-08-01T00:00:00.000Z"
+      }],
+      lastUpdatedAt: "2026-08-01T00:00:00.000Z"
+    };
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("内容方向：城市史");
+      expect(prompt).toContain("切入角度：从营业时间和城市管理切入");
+      expect(prompt).toContain("[A] 东京梦华录");
+      expect(prompt).toContain("titleOptions、coverTextOptions、followUpIdeas、voiceoverScript");
+      return JSON.stringify({
+        topic: "宋代夜市真的通宵吗",
+        summary: "从史料边界讲清宋代夜市。",
+        cardCount: 3,
+        cards: createHistoryCards("宋代夜市"),
+        xiaohongshuCaption: "宋代夜市正文",
+        titleOptions: ["宋代夜市通宵吗", "夜市几点才收摊"],
+        coverTextOptions: ["宋代夜市真相"],
+        followUpIdeas: ["宋代城市如何宵禁"],
+        voiceoverScript: "今天从史料记录讲清宋代夜市。"
+      });
+    });
+    const request = createRequest(state);
+    request.meta = { ...request.meta, topic: "宋代夜市真的通宵吗", editorialTopicId: "topic-night-market" };
+
+    const result = await agent.execute(request);
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(getPostPayload(result)).toMatchObject({
+      titleOptions: ["宋代夜市通宵吗", "夜市几点才收摊"],
+      followUpIdeas: ["宋代城市如何宵禁"],
+      workflow: {
+        editorialTopicId: "topic-night-market",
+        directionId: "city-history",
+        directionName: "城市史",
+        sourceCount: 1,
+        hasPrimarySource: true,
+        needsFactReview: false
+      }
+    });
+  });
+
   it("accepts content-block array responses that contain JSON text", async () => {
     const restore = mockStructuredModelResponse([
       {

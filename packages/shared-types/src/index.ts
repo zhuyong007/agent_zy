@@ -784,6 +784,25 @@ export interface HistoryPostPayload {
   cards: HistoryPostCard[];
   xiaohongshuCaption: string;
   generatedAt: string;
+  titleOptions?: string[];
+  coverTextOptions?: string[];
+  followUpIdeas?: string[];
+  voiceoverScript?: string;
+  workflow?: HistoryContentWorkflow;
+}
+
+export type HistoryFactConfidence = "A" | "B" | "C" | "D";
+
+export interface HistoryContentWorkflow {
+  contentId: string;
+  editorialTopicId: string | null;
+  directionId: string | null;
+  directionName: string | null;
+  audience: string | null;
+  goal: string | null;
+  sourceCount: number;
+  hasPrimarySource: boolean;
+  needsFactReview: boolean;
 }
 
 export type HistoryDynastyModuleType =
@@ -879,6 +898,110 @@ export interface HistoryCommentReplyRecord {
 
 export interface HistoryCommentReplyState {
   records: HistoryCommentReplyRecord[];
+}
+
+export type HistoryEditorialStage =
+  | "idea"
+  | "researching"
+  | "ready"
+  | "drafting"
+  | "scheduled"
+  | "published"
+  | "archived";
+
+export interface HistoryAccountStrategy {
+  accountName: string;
+  audience: string;
+  promise: string;
+  weeklyCadence: number;
+}
+
+export interface HistoryContentDirection {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HistoryTopicScores {
+  demand: number;
+  curiosity: number;
+  contrast: number;
+  collectability: number;
+  visualPotential: number;
+  evidenceStrength: number;
+  extensibility: number;
+  risk: number;
+}
+
+export interface HistorySourceCard {
+  id: string;
+  title: string;
+  sourceType: "primary" | "academic" | "reference" | "web";
+  citation: string;
+  url: string | null;
+  claim: string;
+  confidence: HistoryFactConfidence;
+  notes: string;
+}
+
+export interface HistoryEditorialTopic {
+  id: string;
+  title: string;
+  directionId: string | null;
+  angle: string;
+  targetAudience: string;
+  hook: string;
+  status: HistoryEditorialStage;
+  scores: HistoryTopicScores;
+  sourceCards: HistorySourceCard[];
+  riskNotes: string[];
+  scheduledFor: string | null;
+  linkedNotificationId: string | null;
+  publishedPostId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HistoryOperationsState {
+  strategy: HistoryAccountStrategy;
+  directions: HistoryContentDirection[];
+  topics: HistoryEditorialTopic[];
+  lastUpdatedAt: string | null;
+}
+
+export interface HistoryPerformanceRow extends HistoryXhsPostMetrics {
+  likeRate: number | null;
+  collectRate: number | null;
+  commentRate: number | null;
+  shareRate: number | null;
+  engagementRate: number | null;
+  matchedTopicId: string | null;
+  directionId: string | null;
+}
+
+export interface HistoryOperationsDashboard {
+  pipeline: Record<HistoryEditorialStage, number>;
+  activeDirectionCount: number;
+  readyToProduceCount: number;
+  scheduledCount: number;
+  evidenceCoverage: number | null;
+  performance: HistoryPerformanceRow[];
+  benchmarks: {
+    medianViews: number | null;
+    medianLikeRate: number | null;
+    medianCollectRate: number | null;
+    medianCommentRate: number | null;
+    medianShareRate: number | null;
+  };
+  recommendations: string[];
+  commentSignals: Array<{
+    label: string;
+    count: number;
+    examples: string[];
+  }>;
 }
 
 export type ImageToVideoProjectStage =
@@ -1894,6 +2017,7 @@ export interface AppState {
   historyPush: HistoryPushState;
   historyXhs?: HistoryXhsState;
   historyCommentReplies?: HistoryCommentReplyState;
+  historyOperations?: HistoryOperationsState;
   nightlyReview: NightlyReviewState;
   modelSettings: ModelSettingsState;
 }
@@ -1946,6 +2070,8 @@ export interface DashboardData {
   };
   historyXhs?: HistoryXhsState;
   historyCommentReplies?: HistoryCommentReplyState;
+  historyOperations?: HistoryOperationsState;
+  historyOperationsDashboard?: HistoryOperationsDashboard;
   modelSettingsDashboard?: ModelSettingsDashboard;
   agents: AgentRuntimeView[];
 }
