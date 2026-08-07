@@ -8,7 +8,62 @@ import { AppRouter, queryClient } from "./router";
 import "./styles.css";
 import "./ui-foundation.css";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+// #region debug-point A:bootstrap-reporter
+const DEBUG_SERVER_URL = "http://127.0.0.1:7777/event";
+const DEBUG_SESSION_ID = "startup-white-screen";
+
+function reportStartupDebug(hypothesisId: string, location: string, msg: string, data?: unknown) {
+  void fetch(DEBUG_SERVER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      sessionId: DEBUG_SESSION_ID,
+      runId: "pre-fix",
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => undefined);
+}
+// #endregion
+
+// #region debug-point A:global-errors
+window.addEventListener("error", (event) => {
+  reportStartupDebug("A", "main.tsx:global-error", "[DEBUG] window error", {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  reportStartupDebug("A", "main.tsx:unhandledrejection", "[DEBUG] unhandled rejection", {
+    reason:
+      event.reason instanceof Error
+        ? {
+          message: event.reason.message,
+          stack: event.reason.stack
+        }
+        : String(event.reason)
+  });
+});
+// #endregion
+
+// #region debug-point A:root-check
+const rootElement = document.getElementById("root");
+reportStartupDebug("A", "main.tsx:root-check", "[DEBUG] root element lookup", {
+  hasRoot: Boolean(rootElement)
+});
+// #endregion
+
+// #region debug-point A:render-start
+reportStartupDebug("A", "main.tsx:render-start", "[DEBUG] react render start");
+ReactDOM.createRoot(rootElement!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ConfigProvider
@@ -45,3 +100,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
+queueMicrotask(() => {
+  reportStartupDebug("A", "main.tsx:render-complete", "[DEBUG] react render scheduled complete");
+});
+// #endregion

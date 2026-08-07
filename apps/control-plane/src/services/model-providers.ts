@@ -27,6 +27,19 @@ function buildModelProviders(): ModelProviderDefinition[] {
     compatibleMode: "openai"
   },
   {
+    id: "kimi",
+    name: "Kimi / Moonshot",
+    defaultBaseUrl: process.env.KIMI_BASE_URL ?? "https://api.moonshot.cn/v1",
+    requiresApiKey: true,
+    authType: "bearer",
+    supportedCapabilities: ["chat", "text", "vision"],
+    defaultModels: process.env.KIMI_MODEL
+      ? [process.env.KIMI_MODEL, "kimi-k3", "kimi-k2-0711-preview", "moonshot-v1-8k"]
+      : ["kimi-k3", "kimi-k2-0711-preview", "moonshot-v1-8k"],
+    docsHint: "Kimi / Moonshot OpenAI-compatible API.",
+    compatibleMode: "openai"
+  },
+  {
     id: "openai",
     name: "OpenAI",
     defaultBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
