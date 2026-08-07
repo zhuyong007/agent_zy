@@ -1749,7 +1749,10 @@ export function ManageModuleCard({
   return (
     <article className="manage-card manage-card--module manage-card--interactive">
       <div className="manage-card__header">
-        <span className="manage-card__index">{String(preference.order + 1).padStart(2, "0")}</span>
+        <span
+          className={`manage-status-dot${preference.visible ? " is-active" : ""}`}
+          aria-label={preference.visible ? "已启用" : "已隐藏"}
+        />
         <div>
           <h3>{displayName}</h3>
           <p>{definition.description}</p>
@@ -1813,7 +1816,9 @@ export function ManageModuleCard({
       </div>
 
       <div className="manage-card__meta">
-        <span>{preference.visible ? "已启用" : "已隐藏"}</span>
+        <span className={preference.visible ? "is-positive" : ""}>
+          {preference.visible ? "已启用" : "已隐藏"}
+        </span>
         <span>
           {supportsNavigation
             ? preference.showInNavigation
@@ -1925,20 +1930,26 @@ export function ModelManagementSection({
           <h2 id="manage-model-heading">模型管理</h2>
           <p>统一配置模型实例、密钥状态与用途绑定，agent 只通过后端运行时调用模型。</p>
         </div>
-        <Button type="primary" onClick={openCreate}>
-          添加模型
-        </Button>
+        <div className="manage-section-action">
+          <span>{profiles.length} 个模型实例</span>
+          <Button type="primary" onClick={openCreate}>
+            添加模型
+          </Button>
+        </div>
       </div>
 
       <div className="manage-card-grid manage-card-grid--models">
         {profiles.map((profile, index) => (
           <article key={profile.id} className="manage-card model-profile-card">
             <div className="manage-card__header">
-              <span className="manage-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <span
+                className={`manage-status-dot${profile.enabled ? " is-active" : ""}`}
+                aria-label={profile.enabled ? "已启用" : "已停用"}
+              />
               <div>
                 <h3>{profile.displayName}</h3>
                 <p>
-                  {profile.provider} · {profile.modelName}
+                  {String(index + 1).padStart(2, "0")} · {profile.provider} · {profile.modelName}
                 </p>
               </div>
             </div>
@@ -1972,6 +1983,9 @@ export function ModelManagementSection({
             </div>
 
             <div className="manage-card__meta model-profile-card__meta">
+              <span className={profile.enabled ? "is-positive" : ""}>
+                {profile.enabled ? "运行中" : "已停用"}
+              </span>
               <span>{profile.purpose.join(" / ") || "未绑定用途"}</span>
               <span>{profile.apiKeySource === "env" ? "环境变量" : profile.apiKeySource === "local" ? "本地密钥" : "无密钥"}</span>
             </div>
@@ -2222,16 +2236,61 @@ export function HomeManagePage() {
       />
 
       <section className="manage-shell">
-        <div className="manage-shell__header">
-          <div>
-            <p className="eyebrow">Control Center</p>
-            <h1>管理配置中心</h1>
-            <p>按子智能体拆分首页展示、模型绑定与视觉背景，便于继续增加新的配置项。</p>
+        <aside className="manage-sidebar" aria-label="管理页导航">
+          <div className="manage-sidebar__brand">
+            <span>ZY</span>
+            <div>
+              <p>系统设置</p>
+              <strong>管理中心</strong>
+            </div>
           </div>
-          <div className="manage-shell__actions">
-            <Button onClick={resetLayout}>
-              重置首页布局
-            </Button>
+
+          <nav className="manage-section-nav" aria-label="配置分区">
+            <a href="#manage-models">
+              <span>01</span>
+              <div>
+                <strong>模型</strong>
+                <small>{profilesQuery.data?.profiles.length ?? 0} 个实例</small>
+              </div>
+            </a>
+            <a href="#manage-agents">
+              <span>02</span>
+              <div>
+                <strong>子智能体</strong>
+                <small>{visibleCount} 个已展示</small>
+              </div>
+            </a>
+            <a href="#manage-appearance">
+              <span>03</span>
+              <div>
+                <strong>外观</strong>
+                <small>{backgroundCount} 张背景</small>
+              </div>
+            </a>
+          </nav>
+
+          <div className="manage-overview" aria-label="模块配置摘要">
+            <div className="manage-overview__intro">
+              <span>当前配置</span>
+              <strong>{visibleCount}/{layout.length} 模块启用</strong>
+              <p>所有修改都会自动保存并立即生效。</p>
+            </div>
+            <div>
+              <span>首页展示</span>
+              <strong>{visibleCount}</strong>
+            </div>
+            <div>
+              <span>导航展示</span>
+              <strong>{navigationCount}</strong>
+            </div>
+            <div>
+              <span>背景历史</span>
+              <strong>{backgroundCount}</strong>
+            </div>
+          </div>
+
+          <div className="manage-sidebar__actions">
+            <Button onClick={resetLayout}>重置首页布局</Button>
             <Button
               onClick={() => {
                 setActiveBackground(null);
@@ -2243,28 +2302,26 @@ export function HomeManagePage() {
               清空背景图
             </Button>
           </div>
-        </div>
+        </aside>
 
-        <div className="manage-overview" aria-label="模块配置摘要">
-          <div>
-            <span>总模块</span>
-            <strong>{layout.length}</strong>
-          </div>
-          <div>
-            <span>首页展示</span>
-            <strong>{visibleCount}</strong>
-          </div>
-          <div>
-            <span>导航展示</span>
-            <strong>{navigationCount}</strong>
-          </div>
-          <div>
-            <span>背景历史</span>
-            <strong>{backgroundCount}</strong>
-          </div>
-        </div>
+        <div className="manage-content">
+          <header className="manage-shell__header">
+            <div>
+              <p className="eyebrow">Workspace Settings</p>
+              <h1>管理</h1>
+              <p>配置模型运行时、子智能体与工作台外观。</p>
+            </div>
+            <div className="manage-header-status">
+              <span className="manage-status-dot is-active" />
+              <div>
+                <strong>配置已同步</strong>
+                <small>修改即时生效</small>
+              </div>
+            </div>
+          </header>
 
-        <div className="manage-groups">
+          <div className="manage-groups">
+          <div id="manage-models" className="manage-anchor-target" />
           {providersQuery.data && profilesQuery.data ? (
             <ModelManagementSection
               providers={providersQuery.data.providers}
@@ -2280,13 +2337,14 @@ export function HomeManagePage() {
             </section>
           )}
 
-          <section className="manage-group" aria-labelledby="manage-sub-agent-heading">
+          <section id="manage-agents" className="manage-group" aria-labelledby="manage-sub-agent-heading">
             <div className="manage-group__header">
               <div>
                 <p className="eyebrow">Sub-agent Management</p>
                 <h2 id="manage-sub-agent-heading">子智能体管理</h2>
-                <p>每个子智能体独立成卡片，统一处理显示、导航、尺寸和模型绑定。</p>
+                <p>控制首页展示、顶部导航、模块尺寸和独立模型绑定。</p>
               </div>
+              <span className="manage-section-count">{layout.length} 个模块</span>
             </div>
 
             <div className="manage-card-grid manage-card-grid--modules">
@@ -2321,7 +2379,7 @@ export function HomeManagePage() {
             </div>
           </section>
 
-          <section className="manage-group" aria-labelledby="manage-visual-heading">
+          <section id="manage-appearance" className="manage-group" aria-labelledby="manage-visual-heading">
             <div className="manage-group__header">
               <div>
                 <p className="eyebrow">Visual Backgrounds</p>
@@ -2503,6 +2561,7 @@ export function HomeManagePage() {
               </article>
             </div>
           </section>
+          </div>
         </div>
       </section>
     </main>

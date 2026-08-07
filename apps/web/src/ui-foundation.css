@@ -1058,120 +1058,350 @@ body[data-theme] :is(
   background: var(--accent-soft);
 }
 
-body[data-theme] .mhxy-route-target input {
-  border-color: var(--ui-border);
-  color: var(--text);
-  background: var(--control-bg);
-}
-
-body[data-theme] .mhxy-assets [aria-label="角色当前库存"] .mhxy-asset-row:not(.mhxy-asset-row--head),
-body[data-theme] .mhxy-assets [aria-label="角色交易历史"] .mhxy-asset-row:not(.mhxy-asset-row--head) {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
-/* Management is an operational workspace: status rail on the left, configuration flow on the right. */
+/* Management workspace v2: a quiet settings console with persistent orientation. */
 .manage-shell {
-  grid-template-columns: 232px minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  column-gap: 24px;
-  row-gap: 20px;
-  padding: 8px 4px 24px;
+  position: relative;
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: start;
+  gap: 42px;
+  padding: 20px 18px 48px;
+  scroll-behavior: smooth;
 }
 
-.manage-shell__header {
-  grid-column: 1 / -1;
-  padding: 18px 20px;
+.manage-sidebar {
+  position: sticky;
+  top: 4px;
+  display: grid;
+  align-content: start;
+  gap: 22px;
+  min-width: 0;
+  padding: 20px;
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ui-surface) 94%, transparent);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  animation: manage-panel-in 360ms ease both;
 }
 
-.manage-shell__actions {
-  align-self: center;
+.manage-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.manage-sidebar__brand > span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--accent-contrast);
+  font-family: var(--ui-font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: var(--accent);
+}
+
+.manage-sidebar__brand div {
+  display: grid;
+  gap: 2px;
+}
+
+.manage-sidebar__brand p,
+.manage-sidebar__brand strong {
+  margin: 0;
+}
+
+.manage-sidebar__brand p {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.manage-sidebar__brand strong {
+  font-size: 0.94rem;
+}
+
+.manage-section-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.manage-section-nav a {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  transition: color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.manage-section-nav a:hover,
+.manage-section-nav a:focus-visible {
+  color: var(--text);
+  background: var(--accent-soft);
+  transform: translateX(2px);
+  outline: none;
+}
+
+.manage-section-nav a > span {
+  color: var(--accent);
+  font-family: var(--ui-font-mono);
+  font-size: 0.66rem;
+}
+
+.manage-section-nav a div {
+  display: grid;
+  gap: 2px;
+}
+
+.manage-section-nav a strong {
+  color: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.manage-section-nav a small {
+  color: var(--muted);
+  font-size: 0.66rem;
 }
 
 .manage-overview {
-  position: sticky;
-  top: 0;
-  align-self: start;
-  grid-template-columns: minmax(0, 1fr);
-  grid-column: 1;
-  grid-row: 2;
-  align-content: start;
-  height: max-content;
-  min-height: max-content;
-  overflow: visible;
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
+  border-radius: 10px;
+  background: transparent;
 }
 
 .manage-overview > div,
 .manage-overview > div + div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 8px;
-  padding: 14px 16px;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 5px;
+  padding: 12px 10px;
   border: 0;
   border-top: 1px solid var(--ui-border);
+  border-left: 1px solid var(--ui-border);
 }
 
 .manage-overview > .manage-overview__intro {
+  grid-column: 1 / -1;
+  display: grid;
   grid-template-columns: 1fr;
-  align-items: start;
-  padding: 18px 16px;
-  border-top: 0;
+  gap: 6px;
+  padding: 14px;
+  border: 0;
   background: var(--accent-soft);
 }
 
+.manage-overview__intro span,
+.manage-overview > div:not(.manage-overview__intro) span {
+  color: var(--muted);
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
 .manage-overview__intro strong {
-  font-size: 1.08rem;
+  font-size: 0.86rem;
 }
 
 .manage-overview__intro p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.76rem;
-  line-height: 1.55;
+  font-size: 0.66rem;
+  line-height: 1.5;
 }
 
 .manage-overview > div:not(.manage-overview__intro) strong {
+  color: var(--text);
   font-family: var(--ui-font-mono);
-  font-size: 1.28rem;
+  font-size: 1rem;
+}
+
+.manage-sidebar__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.manage-sidebar__actions button {
+  justify-content: flex-start;
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: transparent;
+}
+
+.manage-sidebar__actions button:hover {
   color: var(--text);
 }
 
+.manage-content {
+  display: grid;
+  min-width: 0;
+  animation: manage-content-in 420ms 60ms ease both;
+}
+
+.manage-shell__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 0 28px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-theme="day"] .manage-shell__header {
+  padding: 8px 0 28px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.manage-shell__header h1 {
+  margin: 6px 0 0;
+  font-size: clamp(2.1rem, 4vw, 3.4rem);
+  font-weight: 680;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+}
+
+.manage-shell__header p:not(.eyebrow) {
+  margin-top: 12px;
+  font-size: 0.82rem;
+}
+
+.manage-header-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+.manage-header-status div {
+  display: grid;
+  gap: 1px;
+}
+
+.manage-header-status strong {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.manage-header-status small {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.manage-status-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.manage-status-dot.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
 .manage-groups {
-  grid-column: 2;
-  grid-row: 2;
-  gap: 32px;
+  display: grid;
+  grid-column: auto;
+  grid-row: auto;
+  gap: 0;
   min-width: 0;
 }
 
+.manage-anchor-target {
+  width: 0;
+  height: 0;
+  scroll-margin-top: 20px;
+}
+
 .manage-group {
-  gap: 14px;
-  padding-bottom: 30px;
+  gap: 18px;
+  padding: 40px 0 46px;
   border-bottom: 1px solid var(--ui-border);
+  scroll-margin-top: 18px;
 }
 
 .manage-group:last-child {
-  padding-bottom: 0;
   border-bottom: 0;
 }
 
 .manage-group__header {
+  align-items: flex-end;
   padding: 0;
   border: 0;
   background: transparent;
 }
 
-.manage-card {
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface);
+body[data-theme="day"] .manage-group__header {
+  padding: 0;
+  border: 0;
+  background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+}
+
+.manage-group__header h2 {
+  margin: 5px 0 0;
+  font-size: 1.18rem;
+  letter-spacing: -0.025em;
+}
+
+.manage-group__header p:not(.eyebrow) {
+  max-width: 640px;
+  margin-top: 7px;
+  font-size: 0.74rem;
+}
+
+.manage-section-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.manage-section-action > span,
+.manage-section-count {
+  color: var(--muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.manage-section-action .ant-btn-primary {
+  min-height: 36px;
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.manage-card-grid {
+  gap: 0;
 }
 
 .manage-card-grid--models,
@@ -1181,106 +1411,264 @@ body[data-theme] .mhxy-assets [aria-label="角色交易历史"] .mhxy-asset-row:
 
 .manage-card-grid--models > .manage-card,
 .manage-card-grid--modules > .manage-card {
-  width: 100%;
+  width: auto;
   min-height: 0;
   aspect-ratio: auto;
   overflow: visible;
 }
 
+.manage-card-grid--models > .manage-card:first-child,
+.manage-card-grid--modules > .manage-card:first-child {
+  border-top: 1px solid var(--ui-border);
+}
+
+.manage-card {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.model-profile-card,
+.manage-card--module {
+  margin: 0 -12px;
+  padding: 18px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-border);
+  border-radius: 9px;
+  background: transparent;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.model-profile-card:hover,
+.manage-card--module:hover,
+.manage-card--interactive:hover,
+.manage-card--interactive:focus-within {
+  border-color: var(--ui-border);
+  background: var(--accent-soft);
+  transform: translateX(3px);
+}
+
 .model-profile-card {
-  grid-template-columns: minmax(180px, 0.75fr) minmax(260px, 1.25fr) minmax(150px, 0.55fr);
+  grid-template-columns: minmax(180px, 0.72fr) minmax(250px, 1.28fr) minmax(142px, 0.56fr);
   grid-template-rows: auto auto;
-  align-items: start;
-  gap: 14px 20px;
-}
-
-.model-profile-card > .manage-card__header {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.model-profile-card__body {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  overflow: visible;
-}
-
-.model-profile-card__chips {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.model-profile-card__meta {
-  grid-column: 3;
-  grid-row: 1;
-  align-self: start;
-}
-
-.model-profile-card__actions {
-  grid-column: 3;
-  grid-row: 2;
-}
-
-.model-test-result {
-  grid-column: 1 / -1;
+  gap: 14px 24px;
 }
 
 .manage-card--module {
-  grid-template-columns: minmax(190px, 0.65fr) minmax(0, 1.35fr) 124px;
+  grid-template-columns: minmax(180px, 0.66fr) minmax(340px, 1.34fr) 116px;
   grid-template-rows: auto;
   align-items: start;
-  gap: 18px;
+  gap: 20px;
 }
 
-.manage-card--module > .manage-card__header {
-  grid-column: 1;
+.manage-card__header {
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.manage-card__header h3 {
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.manage-card__header p {
+  margin-top: 5px;
+  font-size: 0.68rem;
 }
 
 .manage-card--module > .manage-card__controls {
-  grid-column: 2;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
   overflow: visible;
 }
 
-.manage-card--module > .manage-card__meta {
-  grid-column: 3;
-  display: grid;
+.manage-field {
+  font-size: 0.66rem;
 }
 
-@media (max-width: 1080px) {
+.manage-field--toggle {
+  min-height: 36px;
+  border-color: var(--ui-border);
+  background: color-mix(in srgb, var(--ui-surface) 72%, transparent);
+}
+
+.manage-card__meta {
+  align-content: start;
+}
+
+.manage-card__meta span {
+  min-height: 22px;
+  padding-inline: 7px;
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  font-size: 0.64rem;
+}
+
+.manage-card__meta span.is-positive {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.model-profile-card__status-grid {
+  gap: 16px;
+  padding-top: 9px;
+  border-top: 1px solid var(--ui-border);
+  background: transparent;
+}
+
+.model-profile-card__status-grid div {
+  gap: 3px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.model-profile-card__status-grid span {
+  font-size: 0.62rem;
+}
+
+.model-profile-card__status-grid strong,
+.model-profile-card__endpoint strong {
+  font-size: 0.76rem;
+  font-weight: 560;
+}
+
+.model-profile-card__chips {
+  align-items: flex-start;
+  align-content: flex-start;
+  max-height: none;
+  overflow: visible;
+}
+
+.model-profile-card__chips .ant-tag {
+  margin: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.64rem;
+  line-height: 1.45;
+  background: transparent;
+}
+
+.model-profile-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.model-profile-card__actions button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 0.68rem;
+}
+
+.manage-card-grid--visual {
+  grid-template-columns: minmax(210px, 0.58fr) minmax(440px, 1.42fr);
+  gap: 14px;
+}
+
+.manage-card--theme,
+.manage-card--background-workspace {
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ui-surface) 92%, transparent);
+}
+
+.manage-card--theme:hover,
+.manage-card--background-workspace:hover {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-surface);
+  transform: none;
+}
+
+.background-controls__section,
+.background-history__item,
+.background-stage {
+  border-color: var(--ui-border);
+  background-color: color-mix(in srgb, var(--ui-surface) 75%, transparent);
+}
+
+@keyframes manage-panel-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes manage-content-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1180px) {
   .manage-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
+    gap: 28px;
   }
 
-  .manage-shell__header,
-  .manage-overview,
-  .manage-groups {
-    grid-column: 1;
+  .manage-sidebar {
+    position: static;
+    grid-template-columns: auto minmax(280px, 1fr) minmax(220px, 0.7fr);
+    align-items: center;
+    gap: 18px;
+  }
+
+  .manage-sidebar__brand {
+    padding: 0 18px 0 0;
+    border-right: 1px solid var(--ui-border);
+    border-bottom: 0;
+  }
+
+  .manage-section-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .manage-section-nav a {
+    min-height: 48px;
   }
 
   .manage-overview {
-    position: static;
-    grid-row: 2;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .manage-overview > .manage-overview__intro {
-    grid-column: 1 / -1;
+    display: none;
   }
 
+  .manage-overview > div,
   .manage-overview > div + div {
-    border-left: 1px solid var(--ui-border);
+    border-top: 0;
   }
 
-  .manage-groups {
-    grid-row: 3;
+  .manage-sidebar__actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .manage-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .manage-sidebar__brand {
+    padding: 0 0 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  .manage-overview {
+    display: none;
   }
 
   .model-profile-card,
   .manage-card--module {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
+    gap: 14px;
   }
 
   .model-profile-card > .manage-card__header,
@@ -1298,24 +1686,114 @@ body[data-theme] .mhxy-assets [aria-label="角色交易历史"] .mhxy-asset-row:
   .manage-card--module > .manage-card__controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (max-width: 720px) {
-  .manage-shell__header {
-    padding: 16px;
+  .model-profile-card__actions {
+    justify-content: flex-start;
   }
 
-  .manage-overview {
+  .manage-card-grid--visual,
+  .background-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 
-  .manage-overview > div + div {
-    border-left: 0;
+@media (max-width: 620px) {
+  .manage-shell {
+    gap: 22px;
+    padding: 12px 10px 36px;
+  }
+
+  .manage-sidebar {
+    padding: 15px;
+  }
+
+  .manage-section-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .manage-section-nav a {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    min-height: 58px;
+    padding: 7px;
+  }
+
+  .manage-section-nav a small {
+    display: none;
+  }
+
+  .manage-shell__header {
+    align-items: flex-start;
+    padding-bottom: 22px;
+  }
+
+  body[data-theme="day"] .manage-shell__header {
+    padding-bottom: 22px;
+  }
+
+  .manage-header-status {
+    padding-top: 5px;
+  }
+
+  .manage-header-status div {
+    display: none;
+  }
+
+  .manage-group {
+    padding: 32px 0 38px;
+  }
+
+  .manage-group__header {
+    align-items: flex-start;
+  }
+
+  .manage-section-action {
+    display: grid;
+    justify-items: end;
+  }
+
+  .manage-section-action > span,
+  .manage-section-count {
+    display: none;
   }
 
   .manage-card--module > .manage-card__controls {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .background-history__item {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .background-history__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manage-shell,
+  .manage-sidebar,
+  .manage-content,
+  .manage-section-nav a,
+  .model-profile-card,
+  .manage-card--module {
+    scroll-behavior: auto;
+    animation: none;
+    transition: none;
+  }
+}
+
+body[data-theme] .mhxy-route-target input {
+  border-color: var(--ui-border);
+  color: var(--text);
+  background: var(--control-bg);
+}
+
+body[data-theme] .mhxy-assets [aria-label="角色当前库存"] .mhxy-asset-row:not(.mhxy-asset-row--head),
+body[data-theme] .mhxy-assets [aria-label="角色交易历史"] .mhxy-asset-row:not(.mhxy-asset-row--head) {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Home modules: one visual language, five deliberate information densities. */
