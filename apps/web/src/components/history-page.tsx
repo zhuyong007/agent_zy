@@ -104,7 +104,7 @@ export function HistoryPage() {
   const [railExpanded, setRailExpanded] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicInput, setTopicInput] = useState("");
-  const [generationMode, setGenerationMode] = useState<"topic" | "dynasty" | "most">("topic");
+  const [generationSeriesId, setGenerationSeriesId] = useState("dynasty-series");
   const [activeWorkspace, setActiveWorkspace] = useState<HistoryWorkspaceView>("today");
   const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
@@ -119,7 +119,7 @@ export function HistoryPage() {
     queryFn: fetchDashboard
   });
   const historyGenerateMutation = useMutation({
-    mutationFn: async (input: { mode: "topic" | "dynasty" | "most"; value?: string; editorialTopicId?: string }) => {
+    mutationFn: async (input: { mode: "topic" | "dynasty" | "most"; value?: string; editorialTopicId?: string; seriesId?: string }) => {
       const value = input.value?.trim() || undefined;
 
       const nextDashboard = await generateHistory(
@@ -127,23 +127,25 @@ export function HistoryPage() {
           ? {
               reason: "manual",
               mode: "dynasty",
-              dynasty: value
+              dynasty: value,
+              seriesId: input.seriesId
             }
           : input.mode === "most"
             ? {
                 reason: "manual",
-                mode: "most"
+                mode: "most",
+                seriesId: input.seriesId
               }
           : {
               reason: "manual",
               topic: value,
-              editorialTopicId: input.editorialTopicId
+              editorialTopicId: input.editorialTopicId,
+              seriesId: input.seriesId
             }
       );
       if (input.editorialTopicId) {
         const linkedNotification = getHistoryNotifications(nextDashboard.notifications)
-          .find((notification) => isHistoryPostPayload(notification.payload)
-            && notification.payload.workflow?.editorialTopicId === input.editorialTopicId);
+          .find((notification) => notification.payload.workflow?.editorialTopicId === input.editorialTopicId);
         await updateHistoryTopic(input.editorialTopicId, {
           status: "drafting",
           linkedNotificationId: linkedNotification?.id ?? null
@@ -222,11 +224,13 @@ export function HistoryPage() {
   }
 
   function handleGenerateEditorialTopic(topic: HistoryEditorialTopic) {
+    const series = dashboard?.historyOperations?.series.find((item) => item.id === topic.seriesId);
     setGeneratingTopicId(topic.id);
     historyGenerateMutation.mutate({
-      mode: "topic",
+      mode: series?.generator === "dynasty" ? "dynasty" : series?.generator === "most" ? "most" : "topic",
       value: topic.title,
-      editorialTopicId: topic.id
+      editorialTopicId: topic.id,
+      seriesId: series?.id
     });
   }
 
@@ -318,6 +322,15 @@ export function HistoryPage() {
   if (dashboardQuery.isLoading || !dashboard) {
     return <div className="loading-shell">正在连接历史知识工作台...</div>;
   }
+
+  const productionSeries = (dashboard.historyOperations?.series ?? [])
+    .filter((series) => series.status !== "retired" && series.status !== "archived");
+  const selectedGenerationSeries = productionSeries.find((series) => series.id === generationSeriesId) ?? productionSeries[0] ?? null;
+  const activeGenerationMode = selectedGenerationSeries?.generator === "dynasty"
+    ? "dynasty"
+    : selectedGenerationSeries?.generator === "most"
+      ? "most"
+      : "topic";
 
   const xhsAnalyticsDetail = (
     <section className="history-xhs-panel">
@@ -449,55 +462,44 @@ export function HistoryPage() {
                     message: "历史知识页面立即生成",
                     agentId: "history-agent",
                     details: {
-                      hasTopic: generationMode === "topic" && Boolean(topicInput.trim()),
-                      hasDynasty: generationMode === "dynasty" && Boolean(topicInput.trim()),
-                      isMostSeries: generationMode === "most"
+                      seriesId: selectedGenerationSeries?.id ?? null,
+                      hasTopic: activeGenerationMode === "topic" && Boolean(topicInput.trim()),
+                      hasDynasty: activeGenerationMode === "dynasty" && Boolean(topicInput.trim()),
+                      isMostSeries: activeGenerationMode === "most"
                     }
                   }).catch(() => undefined);
                   historyGenerateMutation.mutate({
-                    mode: generationMode,
-                    value: topicInput.trim() || undefined
+                    mode: activeGenerationMode,
+                    value: topicInput.trim() || undefined,
+                    seriesId: selectedGenerationSeries?.id
                   });
                 }}
               >
-                <div className="history-mode-switch" role="tablist" aria-label="历史内容生成模式">
-                  <button
-                    type="button"
-                    className={generationMode === "topic" ? "is-active" : ""}
-                    aria-selected={generationMode === "topic"}
-                    onClick={() => setGenerationMode("topic")}
-                  >
-                    主题
-                  </button>
-                  <button
-                    type="button"
-                    className={generationMode === "dynasty" ? "is-active" : ""}
-                    aria-selected={generationMode === "dynasty"}
-                    onClick={() => setGenerationMode("dynasty")}
-                  >
-                    朝代
-                  </button>
-                  <button
-                    type="button"
-                    className={generationMode === "most" ? "is-active" : ""}
-                    aria-selected={generationMode === "most"}
-                    onClick={() => setGenerationMode("most")}
-                  >
-                    最
-                  </button>
+                <div className="history-series-generator">
+                  <label>
+                    所属系列
+                    <select
+                      aria-label="选择内容系列"
+                      value={selectedGenerationSeries?.id ?? ""}
+                      onChange={(event) => setGenerationSeriesId(event.target.value)}
+                    >
+                      {productionSeries.map((series) => <option key={series.id} value={series.id}>{series.name}</option>)}
+                    </select>
+                  </label>
+                  <span>表现形式<strong>图文</strong></span>
                 </div>
-                {generationMode === "most" ? (
+                {activeGenerationMode === "most" ? (
                   <p className="history-most-hint">自动选择一个有明确比较依据的历史之最</p>
                 ) : (
                   <input
                     type="text"
                     value={topicInput}
                     onChange={(event) => setTopicInput(event.target.value)}
-                    placeholder={generationMode === "dynasty" ? "输入朝代，例如：东汉" : "输入主题，例如：商鞅变法"}
+                    placeholder={activeGenerationMode === "dynasty" ? "输入朝代，例如：东汉" : "输入这篇图文的具体主题"}
                     disabled={historyGenerateMutation.isPending}
                   />
                 )}
-                <button type="submit" className="history-generate-button" disabled={historyGenerateMutation.isPending}>
+                <button type="submit" className="history-generate-button" disabled={historyGenerateMutation.isPending || (activeGenerationMode === "dynasty" && !topicInput.trim())}>
                   {historyGenerateMutation.isPending ? "生成中..." : "立即生成"}
                 </button>
               </form>
@@ -579,7 +581,7 @@ export function HistoryPage() {
                 </section>
               ) : null}
 
-              {selectedPostPayload?.workflow || selectedPostPayload?.titleOptions?.length || selectedPostPayload?.voiceoverScript ? (
+              {selectedPostPayload?.workflow || selectedPostPayload?.titleOptions?.length ? (
                 <section className="history-stage__section history-editorial-package">
                   <div className="history-stage__heading">
                     <div>
@@ -610,11 +612,8 @@ export function HistoryPage() {
                       {(selectedPostPayload.followUpIdeas ?? []).map((idea) => <p key={idea}>{idea}</p>)}
                     </div>
                   </div>
-                  {selectedPostPayload.voiceoverScript ? (
-                    <div className="history-editorial-package__voiceover"><div><span>60 秒口播稿</span><button type="button" className="history-copy-button" onClick={() => void handleCopy("voiceover", selectedPostPayload.voiceoverScript ?? "")}>{copiedKey === "voiceover" ? "已复制" : "复制口播稿"}</button></div><p>{selectedPostPayload.voiceoverScript}</p></div>
-                  ) : null}
                   {selectedPostPayload.workflow ? (
-                    <footer><span>内容 ID {selectedPostPayload.workflow.contentId}</span><span>{selectedPostPayload.workflow.directionName ?? "未分类"}</span><span>{selectedPostPayload.workflow.sourceCount} 条资料</span><span>{selectedPostPayload.workflow.hasPrimarySource ? "含一手资料" : "暂无一手资料"}</span></footer>
+                    <footer><span>内容 ID {selectedPostPayload.workflow.contentId}</span><span>{selectedPostPayload.workflow.seriesName ?? "无系列"}</span><span>{selectedPostPayload.workflow.directionName ?? "未分类"}</span><span>{selectedPostPayload.workflow.sourceCount} 条资料</span><span>{selectedPostPayload.workflow.hasPrimarySource ? "含一手资料" : "暂无一手资料"}</span></footer>
                   ) : null}
                 </section>
               ) : null}

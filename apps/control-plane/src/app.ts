@@ -1182,6 +1182,38 @@ export function createControlPlaneApp(options?: {
     }
   });
 
+  app.post("/api/history/operations/series", async (request, reply) => {
+    try {
+      const next = historyOperationsService.createSeries((request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "系列创建失败" });
+    }
+  });
+
+  app.put("/api/history/operations/series/:id", async (request, reply) => {
+    try {
+      const params = request.params as { id: string };
+      const next = historyOperationsService.updateSeries(params.id, (request.body ?? {}) as any);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "系列更新失败" });
+    }
+  });
+
+  app.delete("/api/history/operations/series/:id", async (request, reply) => {
+    try {
+      const params = request.params as { id: string };
+      const next = historyOperationsService.deleteSeries(params.id);
+      eventBus.emit("dashboard.updated", store.getState());
+      return next;
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "系列删除失败" });
+    }
+  });
+
   app.post("/api/history/operations/directions", async (request, reply) => {
     try {
       const next = historyOperationsService.createDirection((request.body ?? {}) as any);

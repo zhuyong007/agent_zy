@@ -477,12 +477,14 @@ describe("generateHistory", () => {
 
     await generateHistory({
       reason: "manual",
-      topic: " 商鞅变法 "
+      topic: " 商鞅变法 ",
+      seriesId: " reform-series "
     });
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       reason: "manual",
-      topic: "商鞅变法"
+      topic: "商鞅变法",
+      seriesId: "reform-series"
     });
   });
 

@@ -8,6 +8,9 @@ import type {
   HistoryEditorialTopic,
   HistoryOperationsDashboard,
   HistoryOperationsState,
+  HistorySeries,
+  HistorySeriesGenerator,
+  HistorySeriesStatus,
   HistorySourceCard,
   HistoryTopicScores,
   HistoryXhsState
@@ -24,6 +27,9 @@ const STAGES: HistoryEditorialStage[] = [
   "published",
   "archived"
 ];
+
+const SERIES_STATUSES: HistorySeriesStatus[] = ["idea", "pilot", "active", "winding_down", "retired", "archived"];
+const SERIES_GENERATORS: HistorySeriesGenerator[] = ["generic", "dynasty", "most"];
 
 const DEFAULT_SCORES: HistoryTopicScores = {
   demand: 3,
@@ -51,8 +57,42 @@ export function createDefaultHistoryOperationsState(now = new Date().toISOString
       accountName: "历史知识",
       audience: "对历史有兴趣、希望轻松看懂复杂问题的中文读者",
       promise: "用可靠史料和清楚图解，把历史讲得真实、有趣、值得收藏",
-      weeklyCadence: 5
+      weeklyCadence: 21
     },
+    series: [
+      {
+        id: "dynasty-series",
+        name: "朝代系列",
+        description: "从夏到清依次完成朝代主题图文，全部发布后结束。",
+        status: "winding_down",
+        generator: "dynasty",
+        dailyQuota: 2,
+        plannedTotal: null,
+        publishedCount: 0,
+        promptInstruction: "按朝代四件套生成王朝兴衰录、皇帝图鉴、风云人物和历史冷知识。",
+        successorSeriesId: null,
+        startDate: null,
+        endDate: null,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "most-series",
+        name: "最系列",
+        description: "在明确比较范围和判断口径后讲一个历史之最。",
+        status: "active",
+        generator: "most",
+        dailyQuota: 1,
+        plannedTotal: null,
+        publishedCount: 0,
+        promptInstruction: "自动选择有明确比较依据的历史之最，说明比较范围和口径。",
+        successorSeriesId: null,
+        startDate: null,
+        endDate: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
     directions: seeds.map(([id, name, description]) => ({
       id,
       name,
@@ -182,15 +222,40 @@ export function buildHistoryOperationsDashboard(
       shareRate: rate(post.shares, post.views),
       engagementRate: rate(post.likes + post.collects + post.comments + post.shares, post.views),
       matchedTopicId: matched?.id ?? null,
+      seriesId: matched?.seriesId ?? null,
       directionId: matched?.directionId ?? null
     };
   });
+  const seriesPerformance = state.series.map((series) => {
+    const posts = performance.filter((post) => post.seriesId === series.id);
+    return {
+      seriesId: series.id,
+      seriesName: series.name,
+      postCount: posts.length,
+      medianViews: median(posts.map((post) => post.views)),
+      medianCollectRate: median(posts.flatMap((post) => post.collectRate === null ? [] : [post.collectRate]))
+    };
+  }).filter((item) => item.postCount > 0);
+  const dailyPublishingTarget = Math.max(1, Math.ceil(state.strategy.weeklyCadence / 7));
+  const allocatedDailySlots = state.series
+    .filter((series) => series.status === "active" || series.status === "winding_down")
+    .reduce((total, series) => total + series.dailyQuota, 0);
   const recommendations: string[] = [];
   if (!performance.length) recommendations.push("导入小红书笔记明细，建立账号自己的浏览和互动基线。");
   if (!state.topics.length) recommendations.push("先建立至少 10 个候选选题，再按证据强度和收藏价值排序。");
   if (state.topics.length && topicsWithEvidence / state.topics.length < 0.7) recommendations.push("选题库的资料覆盖不足 70%，优先补齐事实卡后再批量生产。");
   if (!pipeline.ready) recommendations.push("当前没有已完成研究的选题，把至少 3 个选题推进到“可生产”。");
   if (pipeline.scheduled < state.strategy.weeklyCadence) recommendations.push(`发布日历尚未达到每周 ${state.strategy.weeklyCadence} 篇的目标。`);
+  if (allocatedDailySlots < dailyPublishingTarget) recommendations.push(`每天还有 ${dailyPublishingTarget - allocatedDailySlots} 个发布位置没有分配系列。`);
+  if (allocatedDailySlots > dailyPublishingTarget) recommendations.push(`系列日更配额比每天目标多 ${allocatedDailySlots - dailyPublishingTarget} 篇，请调整系列配额。`);
+  const endingWithoutSuccessor = state.series.find((series) => series.status === "winding_down" && !series.successorSeriesId);
+  if (endingWithoutSuccessor) recommendations.push(`“${endingWithoutSuccessor.name}”正在收尾，先试发接替系列再结束连载。`);
+  const lowInventorySeries = state.series.find((series) => series.status === "winding_down" && series.plannedTotal !== null
+    && series.plannedTotal - series.publishedCount <= Math.max(1, series.dailyQuota) * 7);
+  if (lowInventorySeries) recommendations.push(`“${lowInventorySeries.name}”剩余库存不足一周，优先补齐接替系列的试发稿。`);
+  const underpreparedPilot = state.series.find((series) => series.status === "pilot"
+    && state.topics.filter((topic) => topic.seriesId === series.id).length < 3);
+  if (underpreparedPilot) recommendations.push(`“${underpreparedPilot.name}”的候选选题少于 3 个，先补足试发样本。`);
   const bestCollect = [...performance].filter((post) => post.collectRate !== null).sort((a, b) => (b.collectRate ?? 0) - (a.collectRate ?? 0))[0];
   if (bestCollect) recommendations.push(`收藏率最高的是《${bestCollect.title}》，建议复用它的知识密度和信息组织方式。`);
 
@@ -199,8 +264,11 @@ export function buildHistoryOperationsDashboard(
     activeDirectionCount: state.directions.filter((direction) => direction.active).length,
     readyToProduceCount: pipeline.ready,
     scheduledCount: pipeline.scheduled,
+    dailyPublishingTarget,
+    allocatedDailySlots,
     evidenceCoverage: state.topics.length ? topicsWithEvidence / state.topics.length : null,
     performance,
+    seriesPerformance,
     benchmarks: {
       medianViews: median(performance.map((post) => post.views)),
       medianLikeRate: median(performance.flatMap((post) => post.likeRate === null ? [] : [post.likeRate])),
@@ -208,13 +276,16 @@ export function buildHistoryOperationsDashboard(
       medianCommentRate: median(performance.flatMap((post) => post.commentRate === null ? [] : [post.commentRate])),
       medianShareRate: median(performance.flatMap((post) => post.shareRate === null ? [] : [post.shareRate]))
     },
-    recommendations: recommendations.slice(0, 5),
+    recommendations: recommendations.slice(0, 8),
     commentSignals: buildCommentSignals(comments)
   };
 }
 
 export interface HistoryOperationsService {
   updateStrategy(input: Partial<HistoryAccountStrategy>): HistoryOperationsState;
+  createSeries(input: Partial<HistorySeries>): HistorySeries;
+  updateSeries(id: string, input: Partial<HistorySeries>): HistorySeries;
+  deleteSeries(id: string): HistoryOperationsState;
   createDirection(input: { name?: unknown; description?: unknown }): HistoryContentDirection;
   updateDirection(id: string, input: Partial<HistoryContentDirection>): HistoryContentDirection;
   deleteDirection(id: string): HistoryOperationsState;
@@ -244,6 +315,61 @@ export function createHistoryOperationsService(store: ControlPlaneStore): Histor
             ? Math.max(1, Math.min(21, Math.round(input.weeklyCadence)))
             : current.strategy.weeklyCadence
         }
+      });
+    },
+    createSeries(input) {
+      const current = state();
+      const now = new Date().toISOString();
+      const series: HistorySeries = {
+        id: `history-series-${nanoid(10)}`,
+        name: requireText(input.name, "系列名称", 80),
+        description: requireText(input.description, "系列说明", 300),
+        status: SERIES_STATUSES.includes(input.status as HistorySeriesStatus) ? input.status as HistorySeriesStatus : "idea",
+        generator: SERIES_GENERATORS.includes(input.generator as HistorySeriesGenerator) ? input.generator as HistorySeriesGenerator : "generic",
+        dailyQuota: typeof input.dailyQuota === "number" ? Math.max(0, Math.min(3, Math.round(input.dailyQuota))) : 0,
+        plannedTotal: typeof input.plannedTotal === "number" ? Math.max(0, Math.round(input.plannedTotal)) : null,
+        publishedCount: typeof input.publishedCount === "number" ? Math.max(0, Math.round(input.publishedCount)) : 0,
+        promptInstruction: typeof input.promptInstruction === "string" ? input.promptInstruction.trim().slice(0, 1000) : "",
+        successorSeriesId: null,
+        startDate: optionalText(input.startDate, 40),
+        endDate: optionalText(input.endDate, 40),
+        createdAt: now,
+        updatedAt: now
+      };
+      save({ ...current, series: [series, ...current.series] });
+      return series;
+    },
+    updateSeries(id, input) {
+      const current = state();
+      const previous = current.series.find((item) => item.id === id);
+      if (!previous) throw new Error("系列不存在");
+      const successorSeriesId = input.successorSeriesId === undefined ? previous.successorSeriesId : optionalText(input.successorSeriesId, 120);
+      if (successorSeriesId && (successorSeriesId === id || !current.series.some((item) => item.id === successorSeriesId))) throw new Error("接替系列不存在");
+      const series: HistorySeries = {
+        ...previous,
+        name: input.name === undefined ? previous.name : requireText(input.name, "系列名称", 80),
+        description: input.description === undefined ? previous.description : requireText(input.description, "系列说明", 300),
+        status: SERIES_STATUSES.includes(input.status as HistorySeriesStatus) ? input.status as HistorySeriesStatus : previous.status,
+        generator: SERIES_GENERATORS.includes(input.generator as HistorySeriesGenerator) ? input.generator as HistorySeriesGenerator : previous.generator,
+        dailyQuota: typeof input.dailyQuota === "number" ? Math.max(0, Math.min(3, Math.round(input.dailyQuota))) : previous.dailyQuota,
+        plannedTotal: input.plannedTotal === undefined ? previous.plannedTotal : typeof input.plannedTotal === "number" ? Math.max(0, Math.round(input.plannedTotal)) : null,
+        publishedCount: typeof input.publishedCount === "number" ? Math.max(0, Math.round(input.publishedCount)) : previous.publishedCount,
+        promptInstruction: input.promptInstruction === undefined ? previous.promptInstruction : String(input.promptInstruction).trim().slice(0, 1000),
+        successorSeriesId,
+        startDate: input.startDate === undefined ? previous.startDate : optionalText(input.startDate, 40),
+        endDate: input.endDate === undefined ? previous.endDate : optionalText(input.endDate, 40),
+        updatedAt: new Date().toISOString()
+      };
+      save({ ...current, series: current.series.map((item) => item.id === id ? series : item) });
+      return series;
+    },
+    deleteSeries(id) {
+      const current = state();
+      if (!current.series.some((item) => item.id === id)) throw new Error("系列不存在");
+      return save({
+        ...current,
+        series: current.series.filter((item) => item.id !== id).map((item) => item.successorSeriesId === id ? { ...item, successorSeriesId: null } : item),
+        topics: current.topics.map((topic) => topic.seriesId === id ? { ...topic, seriesId: null } : topic)
       });
     },
     createDirection(input) {
@@ -287,10 +413,13 @@ export function createHistoryOperationsService(store: ControlPlaneStore): Histor
       const current = state();
       const now = new Date().toISOString();
       const directionId = optionalText(input.directionId, 100);
+      const seriesId = optionalText(input.seriesId, 120);
       if (directionId && !current.directions.some((item) => item.id === directionId)) throw new Error("内容方向不存在");
+      if (seriesId && !current.series.some((item) => item.id === seriesId)) throw new Error("系列不存在");
       const topic: HistoryEditorialTopic = {
         id: `history-topic-${nanoid(10)}`,
         title: requireText(input.title, "选题", 120),
+        seriesId,
         directionId,
         angle: typeof input.angle === "string" ? input.angle.trim().slice(0, 300) : "",
         targetAudience: typeof input.targetAudience === "string" ? input.targetAudience.trim().slice(0, 300) : current.strategy.audience,
@@ -313,10 +442,13 @@ export function createHistoryOperationsService(store: ControlPlaneStore): Histor
       const previous = current.topics.find((item) => item.id === id);
       if (!previous) throw new Error("选题不存在");
       const directionId = input.directionId === undefined ? previous.directionId : optionalText(input.directionId, 100);
+      const seriesId = input.seriesId === undefined ? previous.seriesId : optionalText(input.seriesId, 120);
       if (directionId && !current.directions.some((item) => item.id === directionId)) throw new Error("内容方向不存在");
+      if (seriesId && !current.series.some((item) => item.id === seriesId)) throw new Error("系列不存在");
       const topic: HistoryEditorialTopic = {
         ...previous,
         title: input.title === undefined ? previous.title : requireText(input.title, "选题", 120),
+        seriesId,
         directionId,
         angle: input.angle === undefined ? previous.angle : String(input.angle).trim().slice(0, 300),
         targetAudience: input.targetAudience === undefined ? previous.targetAudience : String(input.targetAudience).trim().slice(0, 300),

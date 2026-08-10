@@ -25,8 +25,13 @@ describe("history operations service", () => {
     return { store, service: createHistoryOperationsService(store) };
   }
 
-  it("starts with editable content directions instead of fixed series", () => {
+  it("starts with a three-post daily plan and editable series", () => {
     const state = createDefaultHistoryOperationsState("2026-08-07T00:00:00.000Z");
+    expect(state.strategy.weeklyCadence).toBe(21);
+    expect(state.series.map((item) => [item.name, item.status, item.dailyQuota])).toEqual([
+      ["朝代系列", "winding_down", 2],
+      ["最系列", "active", 1]
+    ]);
     expect(state.directions).toHaveLength(6);
     expect(state.directions.map((item) => item.name)).toContain("古人的日常生活");
     expect(state.directions.map((item) => item.name)).not.toContain("最系列");
@@ -42,8 +47,10 @@ describe("history operations service", () => {
 
   it("persists custom directions, topics, scores and fact cards", () => {
     const { store, service } = setup();
+    const series = service.createSeries({ name: "古人一天", description: "用一天的时间线讲古人日常", status: "pilot" });
+    service.updateSeries("dynasty-series", { successorSeriesId: series.id });
     const direction = service.createDirection({ name: "城市史", description: "从街道、市场和公共空间讲历史" });
-    const topic = service.createTopic({ title: "宋代夜市真的通宵吗", directionId: direction.id });
+    const topic = service.createTopic({ title: "宋代夜市真的通宵吗", seriesId: series.id, directionId: direction.id });
     const updated = service.updateTopic(topic.id, {
       status: "ready",
       scores: { ...topic.scores, collectability: 5, evidenceStrength: 4 },
@@ -60,6 +67,8 @@ describe("history operations service", () => {
     });
 
     expect(updated.status).toBe("ready");
+    expect(updated.seriesId).toBe(series.id);
+    expect(store.getState().historyOperations?.series.find((item) => item.id === "dynasty-series")?.successorSeriesId).toBe(series.id);
     expect(updated.sourceCards[0]?.confidence).toBe("A");
     expect(store.getState().historyOperations?.topics[0]?.scores.collectability).toBe(5);
   });
@@ -69,6 +78,7 @@ describe("history operations service", () => {
     state.topics = [{
       id: "topic-1",
       title: "宋代夜市",
+      seriesId: "most-series",
       directionId: "ordinary-life",
       angle: "城市生活",
       targetAudience: "普通读者",
@@ -94,7 +104,9 @@ describe("history operations service", () => {
       records: [{ id: "reply-1", targetNotificationId: "n1", targetModuleType: null, sourceTitle: "宋代夜市", commenterName: null, commentText: "这个说法有什么史料依据吗", replyText: "待核实", inputMode: "manual", detectedNoteTitle: null, factualStatus: "needs-verification", verificationNote: null, createdAt: "2026-08-07T00:00:00.000Z", updatedAt: "2026-08-07T00:00:00.000Z" }]
     });
 
-    expect(report.performance[0]).toMatchObject({ collectRate: 0.12, matchedTopicId: "topic-1" });
+    expect(report.performance[0]).toMatchObject({ collectRate: 0.12, matchedTopicId: "topic-1", seriesId: "most-series" });
+    expect(report.seriesPerformance[0]).toMatchObject({ seriesName: "最系列", postCount: 1, medianViews: 1000 });
+    expect(report).toMatchObject({ dailyPublishingTarget: 3, allocatedDailySlots: 3 });
     expect(report.benchmarks.medianViews).toBe(1000);
     expect(report.evidenceCoverage).toBe(1);
     expect(report.commentSignals[0]?.label).toBe("事实质疑");

@@ -450,7 +450,7 @@ function validatePayload(value: unknown, generatedAt: string): HistoryPostPayloa
       ? asStringArray(record.coverTextOptions, 3, 80)
       : [cover.imageText],
     followUpIdeas: asStringArray(record.followUpIdeas, 5, 120),
-    voiceoverScript: asString(record.voiceoverScript) ?? xiaohongshuCaption,
+    voiceoverScript: asString(record.voiceoverScript) ?? undefined,
     generatedAt
   };
 }
@@ -582,12 +582,23 @@ function getEditorialTopic(input: AgentExecutionRequest) {
     : null;
 }
 
+function getSeries(input: AgentExecutionRequest) {
+  const topic = getEditorialTopic(input);
+  const seriesId = topic?.seriesId ?? asString(input.meta?.seriesId);
+  return seriesId
+    ? input.state.historyOperations?.series.find((series) => series.id === seriesId) ?? null
+    : null;
+}
+
 function buildEditorialContext(input: AgentExecutionRequest): string {
   const topic = getEditorialTopic(input);
-  if (!topic) return "";
-  const direction = input.state.historyOperations?.directions.find((item) => item.id === topic.directionId);
+  const series = getSeries(input);
+  if (!topic && !series) return "";
+  const direction = topic
+    ? input.state.historyOperations?.directions.find((item) => item.id === topic.directionId)
+    : null;
   const strategy = input.state.historyOperations?.strategy;
-  const sources = topic.sourceCards.length
+  const sources = topic?.sourceCards.length
     ? topic.sourceCards.map((source, index) => [
         `${index + 1}. [${source.confidence}] ${source.title}`,
         source.citation ? `引文信息：${source.citation}` : "",
@@ -598,28 +609,37 @@ function buildEditorialContext(input: AgentExecutionRequest): string {
 
   return [
     `账号内容承诺：${strategy?.promise ?? "可靠、清楚、有趣的历史内容"}`,
-    `目标读者：${topic.targetAudience || strategy?.audience || "中文历史兴趣读者"}`,
+    `目标读者：${topic?.targetAudience || strategy?.audience || "中文历史兴趣读者"}`,
+    series ? `所属系列：${series.name}` : "无固定系列",
+    series?.description ? `系列说明：${series.description}` : "",
+    series?.promptInstruction ? `系列生成要求：${series.promptInstruction}` : "",
+    "表现形式：只生成小红书图文，不生成口播或视频方案。",
     `内容方向：${direction?.name ?? "未分类"}`,
-    `选题：${topic.title}`,
-    topic.angle ? `切入角度：${topic.angle}` : "",
-    topic.hook ? `核心钩子：${topic.hook}` : "",
-    topic.riskNotes.length ? `风险提示：${topic.riskNotes.join("；")}` : "",
+    topic ? `选题：${topic.title}` : "",
+    topic?.angle ? `切入角度：${topic.angle}` : "",
+    topic?.hook ? `核心钩子：${topic.hook}` : "",
+    topic?.riskNotes.length ? `风险提示：${topic.riskNotes.join("；")}` : "",
     `资料卡：\n${sources}`
   ].filter(Boolean).join("\n");
 }
 
 function buildContentWorkflow(input: AgentExecutionRequest): HistoryContentWorkflow | undefined {
   const topic = getEditorialTopic(input);
-  if (!topic) return undefined;
-  const direction = input.state.historyOperations?.directions.find((item) => item.id === topic.directionId);
-  const sources = topic.sourceCards;
+  const series = getSeries(input);
+  if (!topic && !series) return undefined;
+  const direction = topic
+    ? input.state.historyOperations?.directions.find((item) => item.id === topic.directionId)
+    : null;
+  const sources = topic?.sourceCards ?? [];
 
   return {
     contentId: `history-content-${input.taskId}`,
-    editorialTopicId: topic.id,
+    editorialTopicId: topic?.id ?? null,
+    seriesId: series?.id ?? null,
+    seriesName: series?.name ?? null,
     directionId: direction?.id ?? null,
     directionName: direction?.name ?? null,
-    audience: topic.targetAudience || input.state.historyOperations?.strategy.audience || null,
+    audience: topic?.targetAudience || input.state.historyOperations?.strategy.audience || null,
     goal: input.state.historyOperations?.strategy.promise ?? null,
     sourceCount: sources.length,
     hasPrimarySource: sources.some((source) => source.sourceType === "primary"),
@@ -642,7 +662,7 @@ async function generateWithModelRuntime(
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision"
   });
-  const prompt = `请围绕「${topic}」生成一条小红书历史知识推文策划。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards、titleOptions、coverTextOptions、followUpIdeas、voiceoverScript 的顺序输出字段。titleOptions 给出 3–5 个不同钩子但事实承诺一致的标题；coverTextOptions 给出 2–3 个封面文字方案；followUpIdeas 给出 3–5 个可形成连续内容的新选题；voiceoverScript 是一份约 60 秒、适合自然口播的中文脚本。topic、cover.title、titleOptions 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要明确使用 3:4 竖版构图，并强调小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。所有 cover.prompt 和 cards[].prompt 都必须明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。凡是提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。`;
+  const prompt = `请围绕「${topic}」生成一条小红书历史知识图文策划。只生成图文，不要生成口播稿、视频脚本或镜头方案。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards、titleOptions、coverTextOptions、followUpIdeas 的顺序输出字段。titleOptions 给出 3–5 个不同钩子但事实承诺一致的标题；coverTextOptions 给出 2–3 个封面文字方案；followUpIdeas 给出 3–5 个可形成连续内容的新选题。topic、cover.title、titleOptions 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要明确使用 3:4 竖版构图，并强调小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。所有 cover.prompt 和 cards[].prompt 都必须明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。凡是提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = await getModelClient().generateText({
@@ -862,6 +882,7 @@ export const agent = defineAgent({
     const localDate = asString(input.meta?.localDate) ?? input.requestedAt.slice(0, 10);
     const requestedMode = asString(input.meta?.mode);
     const requestedDynasty = asString(input.meta?.dynasty);
+    const requestedSeries = getSeries(input);
     const shouldGenerateDynasty = requestedMode === "dynasty" || Boolean(requestedDynasty);
 
     if (shouldGenerateDynasty) {
@@ -906,7 +927,8 @@ export const agent = defineAgent({
               persistent: true,
               payload: {
                 ...payload,
-                category: "朝代"
+                category: requestedSeries?.name ?? "朝代",
+                workflow: buildContentWorkflow(input)
               }
             }
           ],
@@ -982,7 +1004,8 @@ export const agent = defineAgent({
               persistent: true,
               payload: {
                 ...payload,
-                category: "最"
+                category: requestedSeries?.name ?? "最",
+                workflow: buildContentWorkflow(input)
               }
             }
           ],
@@ -1048,7 +1071,7 @@ export const agent = defineAgent({
             persistent: true,
             payload: {
               ...payload,
-              category: buildContentWorkflow(input)?.directionName ?? "主题",
+              category: buildContentWorkflow(input)?.seriesName ?? buildContentWorkflow(input)?.directionName ?? "主题",
               workflow: buildContentWorkflow(input)
             }
           }

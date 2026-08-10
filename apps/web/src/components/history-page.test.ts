@@ -112,6 +112,10 @@ const historyOperations: HistoryOperationsState = {
     promise: "用可靠史料讲清历史",
     weeklyCadence: 5
   },
+  series: [
+    { id: "dynasty-series", name: "朝代系列", description: "从夏到清", status: "winding_down", generator: "dynasty", dailyQuota: 2, plannedTotal: null, publishedCount: 0, promptInstruction: "生成朝代四件套", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-05-24T08:00:00.000Z", updatedAt: "2026-05-24T08:00:00.000Z" },
+    { id: "most-series", name: "最系列", description: "历史之最", status: "active", generator: "most", dailyQuota: 1, plannedTotal: null, publishedCount: 0, promptInstruction: "明确比较口径", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-05-24T08:00:00.000Z", updatedAt: "2026-05-24T08:00:00.000Z" }
+  ],
   directions: [],
   topics: [],
   lastUpdatedAt: "2026-05-24T08:00:00.000Z"
@@ -122,6 +126,8 @@ const historyOperationsDashboard: HistoryOperationsDashboard = {
   activeDirectionCount: 0,
   readyToProduceCount: 0,
   scheduledCount: 0,
+  dailyPublishingTarget: 3,
+  allocatedDailySlots: 3,
   evidenceCoverage: null,
   performance: [{
     id: "note-1",
@@ -139,8 +145,10 @@ const historyOperationsDashboard: HistoryOperationsDashboard = {
     shareRate: 3 / 1200,
     engagementRate: 117 / 1200,
     matchedTopicId: null,
+    seriesId: null,
     directionId: null
   }],
+  seriesPerformance: [],
   benchmarks: {
     medianViews: 1200,
     medianLikeRate: 88 / 1200,
@@ -313,6 +321,9 @@ vi.mock("../api", () => ({
   updateHistoryCommentReply: vi.fn(),
   deleteHistoryCommentReply: vi.fn(async () => ({ records: [] })),
   updateHistoryStrategy: vi.fn(async () => ({})),
+  createHistorySeries: vi.fn(async () => ({})),
+  updateHistorySeries: vi.fn(async () => ({})),
+  deleteHistorySeries: vi.fn(async () => ({})),
   createHistoryDirection: vi.fn(async () => ({})),
   updateHistoryDirection: vi.fn(async () => ({})),
   deleteHistoryDirection: vi.fn(async () => ({})),
@@ -353,7 +364,7 @@ describe("HistoryPage", () => {
 
   async function renderHistoryPage(
     currentDashboard = dashboard,
-    workspace: "production" | "analytics" | "insights" | null = "production"
+    workspace: "series" | "production" | "analytics" | "insights" | null = "production"
   ) {
     vi.mocked(fetchDashboard).mockResolvedValueOnce(currentDashboard);
 
@@ -387,6 +398,7 @@ describe("HistoryPage", () => {
 
     if (workspace) {
       const workspaceLabels = {
+        series: "系列库",
         production: "内容生产",
         analytics: "数据复盘",
         insights: "评论洞察"
@@ -402,16 +414,28 @@ describe("HistoryPage", () => {
   it("opens the redesigned editorial workspace before production", async () => {
     await renderHistoryPage(dashboard, null);
     expect(container.textContent).toContain("今日工作台");
+    expect(container.textContent).toContain("系列库");
     expect(container.textContent).toContain("选题库");
     expect(container.textContent).toContain("发布日历");
     expect(container.textContent).toContain("数据复盘");
     expect(container.textContent).toContain("评论洞察");
   });
 
+  it("shows editable series lifecycle and a fixed image-text format", async () => {
+    await renderHistoryPage(dashboard, "series");
+    expect(container.textContent).toContain("朝代系列");
+    expect(container.textContent).toContain("收尾中");
+    expect(container.textContent).toContain("最系列");
+    expect(container.textContent).toContain("表现形式");
+    expect(container.textContent).toContain("图文");
+    expect(container.textContent).not.toContain("视频");
+  });
+
   it("keeps analytics and comment operations out of content production", async () => {
     await renderHistoryPage();
     expect(container.textContent).not.toContain("小红书数据总览");
     expect(container.textContent).not.toContain("评论回复");
+    expect(container.textContent).not.toContain("口播稿");
   });
 
   it("shows the history data synchronization control", async () => {
@@ -517,14 +541,14 @@ describe("HistoryPage", () => {
   it("submits the most series without a topic input", async () => {
     await renderHistoryPage();
 
-    const mostModeButton = Array.from(container.querySelectorAll(".history-mode-switch button")).find(
-      (button) => button.textContent === "最"
-    ) as HTMLButtonElement | undefined;
+    const seriesSelect = container.querySelector('select[aria-label="选择内容系列"]') as HTMLSelectElement | null;
 
-    expect(mostModeButton).toBeTruthy();
+    expect(seriesSelect).toBeTruthy();
 
     await act(async () => {
-      mostModeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      setter?.call(seriesSelect, "most-series");
+      seriesSelect?.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
     expect(container.textContent).toContain("自动选择一个有明确比较依据的历史之最");
@@ -537,7 +561,8 @@ describe("HistoryPage", () => {
 
     expect(generateHistory).toHaveBeenCalledWith({
       reason: "manual",
-      mode: "most"
+      mode: "most",
+      seriesId: "most-series"
     });
   });
 

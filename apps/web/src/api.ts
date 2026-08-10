@@ -31,6 +31,7 @@ import type {
   HistoryContentDirection,
   HistoryEditorialTopic,
   HistoryOperationsState,
+  HistorySeries,
   HistoryXhsState,
   GameCreatorState,
   HomeModulePreference,
@@ -924,6 +925,7 @@ export type HistoryGenerateInput = {
   topic?: string;
   dynasty?: string;
   editorialTopicId?: string;
+  seriesId?: string;
 };
 
 export async function generateHistory(input: HistoryGenerateInput | string = "manual"): Promise<DashboardData> {
@@ -937,7 +939,8 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
           mode: input.mode === "dynasty" || input.mode === "most" ? input.mode : undefined,
           topic: input.topic?.trim() || undefined,
           dynasty: input.dynasty?.trim() || undefined,
-          editorialTopicId: input.editorialTopicId?.trim() || undefined
+          editorialTopicId: input.editorialTopicId?.trim() || undefined,
+          seriesId: input.seriesId?.trim() || undefined
         };
 
   console.info("[history-generate] request:start", {
@@ -1036,6 +1039,18 @@ async function requestHistoryOperation<T>(path: string, method: "POST" | "PUT" |
 
 export function updateHistoryStrategy(input: Partial<HistoryAccountStrategy>) {
   return requestHistoryOperation<HistoryOperationsState>("strategy", "PUT", input);
+}
+
+export function createHistorySeries(input: Pick<HistorySeries, "name" | "description"> & Partial<HistorySeries>) {
+  return requestHistoryOperation<HistorySeries>("series", "POST", input);
+}
+
+export function updateHistorySeries(id: string, input: Partial<HistorySeries>) {
+  return requestHistoryOperation<HistorySeries>(`series/${encodeURIComponent(id)}`, "PUT", input);
+}
+
+export function deleteHistorySeries(id: string) {
+  return requestHistoryOperation<HistoryOperationsState>(`series/${encodeURIComponent(id)}`, "DELETE");
 }
 
 export function createHistoryDirection(input: Pick<HistoryContentDirection, "name" | "description">) {

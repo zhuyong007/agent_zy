@@ -25,6 +25,8 @@ import type {
   HistoryDynastyModuleType,
   HistoryEditorialStage,
   HistoryOperationsState,
+  HistorySeriesGenerator,
+  HistorySeriesStatus,
   HistoryPushState,
   HistoryXhsState,
   ImageToVideoState,
@@ -1584,8 +1586,41 @@ const HISTORY_EDITORIAL_STAGES = new Set<HistoryEditorialStage>([
   "archived"
 ]);
 
+const HISTORY_SERIES_STATUSES = new Set<HistorySeriesStatus>([
+  "idea",
+  "pilot",
+  "active",
+  "winding_down",
+  "retired",
+  "archived"
+]);
+const HISTORY_SERIES_GENERATORS = new Set<HistorySeriesGenerator>(["generic", "dynasty", "most"]);
+
 function normalizeHistoryOperationsState(value: Partial<HistoryOperationsState> | undefined): HistoryOperationsState {
   const fallback = createDefaultHistoryOperationsState();
+  const seriesDraft = (value?.series ?? fallback.series).map((series) => ({
+    id: series.id,
+    name: series.name,
+    description: series.description ?? "",
+    status: HISTORY_SERIES_STATUSES.has(series.status) ? series.status : "idea" as HistorySeriesStatus,
+    generator: HISTORY_SERIES_GENERATORS.has(series.generator) ? series.generator : "generic" as HistorySeriesGenerator,
+    dailyQuota: typeof series.dailyQuota === "number" ? Math.max(0, Math.min(3, Math.round(series.dailyQuota))) : 0,
+    plannedTotal: typeof series.plannedTotal === "number" ? Math.max(0, Math.round(series.plannedTotal)) : null,
+    publishedCount: typeof series.publishedCount === "number" ? Math.max(0, Math.round(series.publishedCount)) : 0,
+    promptInstruction: series.promptInstruction ?? "",
+    successorSeriesId: series.successorSeriesId ?? null,
+    startDate: series.startDate ?? null,
+    endDate: series.endDate ?? null,
+    createdAt: series.createdAt ?? nowIso(),
+    updatedAt: series.updatedAt ?? nowIso()
+  }));
+  const seriesIds = new Set(seriesDraft.map((series) => series.id));
+  const series = seriesDraft.map((item) => ({
+    ...item,
+    successorSeriesId: item.successorSeriesId && seriesIds.has(item.successorSeriesId) && item.successorSeriesId !== item.id
+      ? item.successorSeriesId
+      : null
+  }));
   const directions = (value?.directions ?? fallback.directions).map((direction) => ({
     id: direction.id,
     name: direction.name,
@@ -1607,13 +1642,17 @@ function normalizeHistoryOperationsState(value: Partial<HistoryOperationsState> 
       promise: typeof value?.strategy?.promise === "string" && value.strategy.promise.trim()
         ? value.strategy.promise.trim()
         : fallback.strategy.promise,
-      weeklyCadence: typeof value?.strategy?.weeklyCadence === "number"
-        ? Math.max(1, Math.min(21, Math.round(value.strategy.weeklyCadence)))
-        : fallback.strategy.weeklyCadence
+      weeklyCadence: value?.series === undefined && value?.strategy?.weeklyCadence === 5
+        ? 21
+        : typeof value?.strategy?.weeklyCadence === "number"
+          ? Math.max(1, Math.min(21, Math.round(value.strategy.weeklyCadence)))
+          : fallback.strategy.weeklyCadence
     },
+    series,
     directions,
     topics: (value?.topics ?? []).map((topic) => ({
       ...topic,
+      seriesId: topic.seriesId && seriesIds.has(topic.seriesId) ? topic.seriesId : null,
       directionId: topic.directionId && directionIds.has(topic.directionId) ? topic.directionId : null,
       angle: topic.angle ?? "",
       targetAudience: topic.targetAudience ?? fallback.strategy.audience,

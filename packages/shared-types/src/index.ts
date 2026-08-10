@@ -796,6 +796,8 @@ export type HistoryFactConfidence = "A" | "B" | "C" | "D";
 export interface HistoryContentWorkflow {
   contentId: string;
   editorialTopicId: string | null;
+  seriesId: string | null;
+  seriesName: string | null;
   directionId: string | null;
   directionName: string | null;
   audience: string | null;
@@ -819,6 +821,7 @@ export interface HistoryDynastyPayload {
   category?: string;
   dynasty: string;
   modules: HistoryDynastyModule[];
+  workflow?: HistoryContentWorkflow;
 }
 
 export type HistoryNotificationPayload = HistoryPostPayload | HistoryDynastyPayload;
@@ -925,6 +928,27 @@ export interface HistoryContentDirection {
   updatedAt: string;
 }
 
+export type HistorySeriesStatus = "idea" | "pilot" | "active" | "winding_down" | "retired" | "archived";
+
+export type HistorySeriesGenerator = "generic" | "dynasty" | "most";
+
+export interface HistorySeries {
+  id: string;
+  name: string;
+  description: string;
+  status: HistorySeriesStatus;
+  generator: HistorySeriesGenerator;
+  dailyQuota: number;
+  plannedTotal: number | null;
+  publishedCount: number;
+  promptInstruction: string;
+  successorSeriesId: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface HistoryTopicScores {
   demand: number;
   curiosity: number;
@@ -950,6 +974,7 @@ export interface HistorySourceCard {
 export interface HistoryEditorialTopic {
   id: string;
   title: string;
+  seriesId: string | null;
   directionId: string | null;
   angle: string;
   targetAudience: string;
@@ -967,6 +992,7 @@ export interface HistoryEditorialTopic {
 
 export interface HistoryOperationsState {
   strategy: HistoryAccountStrategy;
+  series: HistorySeries[];
   directions: HistoryContentDirection[];
   topics: HistoryEditorialTopic[];
   lastUpdatedAt: string | null;
@@ -979,6 +1005,7 @@ export interface HistoryPerformanceRow extends HistoryXhsPostMetrics {
   shareRate: number | null;
   engagementRate: number | null;
   matchedTopicId: string | null;
+  seriesId: string | null;
   directionId: string | null;
 }
 
@@ -987,8 +1014,17 @@ export interface HistoryOperationsDashboard {
   activeDirectionCount: number;
   readyToProduceCount: number;
   scheduledCount: number;
+  dailyPublishingTarget: number;
+  allocatedDailySlots: number;
   evidenceCoverage: number | null;
   performance: HistoryPerformanceRow[];
+  seriesPerformance: Array<{
+    seriesId: string;
+    seriesName: string;
+    postCount: number;
+    medianViews: number | null;
+    medianCollectRate: number | null;
+  }>;
   benchmarks: {
     medianViews: number | null;
     medianLikeRate: number | null;

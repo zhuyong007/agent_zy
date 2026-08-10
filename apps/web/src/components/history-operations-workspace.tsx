@@ -6,23 +6,29 @@ import type {
   HistoryContentDirection,
   HistoryEditorialStage,
   HistoryEditorialTopic,
+  HistorySeries,
+  HistorySeriesStatus,
   HistorySourceCard
 } from "@agent-zy/shared-types";
 
 import {
   createHistoryDirection,
+  createHistorySeries,
   createHistoryTopic,
   deleteHistoryDirection,
+  deleteHistorySeries,
   deleteHistoryTopic,
   updateHistoryDirection,
+  updateHistorySeries,
   updateHistoryStrategy,
   updateHistoryTopic
 } from "../api";
 
-export type HistoryWorkspaceView = "today" | "topics" | "production" | "calendar" | "analytics" | "insights";
+export type HistoryWorkspaceView = "today" | "series" | "topics" | "production" | "calendar" | "analytics" | "insights";
 
 const WORKSPACES: Array<{ id: HistoryWorkspaceView; label: string; caption: string }> = [
   { id: "today", label: "今日工作台", caption: "策略与推进" },
+  { id: "series", label: "系列库", caption: "连载与接替" },
   { id: "topics", label: "选题库", caption: "方向与事实卡" },
   { id: "production", label: "内容生产", caption: "生成与历史稿" },
   { id: "calendar", label: "发布日历", caption: "排期与状态" },
@@ -42,6 +48,17 @@ const STAGE_LABELS: Record<HistoryEditorialStage, string> = {
 
 const STAGES = Object.keys(STAGE_LABELS) as HistoryEditorialStage[];
 
+const SERIES_STATUS_LABELS: Record<HistorySeriesStatus, string> = {
+  idea: "构思中",
+  pilot: "试发中",
+  active: "正式连载",
+  winding_down: "收尾中",
+  retired: "已停更",
+  archived: "已归档"
+};
+
+const SERIES_STATUSES = Object.keys(SERIES_STATUS_LABELS) as HistorySeriesStatus[];
+
 function percent(value: number | null | undefined) {
   return value === null || value === undefined ? "--" : `${(value * 100).toFixed(2)}%`;
 }
@@ -54,6 +71,10 @@ function scoreTotal(topic: HistoryEditorialTopic) {
 
 function directionName(topic: HistoryEditorialTopic, directions: HistoryContentDirection[]) {
   return directions.find((direction) => direction.id === topic.directionId)?.name ?? "未分类";
+}
+
+function seriesName(topic: HistoryEditorialTopic, series: HistorySeries[]) {
+  return series.find((item) => item.id === topic.seriesId)?.name ?? "无系列";
 }
 
 export function HistoryOperationsNavigation(props: {
@@ -106,6 +127,7 @@ export function HistoryOperationsWorkspace(props: {
   const report = props.dashboard.historyOperationsDashboard;
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [topicTitle, setTopicTitle] = useState("");
+  const [topicSeriesId, setTopicSeriesId] = useState("");
   const [topicDirectionId, setTopicDirectionId] = useState("");
   const [directionNameInput, setDirectionNameInput] = useState("");
   const [directionDescription, setDirectionDescription] = useState("");
@@ -134,10 +156,17 @@ export function HistoryOperationsWorkspace(props: {
     return <TodayDesk dashboard={props.dashboard} />;
   }
 
+  if (props.view === "series") {
+    return <SeriesDesk dashboard={props.dashboard} />;
+  }
+
   if (props.view === "calendar") {
+    const recurringSlots = operations.series
+      .filter((series) => series.status === "active" || series.status === "winding_down")
+      .flatMap((series) => Array.from({ length: series.dailyQuota }, () => series));
     return (
       <section className="history-ops-surface history-calendar-desk">
-        <SectionHeading eyebrow="Publishing" title="发布日历" description="把研究完成的内容排进具体日期；“朝代”和“最”只是可选工具，不占固定栏目。" />
+        <SectionHeading eyebrow="Publishing" title="发布日历" description={`每天 ${report.dailyPublishingTarget} 个图文位置，当前系列已经分配 ${report.allocatedDailySlots} 个。`} />
         <div className="history-calendar-week">
           {Array.from({ length: 14 }, (_, index) => {
             const date = new Date();
@@ -147,7 +176,15 @@ export function HistoryOperationsWorkspace(props: {
             return (
               <article key={key} className={items.length ? "has-items" : ""}>
                 <time dateTime={key}>{date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short" })}</time>
-                {items.length ? items.map((topic) => <button key={topic.id} type="button" onClick={() => setSelectedTopicId(topic.id)}><strong>{topic.title}</strong><span>{directionName(topic, operations.directions)}</span></button>) : <span>未排期</span>}
+                {Array.from({ length: report.dailyPublishingTarget }, (_, slotIndex) => {
+                  const topic = items[slotIndex];
+                  const recurringSeries = recurringSlots[slotIndex];
+                  return topic ? (
+                    <button key={topic.id} type="button" onClick={() => setSelectedTopicId(topic.id)}><strong>{topic.title}</strong><span>位置 {slotIndex + 1} · {seriesName(topic, operations.series)}</span></button>
+                  ) : (
+                    <div key={`${key}-${slotIndex}`} className="history-calendar-slot"><strong>{recurringSeries?.name ?? "待接替系列"}</strong><span>位置 {slotIndex + 1} · 待安排图文</span></div>
+                  );
+                })}
               </article>
             );
           })}
@@ -155,7 +192,7 @@ export function HistoryOperationsWorkspace(props: {
         <div className="history-calendar-backlog">
           <h3>待排期内容</h3>
           {operations.topics.filter((topic) => topic.status === "ready" && !topic.scheduledFor).map((topic) => (
-            <article key={topic.id}><strong>{topic.title}</strong><input type="date" aria-label={`安排 ${topic.title}`} onChange={(event) => updateTopicMutation.mutate({ id: topic.id, patch: { scheduledFor: event.target.value, status: "scheduled" } })} /></article>
+            <article key={topic.id}><div><strong>{topic.title}</strong><span>{seriesName(topic, operations.series)}</span></div><input type="date" aria-label={`安排 ${topic.title}`} onChange={(event) => updateTopicMutation.mutate({ id: topic.id, patch: { scheduledFor: event.target.value, status: "scheduled" } })} /></article>
           ))}
         </div>
       </section>
@@ -174,6 +211,12 @@ export function HistoryOperationsWorkspace(props: {
           <Metric label="证据覆盖" value={percent(report.evidenceCoverage)} />
         </div>
         <div className="history-review-notes"><h3>本周行动建议</h3>{report.recommendations.map((item) => <p key={item}>{item}</p>)}</div>
+        <div className="history-series-performance">
+          <h3>系列表现</h3>
+          <div className="history-series-performance__head"><span>系列</span><span>匹配作品</span><span>浏览中位数</span><span>收藏率中位数</span></div>
+          {report.seriesPerformance.map((series) => <div key={series.seriesId}><strong>{series.seriesName}</strong><span>{series.postCount}</span><span>{series.medianViews?.toLocaleString("zh-CN") ?? "--"}</span><span>{percent(series.medianCollectRate)}</span></div>)}
+          {!report.seriesPerformance.length ? <p>发布数据与系列选题匹配后，这里会出现系列对比。</p> : null}
+        </div>
         <div className="history-performance-table" role="table" aria-label="小红书内容表现">
           <div role="row" className="history-performance-table__head"><span>笔记</span><span>浏览</span><span>点赞率</span><span>收藏率</span><span>评论率</span><span>分享率</span></div>
           {[...report.performance].sort((a, b) => (b.engagementRate ?? 0) - (a.engagementRate ?? 0)).map((post) => (
@@ -206,7 +249,7 @@ export function HistoryOperationsWorkspace(props: {
 
   return (
     <section className="history-ops-surface history-topic-desk">
-      <SectionHeading eyebrow="Editorial pipeline" title="选题库" description="方向可以持续增删；选题只有完成资料卡后才建议进入生产。" />
+      <SectionHeading eyebrow="Editorial pipeline" title="选题库" description="系列决定连载归属，内容方向决定这篇具体讲什么。" />
       <div className="history-direction-ledger">
         <div className="history-direction-ledger__list">
           {operations.directions.map((direction) => (
@@ -224,9 +267,10 @@ export function HistoryOperationsWorkspace(props: {
           <button type="submit">新增方向</button>
         </form>
       </div>
-      <form className="history-topic-capture" onSubmit={(event) => { event.preventDefault(); createTopicMutation.mutate({ title: topicTitle, directionId: topicDirectionId || null }); }}>
+      <form className="history-topic-capture" onSubmit={(event) => { event.preventDefault(); createTopicMutation.mutate({ title: topicTitle, seriesId: topicSeriesId || null, directionId: topicDirectionId || null }); }}>
         <span>快速收题</span>
         <input value={topicTitle} onChange={(event) => setTopicTitle(event.target.value)} placeholder="输入一个值得研究的问题" required />
+        <select aria-label="选择选题系列" value={topicSeriesId} onChange={(event) => setTopicSeriesId(event.target.value)}><option value="">无系列</option>{operations.series.filter((series) => !["retired", "archived"].includes(series.status)).map((series) => <option key={series.id} value={series.id}>{series.name}</option>)}</select>
         <select value={topicDirectionId} onChange={(event) => setTopicDirectionId(event.target.value)}><option value="">未分类</option>{operations.directions.filter((direction) => direction.active).map((direction) => <option key={direction.id} value={direction.id}>{direction.name}</option>)}</select>
         <button type="submit">加入选题库</button>
       </form>
@@ -234,17 +278,93 @@ export function HistoryOperationsWorkspace(props: {
         <div className="history-topic-ledger__head"><span>选题 / 方向</span><span>阶段</span><span>综合分</span><span>资料</span><span>操作</span></div>
         {[...operations.topics].sort((a, b) => scoreTotal(b) - scoreTotal(a)).map((topic) => (
           <article key={topic.id} className={selectedTopicId === topic.id ? "is-expanded" : ""}>
-            <button type="button" className="history-topic-ledger__title" onClick={() => setSelectedTopicId(selectedTopicId === topic.id ? null : topic.id)}><strong>{topic.title}</strong><span>{directionName(topic, operations.directions)}</span></button>
+            <button type="button" className="history-topic-ledger__title" onClick={() => setSelectedTopicId(selectedTopicId === topic.id ? null : topic.id)}><strong>{topic.title}</strong><span>{seriesName(topic, operations.series)} · {directionName(topic, operations.directions)}</span></button>
             <select aria-label={`${topic.title}阶段`} value={topic.status} onChange={(event) => updateTopicMutation.mutate({ id: topic.id, patch: { status: event.target.value as HistoryEditorialStage } })}>{STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}</select>
             <strong className="history-topic-score">{scoreTotal(topic)}</strong>
             <span>{topic.sourceCards.length} 条</span>
             <div className="history-topic-ledger__actions"><button type="button" disabled={props.generatingTopicId === topic.id} onClick={() => props.onGenerateTopic(topic)}>{props.generatingTopicId === topic.id ? "生成中" : "生成"}</button><button type="button" onClick={() => { if (window.confirm(`删除选题“${topic.title}”？`)) deleteTopicMutation.mutate(topic.id); }}>删除</button></div>
-            {selectedTopicId === topic.id ? <TopicInspector topic={topic} directions={operations.directions} onSave={(patch) => updateTopicMutation.mutate({ id: topic.id, patch })} /> : null}
+            {selectedTopicId === topic.id ? <TopicInspector topic={topic} series={operations.series} directions={operations.directions} onSave={(patch) => updateTopicMutation.mutate({ id: topic.id, patch })} /> : null}
           </article>
         ))}
         {!operations.topics.length ? <div className="edge-empty">还没有选题。先从一个具体问题开始，不必先决定长期系列。</div> : null}
       </div>
     </section>
+  );
+}
+
+function SeriesDesk({ dashboard }: { dashboard: DashboardData }) {
+  const queryClient = useQueryClient();
+  const operations = dashboard.historyOperations!;
+  const report = dashboard.historyOperationsDashboard!;
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  const createMutation = useMutation({
+    mutationFn: createHistorySeries,
+    onSuccess: () => { setName(""); setDescription(""); refresh(); }
+  });
+  const deleteMutation = useMutation({ mutationFn: deleteHistorySeries, onSuccess: refresh });
+  const activeCount = operations.series.filter((series) => series.status === "active" || series.status === "winding_down").length;
+
+  return (
+    <section className="history-ops-surface history-series-desk">
+      <SectionHeading eyebrow="Series lifecycle" title="系列库" description="系列可以试发、连载、收尾和停更。表现形式固定为图文。" />
+      <div className="history-series-summary">
+        <Metric label="系列总数" value={String(operations.series.length)} />
+        <Metric label="连载与收尾" value={String(activeCount)} />
+        <Metric label="每日目标" value={`${report.dailyPublishingTarget} 篇`} />
+        <Metric label="已分配位置" value={`${report.allocatedDailySlots} / ${report.dailyPublishingTarget}`} />
+        <Metric label="表现形式" value="图文" />
+      </div>
+      <form className="history-series-create" onSubmit={(event) => { event.preventDefault(); createMutation.mutate({ name, description, status: "idea", generator: "generic", dailyQuota: 0 }); }}>
+        <div><span>创建新系列</span><p>新系列先进入构思中，准备选题后再改成试发。</p></div>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="系列名称" required />
+        <input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="这个系列持续讲什么" required />
+        <button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "创建中" : "创建系列"}</button>
+      </form>
+      <div className="history-series-ledger">
+        {operations.series.map((series) => (
+          <SeriesEditor
+            key={series.id}
+            series={series}
+            allSeries={operations.series}
+            onDelete={() => { if (window.confirm(`删除系列“${series.name}”？关联选题会变成无系列。`)) deleteMutation.mutate(series.id); }}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SeriesEditor(props: { series: HistorySeries; allSeries: HistorySeries[]; onDelete: () => void }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(props.series);
+  useEffect(() => setDraft(props.series), [props.series]);
+  const mutation = useMutation({
+    mutationFn: (patch: Partial<HistorySeries>) => updateHistorySeries(props.series.id, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+  });
+  const remaining = draft.plannedTotal === null ? null : Math.max(0, draft.plannedTotal - draft.publishedCount);
+  const generatorLabel = draft.generator === "dynasty" ? "朝代四件套" : draft.generator === "most" ? "历史之最" : "通用系列图文";
+
+  return (
+    <article className={`history-series-row is-${draft.status}`}>
+      <header>
+        <div><span>{SERIES_STATUS_LABELS[draft.status]}</span><input aria-label={`${draft.name}名称`} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div>
+        <strong>{remaining === null ? "总量待补" : `剩余 ${remaining} 篇`}</strong>
+      </header>
+      <div className="history-series-row__fields">
+        <label>生命周期<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as HistorySeriesStatus })}>{SERIES_STATUSES.map((status) => <option key={status} value={status}>{SERIES_STATUS_LABELS[status]}</option>)}</select></label>
+        <label>每日配额<input type="number" min="0" max="3" value={draft.dailyQuota} onChange={(event) => setDraft({ ...draft, dailyQuota: Number(event.target.value) })} /></label>
+        <label>计划总量<input type="number" min="0" value={draft.plannedTotal ?? ""} placeholder="不确定可留空" onChange={(event) => setDraft({ ...draft, plannedTotal: event.target.value === "" ? null : Number(event.target.value) })} /></label>
+        <label>已发布<input type="number" min="0" value={draft.publishedCount} onChange={(event) => setDraft({ ...draft, publishedCount: Number(event.target.value) })} /></label>
+        <label>接替系列<select value={draft.successorSeriesId ?? ""} onChange={(event) => setDraft({ ...draft, successorSeriesId: event.target.value || null })}><option value="">尚未确定</option>{props.allSeries.filter((series) => series.id !== draft.id).map((series) => <option key={series.id} value={series.id}>{series.name}</option>)}</select></label>
+        <div className="history-series-row__fixed"><span>表现形式</span><strong>图文</strong></div>
+      </div>
+      <label className="history-series-row__description">系列说明<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
+      <label className="history-series-row__prompt">生成要求<textarea value={draft.promptInstruction} onChange={(event) => setDraft({ ...draft, promptInstruction: event.target.value })} placeholder="写清选题边界、标题习惯和每篇必须包含的信息" /></label>
+      <footer><span>生成规则 {generatorLabel}</span><div><button type="button" onClick={props.onDelete}>删除</button><button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate(draft)}>{mutation.isPending ? "保存中" : "保存系列"}</button></div></footer>
+    </article>
   );
 }
 
@@ -258,7 +378,15 @@ function TodayDesk({ dashboard }: { dashboard: DashboardData }) {
   const nextTopics = operations.topics.filter((topic) => !["published", "archived"].includes(topic.status)).slice(0, 6);
   return (
     <section className="history-ops-surface history-today-desk">
-      <SectionHeading eyebrow="Editorial command" title="今日工作台" description="先决定下一步动作，再进入内容生产。" />
+      <SectionHeading eyebrow="Editorial command" title="今日工作台" description={`今天计划发布 ${report.dailyPublishingTarget} 篇图文，系列配额已覆盖 ${report.allocatedDailySlots} 个位置。`} />
+      <div className="history-daily-slots">
+        {Array.from({ length: report.dailyPublishingTarget }, (_, index) => {
+          const allocated = operations.series
+            .filter((series) => series.status === "active" || series.status === "winding_down")
+            .flatMap((series) => Array.from({ length: series.dailyQuota }, () => series))[index];
+          return <article key={index} className={allocated ? "is-allocated" : "is-empty"}><span>今日位置 {index + 1}</span><strong>{allocated?.name ?? "等待新系列"}</strong><small>图文 · {allocated ? SERIES_STATUS_LABELS[allocated.status] : "未分配"}</small></article>;
+        })}
+      </div>
       <div className="history-today-grid">
         <form className="history-strategy-sheet" onSubmit={(event) => { event.preventDefault(); mutation.mutate(strategy); }}>
           <h3>账号策略</h3>
@@ -274,12 +402,12 @@ function TodayDesk({ dashboard }: { dashboard: DashboardData }) {
         </div>
         <div className="history-today-actions"><h3>下一步</h3>{report.recommendations.map((item) => <p key={item}>{item}</p>)}</div>
       </div>
-      <div className="history-today-queue"><h3>正在推进</h3>{nextTopics.map((topic) => <article key={topic.id}><span>{STAGE_LABELS[topic.status]}</span><strong>{topic.title}</strong><small>{directionName(topic, operations.directions)} · {topic.sourceCards.length} 条资料</small></article>)}</div>
+      <div className="history-today-queue"><h3>正在推进</h3>{nextTopics.map((topic) => <article key={topic.id}><span>{STAGE_LABELS[topic.status]}</span><strong>{topic.title}</strong><small>{seriesName(topic, operations.series)} · {directionName(topic, operations.directions)} · {topic.sourceCards.length} 条资料</small></article>)}</div>
     </section>
   );
 }
 
-function TopicInspector(props: { topic: HistoryEditorialTopic; directions: HistoryContentDirection[]; onSave: (patch: Partial<HistoryEditorialTopic>) => void }) {
+function TopicInspector(props: { topic: HistoryEditorialTopic; series: HistorySeries[]; directions: HistoryContentDirection[]; onSave: (patch: Partial<HistoryEditorialTopic>) => void }) {
   const [draft, setDraft] = useState(props.topic);
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceClaim, setSourceClaim] = useState("");
@@ -293,6 +421,7 @@ function TopicInspector(props: { topic: HistoryEditorialTopic; directions: Histo
   return (
     <div className="history-topic-inspector">
       <div className="history-topic-inspector__fields">
+        <label>所属系列<select value={draft.seriesId ?? ""} onChange={(event) => setDraft({ ...draft, seriesId: event.target.value || null })}><option value="">无系列</option>{props.series.map((series) => <option key={series.id} value={series.id}>{series.name}</option>)}</select></label>
         <label>内容方向<select value={draft.directionId ?? ""} onChange={(event) => setDraft({ ...draft, directionId: event.target.value || null })}><option value="">未分类</option>{props.directions.map((direction) => <option key={direction.id} value={direction.id}>{direction.name}</option>)}</select></label>
         <label>切入角度<textarea value={draft.angle} onChange={(event) => setDraft({ ...draft, angle: event.target.value })} placeholder="这篇内容从哪里切进去" /></label>
         <label>开头钩子<textarea value={draft.hook} onChange={(event) => setDraft({ ...draft, hook: event.target.value })} placeholder="标题和正文必须兑现的核心问题" /></label>
@@ -302,7 +431,7 @@ function TopicInspector(props: { topic: HistoryEditorialTopic; directions: Histo
       </div>
       <div className="history-score-grid">{(["demand", "curiosity", "contrast", "collectability", "visualPotential", "evidenceStrength", "extensibility", "risk"] as const).map((key) => <label key={key}><span>{({ demand: "需求", curiosity: "好奇", contrast: "反差", collectability: "收藏", visualPotential: "视觉", evidenceStrength: "证据", extensibility: "延展", risk: "风险" })[key]}</span><input type="range" min="1" max="5" value={draft.scores[key]} onChange={(event) => setDraft({ ...draft, scores: { ...draft.scores, [key]: Number(event.target.value) } })} /><strong>{draft.scores[key]}</strong></label>)}</div>
       <div className="history-source-desk"><h4>事实资料卡</h4>{draft.sourceCards.map((source) => <article key={source.id}><select value={source.confidence} onChange={(event) => setDraft({ ...draft, sourceCards: draft.sourceCards.map((item) => item.id === source.id ? { ...item, confidence: event.target.value as HistorySourceCard["confidence"] } : item) })}><option value="A">A 直接证据</option><option value="B">B 主流共识</option><option value="C">C 存在争议</option><option value="D">D 禁止使用</option></select><div><strong>{source.title}</strong><p>{source.claim || "尚未填写可支撑内容"}</p></div><button type="button" onClick={() => setDraft({ ...draft, sourceCards: draft.sourceCards.filter((item) => item.id !== source.id) })}>移除</button></article>)}<div className="history-source-desk__new"><input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} placeholder="资料名称" /><input value={sourceClaim} onChange={(event) => setSourceClaim(event.target.value)} placeholder="它能支撑什么结论" /><button type="button" onClick={addSource}>添加资料</button></div></div>
-      <button type="button" className="history-topic-inspector__save" onClick={() => props.onSave({ directionId: draft.directionId, angle: draft.angle, hook: draft.hook, targetAudience: draft.targetAudience, riskNotes: draft.riskNotes, scheduledFor: draft.scheduledFor, scores: draft.scores, sourceCards: draft.sourceCards, status: draft.scheduledFor && draft.status === "ready" ? "scheduled" : draft.status })}>保存选题资料</button>
+      <button type="button" className="history-topic-inspector__save" onClick={() => props.onSave({ seriesId: draft.seriesId, directionId: draft.directionId, angle: draft.angle, hook: draft.hook, targetAudience: draft.targetAudience, riskNotes: draft.riskNotes, scheduledFor: draft.scheduledFor, scores: draft.scores, sourceCards: draft.sourceCards, status: draft.scheduledFor && draft.status === "ready" ? "scheduled" : draft.status })}>保存选题资料</button>
     </div>
   );
 }

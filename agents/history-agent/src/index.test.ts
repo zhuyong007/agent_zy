@@ -725,10 +725,12 @@ describe("history agent", () => {
     const state = createState();
     state.historyOperations = {
       strategy: { accountName: "历史知识", audience: "城市史读者", promise: "用可靠材料讲清城市生活", weeklyCadence: 5 },
+      series: [{ id: "city-series", name: "城市生活史", description: "从城市日常进入历史", status: "pilot", generator: "generic", dailyQuota: 0, plannedTotal: 10, publishedCount: 0, promptInstruction: "每篇从一个生活问题切入", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" }],
       directions: [{ id: "city-history", name: "城市史", description: "街道与市场", active: true, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" }],
       topics: [{
         id: "topic-night-market",
         title: "宋代夜市真的通宵吗",
+        seriesId: "city-series",
         directionId: "city-history",
         angle: "从营业时间和城市管理切入",
         targetAudience: "城市史读者",
@@ -746,10 +748,13 @@ describe("history agent", () => {
       lastUpdatedAt: "2026-08-01T00:00:00.000Z"
     };
     const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("所属系列：城市生活史");
+      expect(prompt).toContain("系列生成要求：每篇从一个生活问题切入");
       expect(prompt).toContain("内容方向：城市史");
       expect(prompt).toContain("切入角度：从营业时间和城市管理切入");
       expect(prompt).toContain("[A] 东京梦华录");
-      expect(prompt).toContain("titleOptions、coverTextOptions、followUpIdeas、voiceoverScript");
+      expect(prompt).toContain("titleOptions、coverTextOptions、followUpIdeas");
+      expect(prompt).toContain("只生成图文，不要生成口播稿");
       return JSON.stringify({
         topic: "宋代夜市真的通宵吗",
         summary: "从史料边界讲清宋代夜市。",
@@ -758,8 +763,7 @@ describe("history agent", () => {
         xiaohongshuCaption: "宋代夜市正文",
         titleOptions: ["宋代夜市通宵吗", "夜市几点才收摊"],
         coverTextOptions: ["宋代夜市真相"],
-        followUpIdeas: ["宋代城市如何宵禁"],
-        voiceoverScript: "今天从史料记录讲清宋代夜市。"
+        followUpIdeas: ["宋代城市如何宵禁"]
       });
     });
     const request = createRequest(state);
@@ -774,6 +778,8 @@ describe("history agent", () => {
       followUpIdeas: ["宋代城市如何宵禁"],
       workflow: {
         editorialTopicId: "topic-night-market",
+        seriesId: "city-series",
+        seriesName: "城市生活史",
         directionId: "city-history",
         directionName: "城市史",
         sourceCount: 1,
