@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
-  GameCreatorDraft,
+  GameCreatorBranchKind,
+  GameCreatorBranchNote,
+  GameCreatorManuscript,
+  GameCreatorProject,
+  GameCreatorRevisionRequest,
+  GameCreatorRevisionResult,
   GameCreatorState,
-  GameCreatorWorkflowStageId
+  GameCreatorViewId
 } from "@agent-zy/shared-types";
 
-import { fetchGameCreatorState, saveGameCreatorState } from "../api";
+import {
+  fetchGameCreatorState,
+  reviseGameCreatorManuscript,
+  saveGameCreatorState
+} from "../api";
 import { DataSyncControl } from "./data-sync-control";
 import {
   CommandRail,
@@ -15,28 +24,9 @@ import {
   useThemePreference
 } from "./dashboard-page";
 
-export const GAME_CREATOR_STORAGE_KEY = "agent-zy-game-creator-v1";
-
-interface WorkflowTask {
-  id: string;
-  label: string;
-}
-
-interface WorkflowStage {
-  id: GameCreatorWorkflowStageId;
-  index: string;
-  label: string;
-  summary: string;
-  tasks: WorkflowTask[];
-}
-
-interface QualityCheck {
-  id: string;
-  label: string;
-  description: string;
-  weight: number;
-  critical?: boolean;
-}
+export const GAME_CREATOR_STORAGE_KEY = "agent-zy-game-creator-v2";
+const LEGACY_STORAGE_KEY = "agent-zy-game-creator-v1";
+const DEFAULT_NOW = () => new Date();
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
@@ -45,261 +35,167 @@ export interface GameCreatorRemoteActions {
   save: (state: GameCreatorState) => Promise<GameCreatorState>;
 }
 
+type GameCreatorWritingAction = (
+  input: GameCreatorRevisionRequest
+) => Promise<GameCreatorRevisionResult>;
+
 const DEFAULT_REMOTE_ACTIONS: GameCreatorRemoteActions = {
   fetch: fetchGameCreatorState,
   save: saveGameCreatorState
 };
-const DEFAULT_NOW = () => new Date();
 
-const WORKFLOW_STAGES: WorkflowStage[] = [
-  {
-    id: "brief",
-    index: "01",
-    label: "定位",
-    summary: "先确定观众和这期视频唯一承诺。",
-    tasks: [
-      { id: "brief-audience", label: "写清目标观众" },
-      { id: "brief-angle", label: "选择攻略、解析、推荐、挑战或杂谈角度" },
-      { id: "brief-promise", label: "用一句话写出观众看完能得到什么" }
-    ]
-  },
-  {
-    id: "script",
-    index: "02",
-    label: "脚本",
-    summary: "先写开头和结构，再补正文。",
-    tasks: [
-      { id: "script-opening", label: "前 30 秒兑现标题和封面承诺" },
-      { id: "script-outline", label: "拆成 3–5 个递进段落" },
-      { id: "script-payoff", label: "每段安排一个信息增量或情绪看点" }
-    ]
-  },
-  {
-    id: "capture",
-    index: "03",
-    label: "素材",
-    summary: "只录支撑叙事的证据，不堆无效游戏画面。",
-    tasks: [
-      { id: "capture-list", label: "列出必须录到的游戏画面与数据" },
-      { id: "capture-proof", label: "关键观点有演示、对比或来源支撑" },
-      { id: "capture-rights", label: "确认音乐、图片和他人素材可用" }
-    ]
-  },
-  {
-    id: "edit",
-    index: "04",
-    label: "剪辑",
-    summary: "删掉等待和重复，让画面持续服务信息。",
-    tasks: [
-      { id: "edit-rough", label: "完成 5–15 分钟粗剪" },
-      { id: "edit-pace", label: "清理停顿、重复和无意义过场" },
-      { id: "edit-audio", label: "统一人声响度并检查字幕可读性" }
-    ]
-  },
-  {
-    id: "package",
-    index: "05",
-    label: "包装",
-    summary: "标题与封面一起表达一个准确、具体的点击理由。",
-    tasks: [
-      { id: "package-title", label: "标题前半段放核心信息" },
-      { id: "package-cover", label: "封面只保留一个视觉重点" },
-      { id: "package-match", label: "标题、封面与开头表达同一承诺" }
-    ]
-  },
-  {
-    id: "review",
-    index: "06",
-    label: "质检",
-    summary: "80 分且四项关键检查通过，才算质量达标。",
-    tasks: [
-      { id: "review-full", label: "完整观看导出成片一次" },
-      { id: "review-mobile", label: "在手机尺寸检查封面和字幕" },
-      { id: "review-gate", label: "完成发布质量门槛" }
-    ]
-  },
-  {
-    id: "publish",
-    index: "07",
-    label: "复盘",
-    summary: "记录结果，让下一条视频继承有效经验。",
-    tasks: [
-      { id: "publish-link", label: "记录 B站稿件链接" },
-      { id: "publish-data", label: "发布后补播放、留存与互动观察" },
-      { id: "publish-learning", label: "写下一条保留和改进各一项" }
-    ]
-  }
+const VIEW_OPTIONS: Array<{ id: GameCreatorViewId; index: string; label: string; hint: string }> = [
+  { id: "capture", index: "01", label: "随手记", hint: "打完一小段就记几句" },
+  { id: "library", index: "02", label: "支线库", hint: "平时慢慢查、慢慢补" },
+  { id: "manuscript", index: "03", label: "文稿间", hint: "短句润色，通关后串稿" }
 ];
 
-const QUALITY_CHECKS: QualityCheck[] = [
-  {
-    id: "quality-title",
-    label: "标题真实具体",
-    description: "没有标题党，前半段能看懂核心价值。",
-    weight: 15,
-    critical: true
-  },
-  {
-    id: "quality-cover",
-    label: "封面一眼可读",
-    description: "一个视觉重点，缩小后文字仍清楚。",
-    weight: 15,
-    critical: true
-  },
-  {
-    id: "quality-promise",
-    label: "承诺前后一致",
-    description: "标题、封面、开头和正文交付同一件事。",
-    weight: 15,
-    critical: true
-  },
-  {
-    id: "quality-hook",
-    label: "前 30 秒成立",
-    description: "快速给出结果预告、冲突或明确问题。",
-    weight: 15,
-    critical: true
-  },
-  {
-    id: "quality-proof",
-    label: "观点有证据",
-    description: "关键结论有实机、数据、对比或可靠来源。",
-    weight: 10
-  },
-  {
-    id: "quality-pace",
-    label: "节奏无空转",
-    description: "没有长停顿、重复解释和无效跑图。",
-    weight: 10
-  },
-  {
-    id: "quality-audio",
-    label: "声音字幕合格",
-    description: "人声清楚稳定，字幕无明显错字且不挡画面。",
-    weight: 10
-  },
-  {
-    id: "quality-rights",
-    label: "版权与规范安全",
-    description: "素材有权使用，内容符合 B站社区与投稿规范。",
-    weight: 10
-  }
+const BRANCH_KINDS: Array<{ id: GameCreatorBranchKind; label: string; mark: string }> = [
+  { id: "story", label: "剧情", mark: "剧" },
+  { id: "character", label: "人物", mark: "人" },
+  { id: "world", label: "设定", mark: "设" },
+  { id: "mechanic", label: "机制", mark: "机" },
+  { id: "idea", label: "灵感", mark: "想" },
+  { id: "research", label: "待查", mark: "查" }
 ];
 
-const PRE_RELEASE_TASK_IDS = WORKFLOW_STAGES
-  .filter((stage) => stage.id !== "publish")
-  .flatMap((stage) => stage.tasks)
-  .map((task) => task.id)
-  .filter((id) => id !== "review-gate");
-
-const METHODOLOGY = [
-  {
-    index: "01",
-    title: "先定观众，再定内容",
-    body: "不限游戏不等于没有定位。每条视频只服务一类观众、解决一个问题。"
-  },
-  {
-    index: "02",
-    title: "四类选题形成组合",
-    body: "可搜索攻略负责长期流量，版本热点负责时效，深度解析建立专业度，挑战与故事建立人格。"
-  },
-  {
-    index: "03",
-    title: "包装先于制作",
-    body: "开拍前先写标题草案、封面核心画面和一句观众承诺；三者说不清，脚本先不扩写。"
-  },
-  {
-    index: "04",
-    title: "用兑现组织 5–15 分钟",
-    body: "前 30 秒证明值得看，正文每个段落增加新信息或新冲突，结尾给结论与具体互动问题。"
-  },
-  {
-    index: "05",
-    title: "让数据指导下一条",
-    body: "发布后对照点击、前段留存、平均观看与点赞投币收藏评论，判断问题在包装还是内容。"
-  }
-];
+const REVISION_PRESETS = ["保持我的语气，只润顺", "更简洁，删掉重复", "增强画面感", "检查逻辑和事实跳跃"];
 
 function getTodayKey(now: Date) {
   return now.toLocaleDateString("sv-SE");
 }
 
-function createProjectId(now: Date) {
-  return `game-video-${now.getTime()}`;
+function createId(prefix: string, now: Date) {
+  return `${prefix}-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function createInitialGameCreatorState(now = new Date()): GameCreatorState {
+function createMainManuscript(now: Date, game = ""): GameCreatorManuscript {
+  const timestamp = now.toISOString();
   return {
-    version: 1,
-    date: getTodayKey(now),
-    projectId: createProjectId(now),
-    updatedAt: now.toISOString(),
-    activeStage: "brief",
-    completedTaskIds: [],
-    checkedQualityIds: [],
-    ready: false,
-    completedVideos: 0,
-    draft: {
-      game: "",
-      audience: "",
-      format: "5–15 分钟 · B站横版中视频",
-      promise: "",
-      angle: "攻略 / 教学",
-      title: "",
-      coverCopy: "",
-      opening: "",
-      outline: "",
-      assetNotes: "",
-      editNotes: "",
-      tags: "",
-      publishedUrl: "",
-      retrospective: ""
-    }
+    id: createId("game-manuscript-main", now),
+    kind: "main",
+    title: game ? `${game}总稿` : "总稿",
+    content: "",
+    sourceNoteIds: [],
+    revisionMessages: [],
+    createdAt: timestamp,
+    updatedAt: timestamp
   };
 }
 
-function isStoredGameCreatorState(value: unknown): value is Omit<GameCreatorState, "updatedAt"> & {
-  updatedAt?: string;
-} {
+function createProject(now: Date, game = ""): GameCreatorProject {
+  const timestamp = now.toISOString();
+  return {
+    id: createId("game-project", now),
+    game,
+    phase: "playing",
+    progress: "",
+    creativeQuestion: "",
+    branchNotes: [],
+    manuscripts: [createMainManuscript(now, game)],
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+}
+
+export function createInitialGameCreatorState(now = new Date()): GameCreatorState {
+  const project = createProject(now);
+  return {
+    version: 2,
+    date: getTodayKey(now),
+    updatedAt: now.toISOString(),
+    activeProjectId: project.id,
+    activeView: "capture",
+    selectedNoteId: null,
+    selectedManuscriptId: project.manuscripts[0].id,
+    projects: [project]
+  };
+}
+
+function isVersionTwoState(value: unknown): value is GameCreatorState {
   if (!value || typeof value !== "object") return false;
   const state = value as Partial<GameCreatorState>;
   return (
-    state.version === 1 &&
+    state.version === 2 &&
     typeof state.date === "string" &&
-    typeof state.projectId === "string" &&
-    typeof state.activeStage === "string" &&
-    Array.isArray(state.completedTaskIds) &&
-    Array.isArray(state.checkedQualityIds) &&
-    typeof state.completedVideos === "number" &&
-    typeof state.draft === "object" &&
-    state.draft !== null
+    typeof state.updatedAt === "string" &&
+    typeof state.activeProjectId === "string" &&
+    Array.isArray(state.projects) &&
+    state.projects.length > 0
   );
 }
 
-function inferLegacyUpdatedAt(projectId: string, fallback: Date) {
-  const timestamp = Number(projectId.replace("game-video-", ""));
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : fallback.toISOString();
+function migrateLegacyBrowserState(value: unknown, now: Date): GameCreatorState | null {
+  if (!value || typeof value !== "object") return null;
+  const legacy = value as Record<string, unknown>;
+  const draft = legacy.draft;
+  if (
+    legacy.version !== 1 ||
+    typeof legacy.projectId !== "string" ||
+    typeof legacy.updatedAt !== "string" ||
+    !draft ||
+    typeof draft !== "object"
+  ) {
+    return null;
+  }
+
+  const old = draft as Record<string, unknown>;
+  const game = typeof old.game === "string" ? old.game : "";
+  const project = createProject(now, game);
+  project.id = legacy.projectId;
+  project.createdAt = legacy.updatedAt;
+  project.updatedAt = legacy.updatedAt;
+  project.creativeQuestion = typeof old.promise === "string" ? old.promise : "";
+  const main = project.manuscripts[0];
+  main.id = `${project.id}-main`;
+  main.title = typeof old.title === "string" && old.title.trim() ? old.title : `${game || "未命名游戏"}总稿`;
+  main.content = [old.opening, old.outline, old.editNotes]
+    .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    .join("\n\n");
+  main.createdAt = legacy.updatedAt;
+  main.updatedAt = legacy.updatedAt;
+
+  if (typeof old.assetNotes === "string" && old.assetNotes.trim()) {
+    const note: GameCreatorBranchNote = {
+      id: `${project.id}-legacy-assets`,
+      kind: "research",
+      status: "expanded",
+      title: "旧版素材与证据",
+      body: old.assetNotes,
+      gameProgress: "",
+      tags: typeof old.tags === "string" ? old.tags.split(/[，,]/).map((tag) => tag.trim()).filter(Boolean) : [],
+      source: "从旧版游戏创作台迁移",
+      createdAt: legacy.updatedAt,
+      updatedAt: legacy.updatedAt
+    };
+    project.branchNotes.push(note);
+  }
+
+  return {
+    version: 2,
+    date: getTodayKey(now),
+    updatedAt: legacy.updatedAt,
+    activeProjectId: project.id,
+    activeView: main.content ? "manuscript" : "capture",
+    selectedNoteId: project.branchNotes[0]?.id ?? null,
+    selectedManuscriptId: main.id,
+    projects: [project]
+  };
 }
 
 function readStoredGameCreatorState(storage: StorageLike | null, now: Date) {
   try {
-    const stored = storage?.getItem(GAME_CREATOR_STORAGE_KEY);
-    const parsed: unknown = stored ? JSON.parse(stored) : null;
-    if (isStoredGameCreatorState(parsed)) {
-      return {
-        ...parsed,
-        date: getTodayKey(now),
-        updatedAt:
-          typeof parsed.updatedAt === "string" && !Number.isNaN(Date.parse(parsed.updatedAt))
-            ? parsed.updatedAt
-            : inferLegacyUpdatedAt(parsed.projectId, now)
-      };
+    const current = storage?.getItem(GAME_CREATOR_STORAGE_KEY);
+    const parsed: unknown = current ? JSON.parse(current) : null;
+    if (isVersionTwoState(parsed)) {
+      return { ...parsed, date: getTodayKey(now) };
     }
-  } catch {
-    // A broken browser entry should never block the creator workspace.
-  }
 
-  return null;
+    const legacy = storage?.getItem(LEGACY_STORAGE_KEY);
+    return migrateLegacyBrowserState(legacy ? JSON.parse(legacy) : null, now);
+  } catch {
+    return null;
+  }
 }
 
 export function loadGameCreatorState(
@@ -321,136 +217,34 @@ export function chooseNewestGameCreatorState(
   }
   return {
     state: local,
-    dirty:
-      remote.updatedAt !== local.updatedAt ||
-      JSON.stringify(remote) !== JSON.stringify(local)
+    dirty: remote.updatedAt !== local.updatedAt || JSON.stringify(remote) !== JSON.stringify(local)
   };
 }
 
-export function getQualityScore(state: GameCreatorState) {
-  const checked = new Set(state.checkedQualityIds);
-  return QUALITY_CHECKS.reduce(
-    (score, item) => score + (checked.has(item.id) ? item.weight : 0),
-    0
-  );
+function kindMeta(kind: GameCreatorBranchKind) {
+  return BRANCH_KINDS.find((item) => item.id === kind) ?? BRANCH_KINDS[0];
 }
 
-export function getReadyBlockers(state: GameCreatorState) {
-  const blockers: string[] = [];
-  const requiredFields: Array<[keyof GameCreatorDraft, string]> = [
-    ["game", "填写本期游戏"],
-    ["audience", "写清目标观众"],
-    ["promise", "写清观众承诺"],
-    ["title", "填写标题草案"],
-    ["coverCopy", "填写封面主文案"],
-    ["opening", "写完前 30 秒"],
-    ["outline", "写完正文结构"],
-    ["assetNotes", "补齐素材与证据清单"],
-    ["editNotes", "补齐剪辑检查记录"]
-  ];
-
-  requiredFields.forEach(([key, message]) => {
-    if (!state.draft[key].trim()) blockers.push(message);
-  });
-
-  const score = getQualityScore(state);
-  if (score < 80) blockers.push(`质量分还差 ${80 - score} 分`);
-
-  const checked = new Set(state.checkedQualityIds);
-  QUALITY_CHECKS.filter((item) => item.critical).forEach((item) => {
-    if (!checked.has(item.id)) blockers.push(`关键项未过：${item.label}`);
-  });
-
-  const completed = new Set(state.completedTaskIds);
-  const incompleteTaskCount = PRE_RELEASE_TASK_IDS.filter((id) => !completed.has(id)).length;
-  if (incompleteTaskCount) blockers.push(`还有 ${incompleteTaskCount} 项发布前流程未完成`);
-
-  return blockers;
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "刚刚"
+    : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
-function getDailyTargets(state: GameCreatorState) {
-  const completed = new Set(state.completedTaskIds);
-  const activeStage =
-    WORKFLOW_STAGES.find((stage) => stage.tasks.some((task) => !completed.has(task.id))) ??
-    WORKFLOW_STAGES.at(-1)!;
-  const openTasks = activeStage.tasks.filter((task) => !completed.has(task.id));
-  const targets = openTasks.slice(0, 2).map((task) => ({
-    id: task.id,
-    label: task.label,
-    done: false
-  }));
-
-  if (activeStage.id === "brief" && !state.draft.game.trim()) {
-    targets.unshift({
-      id: "daily-game",
-      label: "确定今天要做的游戏与具体问题",
-      done: false
-    });
-  }
-
-  if (getQualityScore(state) < 80 && targets.length < 3) {
-    targets.push({
-      id: "daily-quality",
-      label: "把发布质量门槛推进到 80 分",
-      done: false
-    });
-  }
-
-  return {
-    stage: activeStage,
-    items: targets.slice(0, 3)
-  };
-}
-
-function toggleId(items: string[], id: string) {
-  return items.includes(id) ? items.filter((item) => item !== id) : [...items, id];
-}
-
-function stageProgress(state: GameCreatorState) {
-  const taskCount = WORKFLOW_STAGES.reduce((count, stage) => count + stage.tasks.length, 0);
-  return Math.round((state.completedTaskIds.length / taskCount) * 100);
-}
-
-function TextField({
-  label,
-  value,
-  placeholder,
-  onChange
-}: {
+function InputField(props: {
   label: string;
   value: string;
-  placeholder: string;
+  placeholder?: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="game-creator-field">
-      <span>{label}</span>
-      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
-    </label>
-  );
-}
-
-function TextAreaField({
-  label,
-  value,
-  placeholder,
-  rows = 5,
-  onChange
-}: {
-  label: string;
-  value: string;
-  placeholder: string;
-  rows?: number;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="game-creator-field">
-      <span>{label}</span>
-      <textarea
-        rows={rows}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
+    <label className="game-creator-input">
+      <span>{props.label}</span>
+      <input
+        value={props.value}
+        placeholder={props.placeholder}
+        onChange={(event) => props.onChange(event.target.value)}
       />
     </label>
   );
@@ -459,30 +253,47 @@ function TextAreaField({
 export function GameCreatorWorkspace({
   storage = typeof window === "undefined" ? null : window.localStorage,
   now = DEFAULT_NOW,
-  remoteActions = DEFAULT_REMOTE_ACTIONS
+  remoteActions = DEFAULT_REMOTE_ACTIONS,
+  writingAction = reviseGameCreatorManuscript
 }: {
   storage?: StorageLike | null;
   now?: () => Date;
   remoteActions?: GameCreatorRemoteActions | null;
+  writingAction?: GameCreatorWritingAction;
 }) {
   const initialSnapshot = useMemo(() => {
     const currentTime = now();
     const stored = readStoredGameCreatorState(storage, currentTime);
-    return {
-      hasLocalSnapshot: Boolean(stored),
-      state: stored ?? createInitialGameCreatorState(currentTime)
-    };
+    return { hasLocalSnapshot: Boolean(stored), state: stored ?? createInitialGameCreatorState(currentTime) };
   }, [now, storage]);
   const [state, setState] = useState(initialSnapshot.state);
-  const hadLocalSnapshot = useRef(initialSnapshot.hasLocalSnapshot);
   const stateRef = useRef(state);
+  const hadLocalSnapshot = useRef(initialSnapshot.hasLocalSnapshot);
   const [notice, setNotice] = useState("");
   const [syncDirty, setSyncDirty] = useState(true);
-  const activeStage = WORKFLOW_STAGES.find((stage) => stage.id === state.activeStage) ?? WORKFLOW_STAGES[0];
-  const qualityScore = getQualityScore(state);
-  const blockers = getReadyBlockers(state);
-  const daily = useMemo(() => getDailyTargets(state), [state]);
-  const progress = stageProgress(state);
+  const [saving, setSaving] = useState(false);
+  const [writing, setWriting] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<GameCreatorBranchKind | "all">("all");
+  const [capture, setCapture] = useState({
+    kind: "world" as GameCreatorBranchKind,
+    title: "",
+    body: "",
+    gameProgress: "",
+    tags: "",
+    source: ""
+  });
+  const project = state.projects.find((item) => item.id === state.activeProjectId) ?? state.projects[0];
+  const selectedNote = project.branchNotes.find((item) => item.id === state.selectedNoteId) ?? null;
+  const selectedManuscript =
+    project.manuscripts.find((item) => item.id === state.selectedManuscriptId) ?? project.manuscripts[0];
+  const mainManuscript = project.manuscripts.find((item) => item.kind === "main") ?? project.manuscripts[0];
+  const filteredNotes = project.branchNotes.filter((note) => {
+    const matchesKind = kindFilter === "all" || note.kind === kindFilter;
+    const haystack = `${note.title} ${note.body} ${note.tags.join(" ")}`.toLowerCase();
+    return matchesKind && haystack.includes(query.trim().toLowerCase());
+  });
 
   function persistLocal(next: GameCreatorState) {
     stateRef.current = next;
@@ -490,243 +301,474 @@ export function GameCreatorWorkspace({
     try {
       storage?.setItem(GAME_CREATOR_STORAGE_KEY, JSON.stringify(next));
     } catch {
-      setNotice("浏览器存储不可用，本次进度只保留到页面关闭。");
+      setNotice("浏览器存储不可用，本次内容只会保留到页面关闭。");
     }
   }
 
-  function commit(next: GameCreatorState) {
-    persistLocal({
-      ...next,
-      updatedAt: now().toISOString()
-    });
+  function commit(transform: GameCreatorState | ((current: GameCreatorState) => GameCreatorState)) {
+    const current = stateRef.current;
+    const next = typeof transform === "function" ? transform(current) : transform;
+    persistLocal({ ...next, date: getTodayKey(now()), updatedAt: now().toISOString() });
     setSyncDirty(true);
   }
 
-  function applySyncedState(next: GameCreatorState) {
-    persistLocal({
-      ...next,
-      date: getTodayKey(now())
+  function updateProject(
+    transform: (current: GameCreatorProject, timestamp: string) => GameCreatorProject,
+    projectId = stateRef.current.activeProjectId
+  ) {
+    commit((current) => {
+      const timestamp = now().toISOString();
+      return {
+        ...current,
+        projects: current.projects.map((item) =>
+          item.id === projectId ? { ...transform(item, timestamp), updatedAt: timestamp } : item
+        )
+      };
     });
-    setSyncDirty(false);
   }
 
   useEffect(() => {
     if (!remoteActions) return;
     let cancelled = false;
-
     remoteActions.fetch()
       .then((remote) => {
         if (cancelled) return;
-        const selected = chooseNewestGameCreatorState(
-          stateRef.current,
-          remote,
-          hadLocalSnapshot.current
-        );
-        persistLocal({
-          ...selected.state,
-          date: getTodayKey(now())
-        });
+        const selected = chooseNewestGameCreatorState(stateRef.current, remote, hadLocalSnapshot.current);
+        persistLocal({ ...selected.state, date: getTodayKey(now()) });
         setSyncDirty(selected.dirty);
       })
       .catch((error) => {
-        if (cancelled) return;
-        setNotice(error instanceof Error ? error.message : "读取同步数据失败");
+        if (!cancelled) setNotice(error instanceof Error ? error.message : "读取游戏创作数据失败");
       });
-
     return () => {
       cancelled = true;
     };
   }, [remoteActions, storage]);
 
+  async function saveWorkspace() {
+    if (!remoteActions) {
+      setNotice("已自动保存到本机浏览器。");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await remoteActions.save(stateRef.current);
+      persistLocal({ ...saved, date: getTodayKey(now()) });
+      setNotice("文稿已保存。跨设备使用时，再点一次“同步数据”。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveBeforeSync() {
-    if (!remoteActions) return;
-    await remoteActions.save(stateRef.current);
+    if (remoteActions) await remoteActions.save(stateRef.current);
   }
 
   async function refreshAfterSync() {
     if (!remoteActions) return;
     const remote = await remoteActions.fetch();
-    if (remote) applySyncedState(remote);
+    if (remote) {
+      persistLocal({ ...remote, date: getTodayKey(now()) });
+      setSyncDirty(false);
+    }
   }
 
-  function updateDraft(key: keyof GameCreatorDraft, value: string) {
-    commit({
-      ...state,
-      ready: false,
-      draft: {
-        ...state.draft,
-        [key]: value
-      }
-    });
+  function switchView(view: GameCreatorViewId) {
+    commit((current) => ({ ...current, activeView: view }));
   }
 
-  function toggleTask(id: string) {
-    commit({
-      ...state,
-      completedTaskIds: toggleId(state.completedTaskIds, id)
-    });
+  function updateProjectMeta(patch: Partial<Pick<GameCreatorProject, "game" | "progress" | "creativeQuestion">>) {
+    updateProject((current) => ({ ...current, ...patch }));
   }
 
-  function toggleQuality(id: string) {
-    commit({
-      ...state,
-      ready: false,
-      checkedQualityIds: toggleId(state.checkedQualityIds, id)
-    });
+  function addProject() {
+    const nextProject = createProject(now());
+    commit((current) => ({
+      ...current,
+      activeProjectId: nextProject.id,
+      activeView: "capture",
+      selectedNoteId: null,
+      selectedManuscriptId: nextProject.manuscripts[0].id,
+      projects: [...current.projects, nextProject]
+    }));
+    setCapture((current) => ({ ...current, gameProgress: "" }));
   }
 
-  function markReady() {
-    if (blockers.length) {
-      setNotice(`还不能标记达标：${blockers[0]}`);
+  function chooseProject(projectId: string) {
+    const nextProject = stateRef.current.projects.find((item) => item.id === projectId);
+    if (!nextProject) return;
+    commit((current) => ({
+      ...current,
+      activeProjectId: projectId,
+      selectedNoteId: nextProject.branchNotes[0]?.id ?? null,
+      selectedManuscriptId: nextProject.manuscripts[0]?.id ?? null
+    }));
+    setCapture((current) => ({ ...current, gameProgress: nextProject.progress }));
+  }
+
+  function markGameComplete() {
+    updateProject((current) => ({ ...current, phase: "organizing" }));
+    commit((current) => ({ ...current, activeView: "library" }));
+    setNotice("已切到整理阶段。现在从支线库挑素材，慢慢串进总稿即可。");
+  }
+
+  function saveCapture() {
+    const body = capture.body.trim();
+    if (!body) {
+      setNotice("先记下至少一句值得回头看的内容。");
       return;
     }
-    commit({
-      ...state,
-      ready: true,
-      activeStage: "publish",
-      completedTaskIds: state.completedTaskIds.includes("review-gate")
-        ? state.completedTaskIds
-        : [...state.completedTaskIds, "review-gate"]
-    });
-    setNotice("这条视频已达到发布门槛，可以投稿并进入数据复盘。");
+    const timestamp = now().toISOString();
+    const note: GameCreatorBranchNote = {
+      id: createId("game-note", now()),
+      kind: capture.kind,
+      status: "seed",
+      title: capture.title.trim() || body.split(/\n|。|！|？/)[0].slice(0, 24) || "未命名支线",
+      body,
+      gameProgress: capture.gameProgress.trim() || project.progress,
+      tags: capture.tags.split(/[，,]/).map((tag) => tag.trim()).filter(Boolean),
+      source: capture.source.trim(),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    updateProject((current) => ({ ...current, branchNotes: [note, ...current.branchNotes] }));
+    commit((current) => ({ ...current, selectedNoteId: note.id }));
+    setCapture((current) => ({ ...current, title: "", body: "", tags: "", source: "" }));
+    setNotice("支线已收进素材库。今天到这里也可以。");
   }
 
-  function archiveVideo() {
-    if (!state.ready || !state.draft.publishedUrl.trim() || !state.draft.retrospective.trim()) {
-      setNotice("归档前需要先达标，并填写稿件链接和复盘结论。");
+  function patchNote(noteId: string, patch: Partial<GameCreatorBranchNote>) {
+    updateProject((current, timestamp) => ({
+      ...current,
+      branchNotes: current.branchNotes.map((note) =>
+        note.id === noteId ? { ...note, ...patch, updatedAt: timestamp } : note
+      )
+    }));
+  }
+
+  function appendNoteToMain(note: GameCreatorBranchNote) {
+    updateProject((current, timestamp) => ({
+      ...current,
+      branchNotes: current.branchNotes.map((item) =>
+        item.id === note.id ? { ...item, status: "used", updatedAt: timestamp } : item
+      ),
+      manuscripts: current.manuscripts.map((manuscript) =>
+        manuscript.id === mainManuscript.id
+          ? {
+              ...manuscript,
+              content: `${manuscript.content.trim()}${manuscript.content.trim() ? "\n\n" : ""}${note.title}\n${note.body}`,
+              sourceNoteIds: manuscript.sourceNoteIds.includes(note.id)
+                ? manuscript.sourceNoteIds
+                : [...manuscript.sourceNoteIds, note.id],
+              updatedAt: timestamp
+            }
+          : manuscript
+      )
+    }));
+    commit((current) => ({ ...current, activeView: "manuscript", selectedManuscriptId: mainManuscript.id }));
+    setNotice("这条支线已放进总稿末尾，你可以再调整它的位置。");
+  }
+
+  function createFragmentFromNote(note: GameCreatorBranchNote) {
+    const timestamp = now().toISOString();
+    const manuscript: GameCreatorManuscript = {
+      id: createId("game-manuscript", now()),
+      kind: "fragment",
+      title: note.title,
+      content: note.body,
+      sourceNoteIds: [note.id],
+      revisionMessages: [],
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    updateProject((current) => ({
+      ...current,
+      branchNotes: current.branchNotes.map((item) =>
+        item.id === note.id ? { ...item, status: "expanded", updatedAt: timestamp } : item
+      ),
+      manuscripts: [...current.manuscripts, manuscript]
+    }));
+    commit((current) => ({ ...current, activeView: "manuscript", selectedManuscriptId: manuscript.id }));
+  }
+
+  function createBlankManuscript() {
+    const timestamp = now().toISOString();
+    const manuscript: GameCreatorManuscript = {
+      id: createId("game-manuscript", now()),
+      kind: "fragment",
+      title: "新文稿",
+      content: "",
+      sourceNoteIds: [],
+      revisionMessages: [],
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    updateProject((current) => ({ ...current, manuscripts: [...current.manuscripts, manuscript] }));
+    commit((current) => ({ ...current, selectedManuscriptId: manuscript.id }));
+  }
+
+  function patchManuscript(manuscriptId: string, patch: Partial<GameCreatorManuscript>) {
+    updateProject((current, timestamp) => ({
+      ...current,
+      manuscripts: current.manuscripts.map((manuscript) =>
+        manuscript.id === manuscriptId ? { ...manuscript, ...patch, updatedAt: timestamp } : manuscript
+      )
+    }));
+  }
+
+  async function askWritingAssistant() {
+    if (!selectedManuscript || !instruction.trim() || writing) return;
+    if (!selectedManuscript.content.trim()) {
+      setNotice("先写下几句话，再让编辑帮你改。");
       return;
     }
-    const next = createInitialGameCreatorState(now());
-    commit({
-      ...next,
-      completedVideos: state.completedVideos + 1
+    const askedAt = now().toISOString();
+    const question = instruction.trim();
+    const manuscriptId = selectedManuscript.id;
+    const request: GameCreatorRevisionRequest = {
+      manuscriptTitle: selectedManuscript.title,
+      content: selectedManuscript.content,
+      instruction: question,
+      history: selectedManuscript.revisionMessages.map((message) => ({
+        role: message.role,
+        content: message.content
+      }))
+    };
+    patchManuscript(manuscriptId, {
+      revisionMessages: [
+        ...selectedManuscript.revisionMessages,
+        { id: createId("game-revision-user", now()), role: "user", content: question, createdAt: askedAt }
+      ]
     });
-    setNotice("上一条已归档，下一条视频的今日计划已经生成。");
+    setWriting(true);
+    setInstruction("");
+    try {
+      const result = await writingAction(request);
+      const currentProject = stateRef.current.projects.find((item) => item.id === stateRef.current.activeProjectId);
+      const currentManuscript = currentProject?.manuscripts.find((item) => item.id === manuscriptId);
+      patchManuscript(manuscriptId, {
+        revisionMessages: [
+          ...(currentManuscript?.revisionMessages ?? []),
+          {
+            id: createId("game-revision-assistant", now()),
+            role: "assistant",
+            content: result.reply,
+            revisedText: result.revisedText,
+            createdAt: now().toISOString()
+          }
+        ]
+      });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "文稿修改失败");
+    } finally {
+      setWriting(false);
+    }
   }
 
-  function renderStageFields() {
-    if (activeStage.id === "brief") {
-      return (
-        <div className="game-creator-fields game-creator-fields--two">
-          <TextField label="本期游戏" value={state.draft.game} placeholder="例如：黑神话：悟空"
-            onChange={(value) => updateDraft("game", value)} />
-          <TextField label="目标观众" value={state.draft.audience} placeholder="例如：刚过第一章、卡在配装的新玩家"
-            onChange={(value) => updateDraft("audience", value)} />
-          <label className="game-creator-field">
-            <span>内容角度</span>
-            <select value={state.draft.angle} onChange={(event) => updateDraft("angle", event.target.value)}>
-              <option>攻略 / 教学</option>
-              <option>机制 / 剧情解析</option>
-              <option>评测 / 推荐</option>
-              <option>挑战 / 实验</option>
-              <option>行业 / 观点杂谈</option>
-            </select>
-          </label>
-          <TextField label="视频规格" value={state.draft.format} placeholder="5–15 分钟 · B站横版中视频"
-            onChange={(value) => updateDraft("format", value)} />
-          <div className="game-creator-field game-creator-field--wide">
-            <TextField label="一句话观众承诺" value={state.draft.promise}
-              placeholder="看完后，观众能够……" onChange={(value) => updateDraft("promise", value)} />
-          </div>
-        </div>
-      );
-    }
-
-    if (activeStage.id === "script") {
-      return (
-        <div className="game-creator-fields">
-          <TextField label="工作标题" value={state.draft.title}
-            placeholder="先写清价值，不急着追求花活" onChange={(value) => updateDraft("title", value)} />
-          <TextAreaField label="前 30 秒" value={state.draft.opening}
-            placeholder="结果预告 / 冲突 / 问题 → 为什么值得看 → 本期会给出什么"
-            onChange={(value) => updateDraft("opening", value)} />
-          <TextAreaField label="正文结构" value={state.draft.outline} rows={8}
-            placeholder={"01 现状与问题\n02 第一个关键发现\n03 演示或对比\n04 结论与适用边界\n05 留给评论区的具体问题"}
-            onChange={(value) => updateDraft("outline", value)} />
-        </div>
-      );
-    }
-
-    if (activeStage.id === "capture") {
-      return (
-        <TextAreaField label="素材清单与证据" value={state.draft.assetNotes} rows={12}
-          placeholder={"实机画面：\n- 开场结果镜头\n- 操作前后对比\n\n证据与来源：\n- 版本号 / 测试条件\n- 可引用的数据或公告\n\n版权：\n- 音乐 / 图片 / 他人片段授权"}
-          onChange={(value) => updateDraft("assetNotes", value)} />
-      );
-    }
-
-    if (activeStage.id === "edit") {
-      return (
-        <TextAreaField label="剪辑检查记录" value={state.draft.editNotes} rows={12}
-          placeholder={"粗剪时长：\n开头首次兑现时间：\n需要删掉的等待 / 重复：\n每段看点时间码：\n音频与字幕问题："}
-          onChange={(value) => updateDraft("editNotes", value)} />
-      );
-    }
-
-    if (activeStage.id === "package") {
-      return (
-        <div className="game-creator-fields">
-          <TextField label="最终标题" value={state.draft.title}
-            placeholder="核心信息放前面，准确胜过夸张" onChange={(value) => updateDraft("title", value)} />
-          <TextField label="封面主文案" value={state.draft.coverCopy}
-            placeholder="建议 4–10 个字，只表达一个重点" onChange={(value) => updateDraft("coverCopy", value)} />
-          <TextField label="分区与标签" value={state.draft.tags}
-            placeholder="游戏分区 / 游戏名 / 玩法或主题关键词" onChange={(value) => updateDraft("tags", value)} />
-          <div className="game-creator-package-preview">
-            <span>BILIBILI PACKAGE CHECK</span>
-            <strong>{state.draft.coverCopy || "封面主文案"}</strong>
-            <p>{state.draft.title || "标题会显示在这里"}</p>
-            <small>{state.draft.promise || "标题、封面、开头应兑现同一个承诺"}</small>
-          </div>
-        </div>
-      );
-    }
-
-    if (activeStage.id === "review") {
-      return (
-        <div className="game-creator-quality">
-          <div className="game-creator-quality__score">
-            <span>发布质量分</span>
-            <strong>{qualityScore}</strong>
-            <small>/ 100 · 门槛 80</small>
-          </div>
-          <div className="game-creator-quality__checks">
-            {QUALITY_CHECKS.map((item) => {
-              const checked = state.checkedQualityIds.includes(item.id);
-              return (
-                <button key={item.id} type="button"
-                  className={checked ? "is-checked" : ""}
-                  aria-pressed={checked}
-                  onClick={() => toggleQuality(item.id)}>
-                  <span>{checked ? "✓" : item.weight}</span>
-                  <strong>{item.label}{item.critical ? " · 关键" : ""}</strong>
-                  <small>{item.description}</small>
-                </button>
-              );
-            })}
-          </div>
-          <div className={`game-creator-gate${blockers.length ? "" : " is-clear"}`}>
-            <div>
-              <span>{blockers.length ? "仍有阻塞" : "质量门槛已满足"}</span>
-              <p>{blockers[0] ?? "四项关键检查通过，质量分达到 80，可以进入发布。"}</p>
-            </div>
-            <button type="button" onClick={markReady}>标记视频达标</button>
-          </div>
-        </div>
-      );
-    }
-
+  function renderCaptureView() {
     return (
-      <div className="game-creator-fields">
-        <TextField label="B站稿件链接" value={state.draft.publishedUrl}
-          placeholder="https://www.bilibili.com/video/..."
-          onChange={(value) => updateDraft("publishedUrl", value)} />
-        <TextAreaField label="发布后复盘" value={state.draft.retrospective} rows={10}
-          placeholder={"包装：点击表现说明了什么？\n内容：前段留存和平均观看说明了什么？\n互动：点赞、投币、收藏、评论分别反馈了什么？\n下一条保留：\n下一条改进："}
-          onChange={(value) => updateDraft("retrospective", value)} />
-        <button className="game-creator-archive" type="button" onClick={archiveVideo}>
-          归档并开始下一条
-        </button>
+      <div className="game-creator-capture game-creator-view" key="capture">
+        <section className="game-creator-capture__form">
+          <header>
+            <span>QUICK CAPTURE</span>
+            <h2>刚才有什么值得单独说？</h2>
+            <p>不用写完整。先留下当时的判断、疑问和画面。</p>
+          </header>
+          <div className="game-creator-kind-picker" aria-label="素材类型">
+            {BRANCH_KINDS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={capture.kind === item.id ? "is-active" : ""}
+                onClick={() => setCapture((current) => ({ ...current, kind: item.id }))}
+              >
+                <i>{item.mark}</i>{item.label}
+              </button>
+            ))}
+          </div>
+          <InputField
+            label="给它一个名字（可以稍后再改）"
+            value={capture.title}
+            placeholder="例如：宗教审判所"
+            onChange={(title) => setCapture((current) => ({ ...current, title }))}
+          />
+          <label className="game-creator-input game-creator-input--large">
+            <span>先记几句</span>
+            <textarea
+              rows={8}
+              value={capture.body}
+              placeholder="它为什么让我停下来？我当时看到了什么？以后可能从哪个角度讲？"
+              onChange={(event) => setCapture((current) => ({ ...current, body: event.target.value }))}
+            />
+          </label>
+          <div className="game-creator-capture__details">
+            <InputField label="游戏进度" value={capture.gameProgress} placeholder="第三章 / 12 小时"
+              onChange={(gameProgress) => setCapture((current) => ({ ...current, gameProgress }))} />
+            <InputField label="标签" value={capture.tags} placeholder="宗教, 权力, NPC"
+              onChange={(tags) => setCapture((current) => ({ ...current, tags }))} />
+            <InputField label="来源或待查链接" value={capture.source} placeholder="可留空"
+              onChange={(source) => setCapture((current) => ({ ...current, source }))} />
+          </div>
+          <button className="game-creator-primary-action" type="button" data-action="save-branch" onClick={saveCapture}>
+            收进支线库 <span>⌘ ↵</span>
+          </button>
+        </section>
+        <aside className="game-creator-recent">
+          <div className="game-creator-section-title">
+            <div><span>RECENT</span><h3>最近记下</h3></div>
+            <button type="button" onClick={() => switchView("library")}>查看全部 {project.branchNotes.length}</button>
+          </div>
+          {project.branchNotes.length ? project.branchNotes.slice(0, 4).map((note) => (
+            <button
+              className="game-creator-recent__item"
+              type="button"
+              key={note.id}
+              onClick={() => commit((current) => ({ ...current, activeView: "library", selectedNoteId: note.id }))}
+            >
+              <i>{kindMeta(note.kind).mark}</i>
+              <span><strong>{note.title}</strong><small>{note.body}</small></span>
+              <time>{formatShortDate(note.updatedAt)}</time>
+            </button>
+          )) : (
+            <div className="game-creator-empty">
+              <span>01</span>
+              <p>第一条不需要像选题。<br />只要是你想回头再看的东西。</p>
+            </div>
+          )}
+          <footer>
+            <strong>建议</strong>
+            <p>录屏和截图仍放在原文件夹，这里只记“它为什么值得说”和文件位置，后面更容易找回来。</p>
+          </footer>
+        </aside>
+      </div>
+    );
+  }
+
+  function renderLibraryView() {
+    return (
+      <div className="game-creator-library game-creator-view" key="library">
+        <aside className="game-creator-library__list">
+          <div className="game-creator-section-title">
+            <div><span>BRANCH LIBRARY</span><h2>{project.branchNotes.length} 条支线</h2></div>
+            <button type="button" onClick={() => switchView("capture")}>＋ 新记录</button>
+          </div>
+          <input className="game-creator-search" value={query} placeholder="搜索人物、设定、关键词"
+            onChange={(event) => setQuery(event.target.value)} />
+          <div className="game-creator-filters">
+            <button type="button" className={kindFilter === "all" ? "is-active" : ""} onClick={() => setKindFilter("all")}>全部</button>
+            {BRANCH_KINDS.map((item) => (
+              <button key={item.id} type="button" className={kindFilter === item.id ? "is-active" : ""}
+                onClick={() => setKindFilter(item.id)}>{item.label}</button>
+            ))}
+          </div>
+          <div className="game-creator-note-list">
+            {filteredNotes.map((note) => (
+              <button key={note.id} type="button" className={note.id === selectedNote?.id ? "is-active" : ""}
+                onClick={() => commit((current) => ({ ...current, selectedNoteId: note.id }))}>
+                <i>{kindMeta(note.kind).mark}</i>
+                <span><strong>{note.title}</strong><small>{note.gameProgress || kindMeta(note.kind).label}</small></span>
+                <em>{note.status === "used" ? "已入稿" : note.status === "expanded" ? "已展开" : "待整理"}</em>
+              </button>
+            ))}
+            {!filteredNotes.length ? <p className="game-creator-list-empty">没有符合条件的支线。</p> : null}
+          </div>
+        </aside>
+        <section className="game-creator-note-editor">
+          {selectedNote ? (
+            <>
+              <header>
+                <div><span>{kindMeta(selectedNote.kind).label} / {formatShortDate(selectedNote.updatedAt)}</span><h2>{selectedNote.title}</h2></div>
+                <select value={selectedNote.status} onChange={(event) => patchNote(selectedNote.id, { status: event.target.value as GameCreatorBranchNote["status"] })}>
+                  <option value="seed">待整理</option><option value="expanded">已展开</option><option value="used">已入稿</option>
+                </select>
+              </header>
+              <div className="game-creator-note-editor__meta">
+                <label><span>标题</span><input value={selectedNote.title} onChange={(event) => patchNote(selectedNote.id, { title: event.target.value })} /></label>
+                <label><span>类型</span><select value={selectedNote.kind} onChange={(event) => patchNote(selectedNote.id, { kind: event.target.value as GameCreatorBranchKind })}>
+                  {BRANCH_KINDS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
+                <label><span>进度</span><input value={selectedNote.gameProgress} placeholder="第几章 / 几小时" onChange={(event) => patchNote(selectedNote.id, { gameProgress: event.target.value })} /></label>
+              </div>
+              <label className="game-creator-note-editor__body"><span>这条支线的内容</span><textarea rows={15} value={selectedNote.body}
+                onChange={(event) => patchNote(selectedNote.id, { body: event.target.value })} /></label>
+              <div className="game-creator-note-editor__meta game-creator-note-editor__meta--bottom">
+                <label><span>标签</span><input value={selectedNote.tags.join(", ")} onChange={(event) => patchNote(selectedNote.id, { tags: event.target.value.split(/[，,]/).map((tag) => tag.trim()).filter(Boolean) })} /></label>
+                <label><span>来源 / 文件位置</span><input value={selectedNote.source} onChange={(event) => patchNote(selectedNote.id, { source: event.target.value })} /></label>
+              </div>
+              <footer>
+                <button type="button" onClick={() => createFragmentFromNote(selectedNote)}>在文稿间展开</button>
+                <button className="is-primary" type="button" data-action="append-to-main" onClick={() => appendNoteToMain(selectedNote)}>加入总稿</button>
+              </footer>
+            </>
+          ) : (
+            <div className="game-creator-empty game-creator-empty--editor"><span>02</span><p>从左侧选一条支线继续整理，<br />或先去记下今天遇到的东西。</p></div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  function renderManuscriptView() {
+    return (
+      <div className="game-creator-manuscript game-creator-view" key="manuscript">
+        <aside className="game-creator-manuscript__list">
+          <div className="game-creator-section-title">
+            <div><span>MANUSCRIPTS</span><h2>文稿</h2></div>
+            <button type="button" onClick={createBlankManuscript}>＋ 新文稿</button>
+          </div>
+          <div>
+            {project.manuscripts.map((manuscript) => (
+              <button key={manuscript.id} type="button" className={manuscript.id === selectedManuscript?.id ? "is-active" : ""}
+                onClick={() => commit((current) => ({ ...current, selectedManuscriptId: manuscript.id }))}>
+                <i>{manuscript.kind === "main" ? "总" : "稿"}</i>
+                <span><strong>{manuscript.title || "未命名文稿"}</strong><small>{manuscript.content.length} 字 · {formatShortDate(manuscript.updatedAt)}</small></span>
+              </button>
+            ))}
+          </div>
+          <footer><span>已引用 {mainManuscript.sourceNoteIds.length} 条支线</span><button type="button" onClick={() => switchView("library")}>去挑素材</button></footer>
+        </aside>
+        {selectedManuscript ? (
+          <section className="game-creator-writing-room">
+            <div className="game-creator-writing-room__editor">
+              <header>
+                <input aria-label="文稿标题" value={selectedManuscript.title}
+                  onChange={(event) => patchManuscript(selectedManuscript.id, { title: event.target.value })} />
+                <div><span>本机自动保存</span><button type="button" data-action="save-manuscript" disabled={saving} onClick={() => void saveWorkspace()}>{saving ? "保存中…" : "保存文稿"}</button></div>
+              </header>
+              <textarea aria-label="文稿正文" value={selectedManuscript.content}
+                placeholder={selectedManuscript.kind === "main" ? "通关前可以先空着。需要时，从支线库把素材放进来。" : "只有几句话也可以，先按你的方式写下来。"}
+                onChange={(event) => patchManuscript(selectedManuscript.id, { content: event.target.value })} />
+              <footer><span>{selectedManuscript.content.length} 字</span><span>{selectedManuscript.kind === "main" ? "总稿" : "短文稿"}</span></footer>
+            </div>
+            <aside className="game-creator-ai-editor">
+              <header><i>AI</i><div><h3>文稿编辑</h3><p>可以只改几句话，也可以继续追问。</p></div></header>
+              <div className="game-creator-ai-editor__chat">
+                {!selectedManuscript.revisionMessages.length ? (
+                  <div className="game-creator-ai-empty"><p>我会保留你的事实和判断，只处理你明确要求的部分。</p><small>例如：“这段太像书面语，帮我改得像人在讲。”</small></div>
+                ) : selectedManuscript.revisionMessages.slice(-8).map((message) => (
+                  <article key={message.id} className={`is-${message.role}`}>
+                    <span>{message.role === "user" ? "你" : "编辑"}</span>
+                    <p>{message.content}</p>
+                    {message.revisedText ? (
+                      <div><pre>{message.revisedText}</pre><button type="button" data-action="adopt-revision"
+                        onClick={() => patchManuscript(selectedManuscript.id, { content: message.revisedText })}>采用这一版</button></div>
+                    ) : null}
+                  </article>
+                ))}
+                {writing ? <p className="game-creator-ai-thinking"><i /><i /><i /> 正在读你的文稿</p> : null}
+              </div>
+              <div className="game-creator-ai-editor__composer">
+                <div className="game-creator-ai-presets">
+                  {REVISION_PRESETS.map((preset) => <button type="button" key={preset} onClick={() => setInstruction(preset)}>{preset}</button>)}
+                </div>
+                <label><textarea rows={3} value={instruction} placeholder="这次想怎么改？不满意可以继续追问。"
+                  onChange={(event) => setInstruction(event.target.value)} /><button type="button" disabled={writing || !instruction.trim()}
+                    onClick={() => void askWritingAssistant()}>{writing ? "…" : "发送"}</button></label>
+              </div>
+            </aside>
+          </section>
+        ) : null}
       </div>
     );
   }
@@ -734,111 +776,42 @@ export function GameCreatorWorkspace({
   return (
     <section className="game-creator-workspace">
       <header className="game-creator-header">
-        <div>
-          <p className="eyebrow">BILIBILI · GAME VIDEO SYSTEM</p>
-          <h1>游戏创作台</h1>
-          <p>每天推进一段，把想法变成一条质量达标的 5–15 分钟游戏视频。</p>
+        <div className="game-creator-header__identity">
+          <span>GAME NOTES / {state.date}</span>
+          <input aria-label="当前游戏" value={project.game} placeholder="正在玩的游戏"
+            onChange={(event) => updateProjectMeta({ game: event.target.value })} />
+          <p>{project.phase === "playing" ? "边玩边收集，通关后再把它们串起来。" : project.phase === "organizing" ? "游戏已通关，正在从支线里整理出主线。" : "这一期已经完成，经验留给下一次创作。"}</p>
+        </div>
+        <div className="game-creator-header__project">
+          <label><span>项目</span><select value={project.id} onChange={(event) => chooseProject(event.target.value)}>
+            {state.projects.map((item) => <option value={item.id} key={item.id}>{item.game || "未命名游戏"}</option>)}</select></label>
+          <button type="button" onClick={addProject}>＋ 新游戏</button>
         </div>
         <div className="game-creator-header__aside">
-          <div className="game-creator-header__status">
-            <span>项目进度</span>
-            <strong>{progress}%</strong>
-            <div aria-label={`项目进度 ${progress}%`}><i style={{ width: `${progress}%` }} /></div>
-            <small>已完成 {state.completedVideos} 条 · 本机自动保存</small>
-          </div>
-          {remoteActions ? (
-            <DataSyncControl
-              module="game-creator"
-              dirty={syncDirty}
-              beforeSync={saveBeforeSync}
-              onSynced={refreshAfterSync}
-            />
-          ) : null}
+          <div className="game-creator-save-state"><i /><span>自动保存</span><small>{project.branchNotes.length} 条支线 · {project.manuscripts.length} 份文稿</small></div>
+          {remoteActions ? <DataSyncControl module="game-creator" dirty={syncDirty} beforeSync={saveBeforeSync} onSynced={refreshAfterSync} /> : null}
         </div>
       </header>
 
-      {notice ? <button type="button" className="game-creator-notice" onClick={() => setNotice("")}>{notice}</button> : null}
+      <section className="game-creator-context">
+        <InputField label="当前进度" value={project.progress} placeholder="例如：第三章 / 18 小时"
+          onChange={(progress) => updateProjectMeta({ progress })} />
+        <InputField label="这次最想弄明白什么" value={project.creativeQuestion} placeholder="先留一个问题，不必急着有答案"
+          onChange={(creativeQuestion) => updateProjectMeta({ creativeQuestion })} />
+        {project.phase === "playing" ? <button type="button" onClick={markGameComplete}>已通关，开始整理</button> : <span className="game-creator-context__phase">{project.phase === "organizing" ? "整理中" : "已完成"}</span>}
+      </section>
 
-      <div className="game-creator-layout">
-        <div className="game-creator-primary">
-          <section className="game-creator-daily">
-            <header>
-              <div>
-                <span>TODAY / {state.date}</span>
-                <h2>今天只做三件事</h2>
-              </div>
-              <p>当前重点：{daily.stage.label}</p>
-            </header>
-            <ol>
-              {daily.items.map((item, index) => (
-                <li key={item.id}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{item.label}</strong>
-                </li>
-              ))}
-            </ol>
-          </section>
+      {notice ? <button type="button" className="game-creator-notice" onClick={() => setNotice("")}>{notice}<span>×</span></button> : null}
 
-          <nav className="game-creator-stages" aria-label="视频创作阶段">
-            {WORKFLOW_STAGES.map((stage) => {
-              const doneCount = stage.tasks.filter((task) => state.completedTaskIds.includes(task.id)).length;
-              return (
-                <button key={stage.id} type="button"
-                  className={`${stage.id === activeStage.id ? "is-active" : ""}${doneCount === stage.tasks.length ? " is-complete" : ""}`}
-                  onClick={() => commit({ ...state, activeStage: stage.id })}>
-                  <span>{stage.index}</span>
-                  <strong>{stage.label}</strong>
-                  <small>{doneCount}/{stage.tasks.length}</small>
-                </button>
-              );
-            })}
-          </nav>
+      <nav className="game-creator-tabs" aria-label="游戏创作工作区">
+        {VIEW_OPTIONS.map((view) => (
+          <button key={view.id} type="button" className={state.activeView === view.id ? "is-active" : ""} onClick={() => switchView(view.id)}>
+            <span>{view.index}</span><strong>{view.label}</strong><small>{view.hint}</small>
+          </button>
+        ))}
+      </nav>
 
-          <section className="game-creator-stage" key={activeStage.id}>
-            <header>
-              <div>
-                <span>STAGE {activeStage.index}</span>
-                <h2>{activeStage.label}</h2>
-              </div>
-              <p>{activeStage.summary}</p>
-            </header>
-            {renderStageFields()}
-            <div className="game-creator-taskline">
-              {activeStage.tasks.map((task) => {
-                const checked = state.completedTaskIds.includes(task.id);
-                return (
-                  <button key={task.id} type="button" className={checked ? "is-checked" : ""}
-                    aria-pressed={checked} onClick={() => toggleTask(task.id)}>
-                    <span>{checked ? "✓" : ""}</span>
-                    {task.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-
-        <aside className="game-creator-method">
-          <header>
-            <span>METHOD / 2026.07</span>
-            <h2>B站游戏内容方法论</h2>
-            <p>不是爆款公式，而是一套可持续复用的创作判断。</p>
-          </header>
-          <div>
-            {METHODOLOGY.map((item) => (
-              <article key={item.index}>
-                <span>{item.index}</span>
-                <h3>{item.title}</h3>
-                <p>{item.body}</p>
-              </article>
-            ))}
-          </div>
-          <footer>
-            <strong>复盘判断</strong>
-            <p>点击弱，先改标题封面；前段掉，先改开头；中段掉，先删空转；互动弱，检查观点与提问是否具体。</p>
-          </footer>
-        </aside>
-      </div>
+      {state.activeView === "capture" ? renderCaptureView() : state.activeView === "library" ? renderLibraryView() : renderManuscriptView()}
     </section>
   );
 }
@@ -860,8 +833,8 @@ export function GameCreatorPage() {
         clockLine={clockLine}
         navigationLayout={layout}
         rightMeta={[
-          { label: "platform", value: "bilibili" },
-          { label: "duration", value: "5–15 min" }
+          { label: "mode", value: "branch-first" },
+          { label: "save", value: "local + sync" }
         ]}
       />
       <GameCreatorWorkspace />

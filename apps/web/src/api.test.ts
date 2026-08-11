@@ -122,31 +122,33 @@ describe("game creator API", () => {
 
   it("loads and saves the complete creator workspace", async () => {
     const state: GameCreatorState = {
-      version: 1,
-      date: "2026-07-30",
-      projectId: "game-video-1",
-      updatedAt: "2026-07-30T01:00:00.000Z",
-      activeStage: "brief",
-      completedTaskIds: [],
-      checkedQualityIds: [],
-      ready: false,
-      completedVideos: 0,
-      draft: {
+      version: 2,
+      date: "2026-08-11",
+      updatedAt: "2026-08-11T01:00:00.000Z",
+      activeProjectId: "game-project-1",
+      activeView: "capture",
+      selectedNoteId: null,
+      selectedManuscriptId: "game-main-1",
+      projects: [{
+        id: "game-project-1",
         game: "黑神话：悟空",
-        audience: "动作游戏新玩家",
-        format: "5–15 分钟 · B站横版中视频",
-        promise: "避开开荒误区",
-        angle: "攻略 / 教学",
-        title: "",
-        coverCopy: "",
-        opening: "",
-        outline: "",
-        assetNotes: "",
-        editNotes: "",
-        tags: "",
-        publishedUrl: "",
-        retrospective: ""
-      }
+        phase: "playing",
+        progress: "第三章",
+        creativeQuestion: "",
+        branchNotes: [],
+        manuscripts: [{
+          id: "game-main-1",
+          kind: "main",
+          title: "总稿",
+          content: "",
+          sourceNoteIds: [],
+          revisionMessages: [],
+          createdAt: "2026-08-11T01:00:00.000Z",
+          updatedAt: "2026-08-11T01:00:00.000Z"
+        }],
+        createdAt: "2026-08-11T01:00:00.000Z",
+        updatedAt: "2026-08-11T01:00:00.000Z"
+      }]
     };
     const fetchMock = vi
       .fn()

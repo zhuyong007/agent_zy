@@ -34,6 +34,8 @@ import type {
   HistorySeries,
   HistoryXhsState,
   GameCreatorState,
+  GameCreatorRevisionRequest,
+  GameCreatorRevisionResult,
   HomeModulePreference,
   LedgerFactRecord,
   LedgerReportRecord,
@@ -113,6 +115,20 @@ export async function saveGameCreatorState(state: GameCreatorState): Promise<Gam
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "保存游戏创作数据失败"));
+  }
+  return response.json();
+}
+
+export async function reviseGameCreatorManuscript(
+  input: GameCreatorRevisionRequest
+): Promise<GameCreatorRevisionResult> {
+  const response = await fetch(`${API_BASE}/api/game-creator/revise`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "文稿修改失败"));
   }
   return response.json();
 }

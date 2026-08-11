@@ -113,31 +113,44 @@ describe("local data sync adapters", () => {
   it("round-trips the game creator workspace as one conflict-safe record", () => {
     const { adapters } = fixture();
     const state = {
-      version: 1,
-      date: "2026-07-30",
-      projectId: "game-video-1",
-      updatedAt: "2026-07-30T01:00:00.000Z",
-      activeStage: "script",
-      completedTaskIds: ["brief-audience"],
-      checkedQualityIds: [],
-      ready: false,
-      completedVideos: 2,
-      draft: {
+      version: 2,
+      date: "2026-08-11",
+      updatedAt: "2026-08-11T01:00:00.000Z",
+      activeProjectId: "game-project-1",
+      activeView: "library",
+      selectedNoteId: "game-note-1",
+      selectedManuscriptId: "game-main-1",
+      projects: [{
+        id: "game-project-1",
         game: "空洞骑士",
-        audience: "新玩家",
-        format: "5–15 分钟 · B站横版中视频",
-        promise: "少走弯路",
-        angle: "攻略 / 教学",
-        title: "开荒指南",
-        coverCopy: "开荒避坑",
-        opening: "先看结果",
-        outline: "三段结构",
-        assetNotes: "",
-        editNotes: "",
-        tags: "动作游戏",
-        publishedUrl: "",
-        retrospective: ""
-      }
+        phase: "playing",
+        progress: "第二章",
+        creativeQuestion: "圣巢为何衰败",
+        branchNotes: [{
+          id: "game-note-1",
+          kind: "world",
+          status: "seed",
+          title: "泪水之城",
+          body: "雨和城市记忆值得单独说。",
+          gameProgress: "第二章",
+          tags: ["场景"],
+          source: "",
+          createdAt: "2026-08-11T01:00:00.000Z",
+          updatedAt: "2026-08-11T01:00:00.000Z"
+        }],
+        manuscripts: [{
+          id: "game-main-1",
+          kind: "main",
+          title: "空洞骑士总稿",
+          content: "",
+          sourceNoteIds: [],
+          revisionMessages: [],
+          createdAt: "2026-08-11T01:00:00.000Z",
+          updatedAt: "2026-08-11T01:00:00.000Z"
+        }],
+        createdAt: "2026-08-11T01:00:00.000Z",
+        updatedAt: "2026-08-11T01:00:00.000Z"
+      }]
     };
 
     adapters["game-creator"].write(new Map([["workspace:main", state]]));

@@ -46,6 +46,7 @@ import { createGitDataSyncTransport } from "./services/data-sync/git-transport";
 import { createLocalDataSyncAdapters } from "./services/data-sync/local-adapters";
 import { createDataSyncService, type DataSyncService } from "./services/data-sync/service";
 import { createGameCreatorRepository } from "./services/game-creator-repository";
+import { createGameCreatorWritingService } from "./services/game-creator-writing-service";
 import { createControlPlaneScheduler } from "./services/scheduler";
 import { createControlPlaneStore } from "./services/store";
 import { createSummaryService } from "./services/summary-service";
@@ -118,6 +119,7 @@ export function createControlPlaneApp(options?: {
     secrets: modelSecrets,
     eventLog
   });
+  const gameCreatorWritingService = createGameCreatorWritingService({ modelRuntime });
   const browserAutomationExecutor = options?.browserAutomationExecutor ?? createDesktopBrowserAutomationExecutor({
     modelRuntime
   });
@@ -912,6 +914,16 @@ export function createControlPlaneApp(options?: {
     } catch (error) {
       return reply.code(400).send({
         message: error instanceof Error ? error.message : "游戏创作数据格式无效"
+      });
+    }
+  });
+
+  app.post("/api/game-creator/revise", async (request, reply) => {
+    try {
+      return await gameCreatorWritingService.revise(request.body);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "文稿修改失败"
       });
     }
   });

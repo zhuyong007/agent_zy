@@ -1552,43 +1552,77 @@ export interface ScreenMonitorState {
   lastUpdatedAt: string | null;
 }
 
-export type GameCreatorWorkflowStageId =
-  | "brief"
-  | "script"
-  | "capture"
-  | "edit"
-  | "package"
-  | "review"
-  | "publish";
+export type GameCreatorViewId = "capture" | "library" | "manuscript";
+export type GameCreatorProjectPhase = "playing" | "organizing" | "published";
+export type GameCreatorBranchKind = "story" | "character" | "world" | "mechanic" | "idea" | "research";
+export type GameCreatorBranchStatus = "seed" | "expanded" | "used";
+export type GameCreatorManuscriptKind = "main" | "fragment";
 
-export interface GameCreatorDraft {
-  game: string;
-  audience: string;
-  format: string;
-  promise: string;
-  angle: string;
+export interface GameCreatorBranchNote {
+  id: string;
+  kind: GameCreatorBranchKind;
+  status: GameCreatorBranchStatus;
   title: string;
-  coverCopy: string;
-  opening: string;
-  outline: string;
-  assetNotes: string;
-  editNotes: string;
-  tags: string;
-  publishedUrl: string;
-  retrospective: string;
+  body: string;
+  gameProgress: string;
+  tags: string[];
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameCreatorRevisionMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  revisedText?: string;
+  createdAt: string;
+}
+
+export interface GameCreatorManuscript {
+  id: string;
+  kind: GameCreatorManuscriptKind;
+  title: string;
+  content: string;
+  sourceNoteIds: string[];
+  revisionMessages: GameCreatorRevisionMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameCreatorProject {
+  id: string;
+  game: string;
+  phase: GameCreatorProjectPhase;
+  progress: string;
+  creativeQuestion: string;
+  branchNotes: GameCreatorBranchNote[];
+  manuscripts: GameCreatorManuscript[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GameCreatorState {
-  version: 1;
+  version: 2;
   date: string;
-  projectId: string;
   updatedAt: string;
-  activeStage: GameCreatorWorkflowStageId;
-  completedTaskIds: string[];
-  checkedQualityIds: string[];
-  ready: boolean;
-  completedVideos: number;
-  draft: GameCreatorDraft;
+  activeProjectId: string;
+  activeView: GameCreatorViewId;
+  selectedNoteId: string | null;
+  selectedManuscriptId: string | null;
+  projects: GameCreatorProject[];
+}
+
+export interface GameCreatorRevisionRequest {
+  manuscriptTitle: string;
+  content: string;
+  instruction: string;
+  history: Array<Pick<GameCreatorRevisionMessage, "role" | "content">>;
+}
+
+export interface GameCreatorRevisionResult {
+  reply: string;
+  revisedText: string;
 }
 
 export type DataSyncModule =

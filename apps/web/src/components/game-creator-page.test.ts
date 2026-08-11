@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React, { act } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 
 import {
@@ -9,22 +9,30 @@ import {
   GameCreatorWorkspace,
   chooseNewestGameCreatorState,
   createInitialGameCreatorState,
-  getQualityScore,
-  getReadyBlockers
+  loadGameCreatorState
 } from "./game-creator-page";
 
-function createMemoryStorage(initial?: string) {
-  let value = initial ?? null;
+function createMemoryStorage(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
   let lastKey = "";
   return {
-    getItem: () => value,
+    getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, next: string) => {
       lastKey = key;
-      value = next;
+      values.set(key, next);
     },
-    read: () => value,
+    read: (key = GAME_CREATOR_STORAGE_KEY) => values.get(key) ?? null,
     key: () => lastKey
   };
+}
+
+async function changeValue(element: HTMLInputElement | HTMLTextAreaElement | null, value: string) {
+  await act(async () => {
+    if (!element) throw new Error("missing form control");
+    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 describe("GameCreatorWorkspace", () => {
@@ -34,13 +42,12 @@ describe("GameCreatorWorkspace", () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
   afterEach(() => {
-    if (root) {
-      act(() => root.unmount());
-    }
+    if (root) act(() => root.unmount());
     container?.remove();
   });
 
-  async function renderWorkspace(storage = createMemoryStorage()) {
+  async function renderWorkspace(options: Partial<React.ComponentProps<typeof GameCreatorWorkspace>> = {}) {
+    const storage = options.storage ?? createMemoryStorage();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -49,129 +56,124 @@ describe("GameCreatorWorkspace", () => {
       root.render(
         React.createElement(GameCreatorWorkspace, {
           storage,
-          now: () => new Date("2026-07-29T09:00:00+08:00"),
-          remoteActions: null
+          now: () => new Date("2026-08-11T09:00:00+08:00"),
+          remoteActions: null,
+          ...options
         })
       );
     });
 
-    return storage;
+    return storage as ReturnType<typeof createMemoryStorage>;
   }
 
-  it("turns the Bilibili methodology into a daily production workflow", async () => {
+  it("organizes the workspace around branch-first creation", async () => {
     await renderWorkspace();
 
-    expect(container.textContent).toContain("游戏创作台");
-    expect(container.textContent).toContain("今天只做三件事");
-    expect(container.textContent).toContain("B站游戏内容方法论");
-    expect(container.textContent).toContain("四类选题形成组合");
-    expect(container.textContent).toContain("5–15 分钟");
-    expect(container.querySelectorAll(".game-creator-stages button")).toHaveLength(7);
+    expect(container.textContent).toContain("边玩边收集，通关后再把它们串起来");
+    expect(container.textContent).toContain("刚才有什么值得单独说？");
+    expect(container.textContent).toContain("支线库");
+    expect(container.textContent).toContain("文稿间");
+    expect(container.querySelectorAll(".game-creator-tabs button")).toHaveLength(3);
   });
 
-  it("persists input and task progress in local storage", async () => {
+  it("captures a small branch note and persists it immediately", async () => {
     const storage = await renderWorkspace();
-    const gameInput = [...container.querySelectorAll("input")]
-      .find((input) => input.parentElement?.textContent?.includes("本期游戏"));
+    await changeValue(
+      container.querySelector<HTMLInputElement>('input[placeholder="例如：宗教审判所"]'),
+      "宗教审判所"
+    );
+    await changeValue(
+      container.querySelector<HTMLTextAreaElement>('textarea[placeholder^="它为什么让我停下来"]'),
+      "这里把信仰变成了一套行政流程，值得单独查资料。"
+    );
 
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(gameInput, "空洞骑士");
-      gameInput?.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>(".game-creator-taskline button")?.click();
+      container.querySelector<HTMLButtonElement>('[data-action="save-branch"]')?.click();
     });
 
     const saved = JSON.parse(storage.read() ?? "{}");
-    expect(saved.draft.game).toBe("空洞骑士");
-    expect(saved.completedTaskIds).toContain("brief-audience");
+    expect(saved.projects[0].branchNotes[0]).toMatchObject({
+      title: "宗教审判所",
+      kind: "world"
+    });
+    expect(container.textContent).toContain("支线已收进素材库");
     expect(storage.key()).toBe(GAME_CREATOR_STORAGE_KEY);
   });
 
-  it("requires the critical checks and an 80 point score before a video is ready", () => {
-    const state = createInitialGameCreatorState(new Date("2026-07-29T09:00:00+08:00"));
-    state.draft = {
-      ...state.draft,
-      game: "塞尔达传说",
-      audience: "刚开始探索的新玩家",
-      promise: "看完能避开五个开荒误区",
-      title: "新手最容易踩的五个坑",
-      coverCopy: "别再踩坑",
-      opening: "先展示最致命的错误，再说明本期会逐个解决。",
-      outline: "问题一；问题二；问题三；问题四；问题五。",
-      assetNotes: "已记录五段实机演示、版本号和测试条件。",
-      editNotes: "粗剪 9 分钟，已清理停顿并检查人声与字幕。"
-    };
-    state.completedTaskIds = [
-      "brief-audience",
-      "brief-angle",
-      "brief-promise",
-      "script-opening",
-      "script-outline",
-      "script-payoff",
-      "capture-list",
-      "capture-proof",
-      "capture-rights",
-      "edit-rough",
-      "edit-pace",
-      "edit-audio",
-      "package-title",
-      "package-cover",
-      "package-match",
-      "review-full",
-      "review-mobile"
-    ];
-    state.checkedQualityIds = [
-      "quality-title",
-      "quality-cover",
-      "quality-promise",
-      "quality-hook",
-      "quality-proof",
-      "quality-pace"
-    ];
+  it("supports short manuscript revisions, follow-up history and adopting a version", async () => {
+    const writingAction = vi.fn().mockResolvedValue({
+      reply: "我保留了原意，把书面表达放松了一点。",
+      revisedText: "这个审判所最可怕的地方，是所有人都觉得流程很正常。"
+    });
+    const storage = await renderWorkspace({ writingAction });
+    const manuscriptTab = [...container.querySelectorAll<HTMLButtonElement>(".game-creator-tabs button")]
+      .find((button) => button.textContent?.includes("文稿间"));
+    await act(async () => manuscriptTab?.click());
+    await changeValue(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="文稿正文"]'), "审判所的流程非常可怕。");
+    await changeValue(
+      container.querySelector<HTMLTextAreaElement>('textarea[placeholder^="这次想怎么改"]'),
+      "别太书面，像我平时说话"
+    );
 
-    expect(getQualityScore(state)).toBe(80);
-    expect(getReadyBlockers(state)).toEqual([]);
+    const sendButton = [...container.querySelectorAll<HTMLButtonElement>(".game-creator-ai-editor__composer button")]
+      .find((button) => button.textContent === "发送");
+    await act(async () => {
+      sendButton?.click();
+      await Promise.resolve();
+    });
 
-    state.completedTaskIds = state.completedTaskIds.filter((id) => id !== "edit-audio");
-    expect(getReadyBlockers(state)).toContain("还有 1 项发布前流程未完成");
-    state.completedTaskIds.push("edit-audio");
+    expect(writingAction).toHaveBeenCalledWith(expect.objectContaining({
+      content: "审判所的流程非常可怕。",
+      instruction: "别太书面，像我平时说话",
+      history: []
+    }));
+    expect(container.textContent).toContain("我保留了原意");
 
-    state.checkedQualityIds = state.checkedQualityIds.filter((id) => id !== "quality-hook");
-    state.checkedQualityIds.push("quality-audio", "quality-rights");
-
-    expect(getQualityScore(state)).toBe(85);
-    expect(getReadyBlockers(state)).toContain("关键项未过：前 30 秒成立");
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-action="adopt-revision"]')?.click();
+    });
+    const saved = JSON.parse(storage.read() ?? "{}");
+    expect(saved.projects[0].manuscripts[0].content).toContain("所有人都觉得流程很正常");
+    expect(saved.projects[0].manuscripts[0].revisionMessages).toHaveLength(2);
   });
 
-  it("keeps newer unsynced local edits and adopts newer synchronized data", () => {
-    const local = createInitialGameCreatorState(new Date("2026-07-29T09:00:00+08:00"));
-    local.draft.game = "本地新项目";
-    local.updatedAt = "2026-07-29T02:00:00.000Z";
-    const remote = {
-      ...createInitialGameCreatorState(new Date("2026-07-29T09:00:00+08:00")),
-      updatedAt: "2026-07-29T01:00:00.000Z",
+  it("migrates an old single-video browser snapshot without dropping its writing", () => {
+    const legacy = {
+      version: 1,
+      date: "2026-07-30",
+      projectId: "game-video-old",
+      updatedAt: "2026-07-30T01:00:00.000Z",
       draft: {
-        ...local.draft,
-        game: "远端旧项目"
+        game: "空洞骑士",
+        promise: "看懂圣巢的信仰",
+        title: "圣巢总稿",
+        opening: "先从一尊神像说起。",
+        outline: "再讲审判与秩序。",
+        editNotes: "",
+        assetNotes: "截图在素材目录",
+        tags: "剧情,设定"
       }
     };
+    const storage = createMemoryStorage({ "agent-zy-game-creator-v1": JSON.stringify(legacy) });
+    const state = loadGameCreatorState(storage, new Date("2026-08-11T09:00:00+08:00"));
 
-    expect(chooseNewestGameCreatorState(local, remote)).toEqual({
-      state: local,
-      dirty: true
-    });
+    expect(state.version).toBe(2);
+    expect(state.projects[0].game).toBe("空洞骑士");
+    expect(state.projects[0].manuscripts[0].content).toContain("先从一尊神像说起");
+    expect(state.projects[0].branchNotes[0].body).toBe("截图在素材目录");
+  });
 
-    remote.updatedAt = "2026-07-29T03:00:00.000Z";
-    expect(chooseNewestGameCreatorState(local, remote)).toEqual({
-      state: remote,
-      dirty: false
-    });
+  it("keeps newer local edits and adopts newer synchronized data", () => {
+    const local = createInitialGameCreatorState(new Date("2026-08-11T09:00:00+08:00"));
+    local.projects[0].game = "本地新项目";
+    local.updatedAt = "2026-08-11T02:00:00.000Z";
+    const remote = structuredClone(local);
+    remote.projects[0].game = "远端旧项目";
+    remote.updatedAt = "2026-08-11T01:00:00.000Z";
 
-    local.updatedAt = "2026-07-29T04:00:00.000Z";
-    expect(chooseNewestGameCreatorState(local, remote, false)).toEqual({
-      state: remote,
-      dirty: false
-    });
+    expect(chooseNewestGameCreatorState(local, remote)).toEqual({ state: local, dirty: true });
+    remote.updatedAt = "2026-08-11T03:00:00.000Z";
+    expect(chooseNewestGameCreatorState(local, remote)).toEqual({ state: remote, dirty: false });
+    expect(chooseNewestGameCreatorState(local, remote, false)).toEqual({ state: remote, dirty: false });
   });
 });
