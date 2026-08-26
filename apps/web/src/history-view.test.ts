@@ -141,4 +141,79 @@ describe("history view helpers", () => {
       "主题"
     ]);
   });
+
+  it("merges series category aliases into the dynasty and most archive tabs", () => {
+    const postPayload = {
+      topic: "历史上的第一座都城",
+      summary: "一段摘要",
+      cardCount: 0,
+      cards: [],
+      xiaohongshuCaption: "正文",
+      generatedAt: "2026-08-14T10:00:00.000Z"
+    };
+    const notifications = getHistoryNotifications([
+      {
+        id: "dynasty",
+        kind: "history-post",
+        title: "朝代四件套：东汉",
+        body: "朝代记录",
+        createdAt: "2026-08-14T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          dynasty: "东汉",
+          modules: [],
+          category: "朝代"
+        }
+      },
+      {
+        id: "dynasty-series",
+        kind: "history-post",
+        title: "朝代四件套：西汉",
+        body: "朝代系列记录",
+        createdAt: "2026-08-14T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          dynasty: "西汉",
+          modules: [],
+          category: "朝代系列"
+        }
+      },
+      {
+        id: "most",
+        kind: "history-post",
+        title: "“最”系列：最长的运河",
+        body: "最记录",
+        createdAt: "2026-08-14T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          ...postPayload,
+          category: "最"
+        }
+      },
+      {
+        id: "most-series",
+        kind: "history-post",
+        title: "“最”系列：最漫长的战争",
+        body: "最系列记录",
+        createdAt: "2026-08-14T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          ...postPayload,
+          category: "最系列"
+        }
+      }
+    ]);
+
+    const groups = groupHistoryNotifications(notifications);
+
+    expect(groups.map((group) => group.category)).toEqual(["朝代", "最"]);
+    expect(groups.map((group) => group.notifications.map((notification) => notification.id))).toEqual([
+      ["dynasty", "dynasty-series"],
+      ["most", "most-series"]
+    ]);
+  });
 });

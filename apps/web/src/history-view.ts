@@ -77,6 +77,14 @@ export function getHistoryNotificationCategory(notification: HistoryNotification
   const explicitCategory = notification.payload.category?.trim();
 
   if (explicitCategory) {
+    if (explicitCategory === "朝代系列") {
+      return "朝代";
+    }
+
+    if (explicitCategory === "最系列") {
+      return "最";
+    }
+
     return explicitCategory;
   }
 

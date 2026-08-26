@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿# Debug Session: startup-white-screen
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# Debug Session: startup-white-screen
 - **Status**: [OPEN]
 - **Issue**: Project starts but the web app shows a white screen instead of rendering the expected home page.
 - **Debug Server**: http://127.0.0.1:7777/event

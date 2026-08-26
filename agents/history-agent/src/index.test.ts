@@ -115,6 +115,7 @@ function getDynastyPayload(result: Awaited<ReturnType<typeof agent.execute>>): H
 
 function expectThreeFourAspectRatio(payload: HistoryPostPayload) {
   const cover = payload.cover;
+  const visualDescription = (prompt: string) => prompt.split("文字生成要求（最高优先级）")[0] ?? prompt;
 
   expect(cover).toBeDefined();
 
@@ -123,11 +124,11 @@ function expectThreeFourAspectRatio(payload: HistoryPostPayload) {
   }
 
   expect(cover.prompt).toMatch(/^3:4竖版构图/u);
-  expect(cover.prompt).not.toMatch(/横版|横向(?:画幅|画面|构图)|宽幅|方形(?:画幅|画面|构图)/u);
+  expect(visualDescription(cover.prompt)).not.toMatch(/横版|横向(?:画幅|画面|构图)|宽幅|方形(?:画幅|画面|构图)/u);
 
   for (const card of payload.cards) {
     expect(card.prompt).toMatch(/^3:4竖版构图/u);
-    expect(card.prompt).not.toMatch(/横版|横向(?:画幅|画面|构图)|宽幅|方形(?:画幅|画面|构图)/u);
+    expect(visualDescription(card.prompt)).not.toMatch(/横版|横向(?:画幅|画面|构图)|宽幅|方形(?:画幅|画面|构图)/u);
   }
 }
 
@@ -244,6 +245,13 @@ function expectSharedEditorialContract(prompt: string) {
   expect(prompt).toContain("不能覆盖史实规则，也不能充当历史证据");
   expect(prompt).toContain("所有 cover.prompt 和 cards[].prompt 必须明确使用 3:4 竖版构图");
   expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
+  expect(prompt).toContain("必须包含与本图主题直接相关的具体历史知识");
+  expect(prompt).toContain("至少给出一个可核查的信息点");
+  expect(prompt).toContain("不能只有标题、栏目名、泛化标签或占位词");
+  expect(prompt).toContain("必须原样包含对应 imageText 的完整文字");
+  expect(prompt).toContain("禁止只描述知识范围、只预留文字空位或生成无字插画");
+  expect(prompt).toContain("生图提示词不设字数或字符数上限");
+  expect(prompt).toContain("不得为了控制长度而省略、缩写或截断");
   expect(prompt).toContain("输出 JSON 前在内部静默自检");
   expect(prompt).toContain("每个关键事实是否有可核查的信息锚点");
   expect(prompt).toContain("行动或条件 → 作用对象 → 结果");
@@ -453,9 +461,11 @@ describe("history agent", () => {
     expect(result.summary).toContain("3 到 10");
   });
 
-  it("repairs image prompts to 100-200 Chinese characters before returning payloads", async () => {
+  it("preserves complete image prompts without a length cap and injects exact image text", async () => {
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
+    const imageText = "张骞出使西域\n公元前138年从长安出发\n打通汉朝了解西域的通道";
+    const longPrompt = `图片描述：汉代使者与西域路线图，主体清晰居中，史实边界准确。${"补充完整的时代场景、地图路线、人物动作、光线色彩与版式细节。".repeat(12)}这是不可被截断的结尾。`;
     const restore = mockModelResponse({
       topic: "Prompt repair topic",
       summary: "Short model prompts should not fail the whole task.",
@@ -463,8 +473,8 @@ describe("history agent", () => {
       cards: [
         {
           title: "Card title",
-          imageText: "Image text",
-          prompt: "短提示"
+          imageText,
+          prompt: longPrompt
         },
         ...createHistoryCards("Prompt repair topic").slice(1)
       ],
@@ -474,14 +484,19 @@ describe("history agent", () => {
     const result = await agent.execute(createRequest());
     restore();
 
-    const prompt = getPostPayload(result).cards[0]?.prompt ?? "";
+    const payload = getPostPayload(result);
+    const prompt = payload.cards[0]?.prompt ?? "";
     const chineseCharacterCount = Array.from(prompt.matchAll(/[\u3400-\u9fff]/gu)).length;
 
     expect(result.status).toBe("completed");
-    expect(prompt).toContain("图片描述");
-    expect(prompt).toContain("文字类型展示");
-    expect(chineseCharacterCount).toBeGreaterThanOrEqual(100);
-    expect(chineseCharacterCount).toBeLessThanOrEqual(200);
+    expect(prompt).toContain(longPrompt);
+    expect(prompt).toContain("这是不可被截断的结尾");
+    expect(prompt).toContain("【必须生成的文字】");
+    expect(prompt).toContain(imageText);
+    expect(prompt).toContain("不得省略、改写、替换或截断");
+    expect(prompt).toContain("不要只生成历史场景或无字插画");
+    expect(chineseCharacterCount).toBeGreaterThan(200);
+    expect(payload.cover?.prompt).toContain(payload.cover?.imageText);
   });
 
   it("removes word-count notes from returned image prompts", async () => {
@@ -566,6 +581,11 @@ describe("history agent", () => {
       expect(prompt).not.toContain("不必写详细知识");
       expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
       expect(prompt).toContain("不要把字数、字符数或类似“xx字”的说明写进 prompt 字段");
+      expect(prompt).toContain("不设字数或字符数上限");
+      expect(prompt).toContain("原样逐字包含同一对象的完整 imageText");
+      expect(prompt).toContain("禁止只生成历史场景或无字插画");
+      expect(prompt).toContain("不能只有标题、栏目名、泛化标签或“相关知识”等占位词");
+      expect(prompt).not.toContain("系统会自行校验长度");
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
       expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
       expect(prompt).toContain("3–5 个相关话题标签");
@@ -1177,6 +1197,11 @@ ${JSON.stringify({
       expect(prompt).toContain("3–5 个相关话题标签");
       expect(prompt).toContain("不能只写“留出空白位置以用于某种内容”");
       expect(prompt).toContain("同步明确空白部分需要填充的具体文字内容");
+      expect(prompt).toContain("不设字数或字符数上限");
+      expect(prompt).toContain("原样逐字包含同一对象的完整 imageText");
+      expect(prompt).toContain("禁止只生成历史场景或无字插画");
+      expect(prompt).toContain("不能只有标题、栏目名、泛化标签或“相关知识”等占位词");
+      expect(prompt).not.toContain("系统会自行校验长度");
 
       return JSON.stringify({
         dynasty: "东汉",

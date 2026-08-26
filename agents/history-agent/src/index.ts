@@ -46,6 +46,8 @@ const HISTORY_EDITORIAL_CONTRACT = `统一编辑质量规则：
 5. 视觉边界：生图提示词不得确定性描绘无法确认的服饰、器物或场景；史料不足时使用中性时代氛围并明确避免臆造细节。
 6. 数据边界：小红书发布数据只能调整选题包装、标题节奏和排版，不能覆盖史实规则，也不能充当历史证据。
 7. 画幅约束：所有 cover.prompt 和 cards[].prompt 必须明确使用 3:4 竖版构图，禁止横版、横向画幅、宽幅或方形画幅。
+8. 文字落图：每个 cover.imageText 和 cards[].imageText 必须包含与本图主题直接相关的具体历史知识，至少给出一个可核查的信息点，不能只有标题、栏目名、泛化标签或占位词。每个 cover.prompt 和 cards[].prompt 必须原样包含对应 imageText 的完整文字，并明确要求生图模型把这些文字实际生成在画面中。禁止只描述知识范围、只预留文字空位或生成无字插画；必须要求文字清晰可读、不得省略、改写、替换或截断。
+9. 提示词完整性：生图提示词不设字数或字符数上限，不得为了控制长度而省略、缩写或截断画面与文字要求。
 输出 JSON 前在内部静默自检：每个关键事实是否有可核查的信息锚点；因果是否符合“行动或条件 → 作用对象 → 结果”且相关性不能冒充因果；争议、口径变化或证据不足是否明确标注；每张卡片只承担一个清楚问题并至少包含一个具体而可信的细节；钩子是否与正文结论一致。只修正后输出最终 JSON，不要输出检查过程。`;
 
 function buildHistorySystemPrompt(role: string, analyticsPrompt = "", editorialContext = ""): string {
@@ -264,10 +266,6 @@ function hasDynastyPayloadShape(value: unknown): boolean {
   return Boolean(record?.dynasty || record?.modules);
 }
 
-function countChineseCharacters(value: string): number {
-  return Array.from(value.matchAll(/[\u3400-\u9fff]/gu)).length;
-}
-
 function trimToChineseCharacterLimit(value: string, maxLength: number): string {
   let chineseCharacterCount = 0;
   let result = "";
@@ -314,16 +312,17 @@ function normalizeImagePromptAspectRatio(prompt: string): string {
     : `${HISTORY_IMAGE_ASPECT_RATIO}。${normalized}`;
 }
 
-function repairImagePrompt(prompt: string): string {
-  const filler =
-    "。图片描述：小红书历史知识卡片，主体清晰居中，时代场景准确，构图稳定，光线柔和，色彩克制，材质细腻。图片中应该以文字类型展示相关背景、关键人物、影响意义等具体知识内容";
-  let repaired = normalizeImagePromptAspectRatio(removePromptLengthNotes(prompt));
+function repairImagePrompt(prompt: string, imageText: string): string {
+  const repaired = normalizeImagePromptAspectRatio(removePromptLengthNotes(prompt));
+  const separator = /[。！？；]$/u.test(repaired) ? "" : "。";
+  const mandatoryTextInstruction = [
+    "文字生成要求（最高优先级）：不要只生成历史场景或无字插画",
+    "画面中必须实际出现清晰、完整、可读的简体中文排版",
+    `必须逐字准确呈现以下文字，保留原有分行，不得省略、改写、替换或截断：\n【必须生成的文字】\n${imageText}\n【文字结束】`,
+    "不得用留白、占位符、乱码、拼音或英文替代上述文字；若文字与装饰冲突，优先保证文字完整清晰"
+  ].join("。");
 
-  while (countChineseCharacters(repaired) < 100) {
-    repaired += filler;
-  }
-
-  return trimToChineseCharacterLimit(repaired, 200);
+  return `${repaired}${separator}${mandatoryTextInstruction}`;
 }
 
 function validateCard(value: unknown): HistoryPostCard | null {
@@ -341,12 +340,7 @@ function validateCard(value: unknown): HistoryPostCard | null {
     return null;
   }
 
-  const prompt = repairImagePrompt(rawPrompt);
-  const promptLength = countChineseCharacters(prompt);
-
-  if (promptLength < 100 || promptLength > 200) {
-    throw new Error("每张图的生图提示词必须是100到200个中文字符");
-  }
+  const prompt = repairImagePrompt(rawPrompt, imageText);
 
   return {
     title: trimToCharacterLimit(title, MAX_HISTORY_TITLE_LENGTH),
@@ -375,7 +369,7 @@ function validateCover(value: unknown): HistoryPostCover | null {
     title: trimToCharacterLimit(title, MAX_HISTORY_TITLE_LENGTH),
     subtitle,
     imageText,
-    prompt: repairImagePrompt(rawPrompt)
+    prompt: repairImagePrompt(rawPrompt, imageText)
   };
 }
 
@@ -383,6 +377,7 @@ function buildFallbackCover(topic: string, summary: string, cards: HistoryPostCa
   const firstCard = cards[0];
   const subtitle = trimToChineseCharacterLimit(summary, 28);
   const imageTextParts = [topic, subtitle, firstCard?.imageText].filter(Boolean);
+  const imageText = imageTextParts.join("\n");
   const basePrompt = [
     `${topic}，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代场景准确`,
     "背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域",
@@ -395,8 +390,8 @@ function buildFallbackCover(topic: string, summary: string, cards: HistoryPostCa
   return {
     title: topic,
     subtitle,
-    imageText: imageTextParts.join("\n"),
-    prompt: repairImagePrompt(basePrompt)
+    imageText,
+    prompt: repairImagePrompt(basePrompt, imageText)
   };
 }
 
@@ -662,7 +657,7 @@ async function generateWithModelRuntime(
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision"
   });
-  const prompt = `请围绕「${topic}」生成一条小红书历史知识图文策划。只生成图文，不要生成口播稿、视频脚本或镜头方案。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards、titleOptions、coverTextOptions、followUpIdeas 的顺序输出字段。titleOptions 给出 3–5 个不同钩子但事实承诺一致的标题；coverTextOptions 给出 2–3 个封面文字方案；followUpIdeas 给出 3–5 个可形成连续内容的新选题。topic、cover.title、titleOptions 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要明确使用 3:4 竖版构图，并强调小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。所有 cover.prompt 和 cards[].prompt 都必须明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。凡是提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。`;
+  const prompt = `请围绕「${topic}」生成一条小红书历史知识图文策划。只生成图文，不要生成口播稿、视频脚本或镜头方案。严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards、titleOptions、coverTextOptions、followUpIdeas 的顺序输出字段。titleOptions 给出 3–5 个不同钩子但事实承诺一致的标题；coverTextOptions 给出 2–3 个封面文字方案；followUpIdeas 给出 3–5 个可形成连续内容的新选题。topic、cover.title、titleOptions 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，写成可直接发布的小红书正文：开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，使用自然换行形成漂亮、易读的排版，结尾加入互动提问，并附上 3–5 个相关话题标签；表达有节奏、有分享感，但必须尊重史实，不使用 Markdown 标题语法。cover 是小红书首图封面方案，必须包含 title、subtitle、imageText、prompt；cover.prompt 是中文封面生图提示词，需要明确使用 3:4 竖版构图，并强调小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt；imageText 是图片内要放的中文文字，必须包含与本图主题直接相关的具体历史知识，至少给出一个可核查的信息点，例如人物行动、时间节点、路线、制度、关键对比或影响，不能只有标题、栏目名、泛化标签或“相关知识”等占位词；prompt 是中文生图提示词，必须完整写清，不设字数或字符数上限，禁止为了控制长度省略、缩写或截断内容，也不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。所有 cover.prompt 和 cards[].prompt 都必须明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅。prompt 需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。每个 prompt 必须原样逐字包含同一对象的完整 imageText，并明确要求生图模型把它实际生成在画面中，文字必须清晰可读，不得省略、改写、替换或截断，禁止只生成历史场景或无字插画。凡是提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = await getModelClient().generateText({
@@ -749,7 +744,7 @@ async function generateMostWithModelRuntime(
 
 严格按 topic、summary、xiaohongshuCaption、cover、cardCount、cards 的顺序输出 JSON 字段。topic、cover.title 和 cards[].title 都属于标题，所有标题最长 20 个字，标点也计入。xiaohongshuCaption 控制在 200–400 字，开头用问题、反差或结论制造钩子，中间用短段落和醒目的重点符号梳理知识，结尾加入互动提问和 3–5 个相关话题标签，不使用 Markdown 标题语法。
 
-cover 必须包含 title、subtitle、imageText、prompt；cards 根据内容输出 3–10 张，每张包含 title、imageText、prompt。cover.prompt 和 cards[].prompt 必须是中文生图提示词，并明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅；同时说明主体、时代场景、构图、光线、色彩、材质、文字留白和小红书历史知识卡片风格，并明确图片文字要展示的具体比较范围、指标、证据、时间节点或争议信息。不要把字数或字符数说明写进 prompt。凡是提到文字留白或预留区域，必须同步写明要填充的具体标题、知识标签或解释文字。只输出严格 JSON 对象，不要输出 Markdown。`;
+cover 必须包含 title、subtitle、imageText、prompt；cards 根据内容输出 3–10 张，每张包含 title、imageText、prompt。每个 imageText 必须包含与本图主题直接相关的具体历史知识，至少给出一个可核查的比较范围、指标、证据、时间节点或争议信息，不能只有标题、栏目名、泛化标签或占位词。cover.prompt 和 cards[].prompt 必须是中文生图提示词，并明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅；同时说明主体、时代场景、构图、光线、色彩、材质、文字留白和小红书历史知识卡片风格，并明确图片文字要展示的具体比较范围、指标、证据、时间节点或争议信息。生图提示词不设字数或字符数上限，不得为了控制长度省略、缩写或截断内容，也不要把字数或字符数说明写进 prompt。每个 prompt 必须原样逐字包含同一对象的完整 imageText，并明确要求生图模型把它实际生成在画面中，文字必须清晰可读，不得省略、改写、替换或截断，禁止只生成历史场景或无字插画。凡是提到文字留白或预留区域，必须同步写明要填充的具体标题、知识标签或解释文字。只输出严格 JSON 对象，不要输出 Markdown。`;
 
   console.info("[history-agent] model-runtime:request", {
     purpose: "vision",
@@ -825,7 +820,7 @@ async function generateDynastyWithModelRuntime(dynasty: string, requestedAt: str
 
 每个模块的 cover 必须包含 title、subtitle、imageText、prompt。cover.prompt 是该模块的小红书首图封面生图提示词，需要明确写出“3:4竖版构图”，并强调小红书首图封面、强标题层级、历史知识感、准确时代氛围、中文文字留白和可读性。
 
-每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字；prompt 是中文生图提示词，保持中等长度，系统会自行校验长度，不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。所有 cover.prompt 和 cards[].prompt 都必须明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅。prompt 还需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。凡是 cover.prompt 或 cards[].prompt 提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。
+每个模块的 cards 根据内容判断需要多少张，下限 3 张，上限 10 张，每张包含 title、imageText、prompt。imageText 是图片内要放的中文文字，必须包含与本图主题直接相关的具体历史知识，至少给出一个可核查的信息点，例如人物行动、时间节点、路线、制度、关键对比或影响，不能只有标题、栏目名、泛化标签或“相关知识”等占位词；prompt 是中文生图提示词，必须完整写清，不设字数或字符数上限，禁止为了控制长度省略、缩写或截断内容，也不要把字数、字符数或类似“xx字”的说明写进 prompt 字段。所有 cover.prompt 和 cards[].prompt 都必须明确写出“3:4竖版构图”，禁止横版、横向画幅、宽幅或方形画幅。prompt 还需要说明两类信息：第一类是图片描述，具体描述主体、时代场景、构图、光线、色彩、材质、文字留白和小红书知识卡片风格；第二类是图片中应该以文字类型展示哪些具体知识，例如背景、人物、路线、制度、影响、时间线或关键对比。每个 prompt 必须原样逐字包含同一对象的完整 imageText，并明确要求生图模型把它实际生成在画面中，文字必须清晰可读，不得省略、改写、替换或截断，禁止只生成历史场景或无字插画。凡是 cover.prompt 或 cards[].prompt 提到文字留白或预留区域，不能只写“留出空白位置以用于某种内容”，必须同步明确空白部分需要填充的具体文字内容，例如具体标题、副标题、知识标签、时间节点或解释文字。
 
 四个模块的 topic 要像可直接发布的小红书选题标题，例如“东汉是怎么一步步走向灭亡的”“看懂东汉只需要认识这几位皇帝”“从朝堂到民间：读懂东汉群像”“东汉公务员一个月赚多少钱？”。`;
 
