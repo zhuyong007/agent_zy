@@ -142,7 +142,7 @@ describe("history view helpers", () => {
     ]);
   });
 
-  it("merges series category aliases into the dynasty and most archive tabs", () => {
+  it("merges series category aliases into the built-in archive tabs", () => {
     const postPayload = {
       topic: "历史上的第一座都城",
       summary: "一段摘要",
@@ -205,15 +205,44 @@ describe("history view helpers", () => {
           ...postPayload,
           category: "最系列"
         }
+      },
+      {
+        id: "war",
+        kind: "history-post",
+        title: "“战争”系列：长平之战",
+        body: "战争记录",
+        createdAt: "2026-08-14T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          ...postPayload,
+          topic: "长平之战",
+          category: "战争"
+        }
+      },
+      {
+        id: "war-series",
+        kind: "history-post",
+        title: "“战争”系列：坎尼会战",
+        body: "战争系列记录",
+        createdAt: "2026-08-14T10:00:00.000Z",
+        persistent: true,
+        read: false,
+        payload: {
+          ...postPayload,
+          topic: "坎尼会战",
+          category: "战争系列"
+        }
       }
     ]);
 
     const groups = groupHistoryNotifications(notifications);
 
-    expect(groups.map((group) => group.category)).toEqual(["朝代", "最"]);
+    expect(groups.map((group) => group.category)).toEqual(["朝代", "最", "战争"]);
     expect(groups.map((group) => group.notifications.map((notification) => notification.id))).toEqual([
       ["dynasty", "dynasty-series"],
-      ["most", "most-series"]
+      ["most", "most-series"],
+      ["war", "war-series"]
     ]);
   });
 });

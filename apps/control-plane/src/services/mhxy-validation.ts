@@ -26,8 +26,14 @@ export const mhxyTradePatchSchema = z.object(tradeShape).partial().strict();
 
 const snapshotBase = {
   itemName: z.string(),
+  itemLevel: z.number().int().positive().max(200).optional(),
   capturedAt: dateTime,
   serverName: z.string().optional(),
+  serverId: z.string().max(80).optional(),
+  regionName: z.string().max(120).optional(),
+  sourceName: z.string().max(160).optional(),
+  transferStatus: z.enum(["flat", "open", "firework", "unknown"]).optional(),
+  transferStatusDate: z.string().max(40).optional(),
   note: z.string().optional()
 };
 
@@ -43,6 +49,38 @@ export const mhxyPriceSnapshotInputSchema = z.discriminatedUnion("currency", [
       .positive("当时兑换比例必须大于 0")
   }).strict()
 ]);
+
+export const mhxyPriceCollectorImportSchema = z.object({
+  sourcePageUrl: z.string().url().max(2048),
+  capturedAt: dateTime,
+  records: z.array(z.object({
+    watchKey: z.string().min(1).max(500).optional(),
+    itemName: z.string().trim().min(1).max(160).optional(),
+    candidates: z.array(z.object({
+      rmbPrice: z.number().finite().positive(),
+      itemLevel: z.number().int().positive().max(200).optional(),
+      listingId: z.string().max(200).optional(),
+      serverId: z.string().max(80).optional(),
+      serverName: z.string().trim().min(1).max(120).optional(),
+      regionName: z.string().trim().min(1).max(120).optional()
+    }).strict()).min(1).max(5000)
+  }).strict().refine((record) => Boolean(record.watchKey || record.itemName), {
+    message: "采价记录必须包含关注标识或道具名"
+  })).min(1).max(300)
+}).strict();
+
+const priceCatalogItemShape = {
+  itemName: z.string().trim().min(1, "道具名不能为空").max(160),
+  matchNames: z.array(z.string().trim().min(1).max(160)).min(1, "至少填写一个匹配名称").max(50),
+  matchMode: z.enum(["exact", "contains"]),
+  carryLimit: z.number().int().positive("携带上限必须是正整数").max(10000),
+  transferLockDays: z.number().int().nonnegative().max(3650).nullable(),
+  note: z.string().trim().max(500).optional(),
+  cbgOverallKindIds: z.array(z.string().trim().regex(/^\d{1,12}$/, "全服检索编码必须是数字")).max(100).optional()
+};
+
+export const mhxyPriceCatalogItemInputSchema = z.object(priceCatalogItemShape).strict();
+export const mhxyPriceCatalogItemPatchSchema = z.object(priceCatalogItemShape).partial().strict();
 
 const priceSeriesIdentitySchema = z.object({
   itemName: z.string().trim().min(1, "道具名不能为空"),

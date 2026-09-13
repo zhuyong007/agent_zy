@@ -6,6 +6,38 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", () => ({
+  fetchMhxyPriceCatalogItems: vi.fn(async () => ([
+    {
+      id: "price-item-1",
+      itemName: "金刚石",
+      matchNames: ["金刚石"],
+      matchMode: "exact",
+      carryLimit: 20,
+      transferLockDays: 30,
+      cbgOverallKindIds: ["4020"],
+      createdAt: "2026-09-06T00:00:00.000Z",
+      updatedAt: "2026-09-06T00:00:00.000Z"
+    },
+    {
+      id: "price-item-2",
+      itemName: "炼兽珍经",
+      matchNames: ["炼兽珍经"],
+      matchMode: "exact",
+      carryLimit: 10,
+      transferLockDays: 30,
+      createdAt: "2026-09-06T00:00:00.000Z",
+      updatedAt: "2026-09-06T00:00:00.000Z"
+    }
+  ])),
+  fetchMhxyPriceMarket: vi.fn(async () => ({
+    generatedAt: "2026-09-02T00:00:00.000Z",
+    catalogCount: 88,
+    allServerSearchableCount: 27,
+    unsupportedItemNames: [],
+    itemCount: 0,
+    serverCount: 0,
+    quotes: []
+  })),
   fetchMhxyDashboard: vi.fn(async () => ({
     trades: [],
     tradeResults: [],
@@ -191,6 +223,9 @@ vi.mock("../api", () => ({
     }
   })),
   createMhxyAssetFlip: vi.fn(async (input) => ({ id: "asset-new", ...input })),
+  createMhxyPriceCatalogItem: vi.fn(async (input) => ({ id: "price-item-new", ...input })),
+  updateMhxyPriceCatalogItem: vi.fn(async (id, input) => ({ id, ...input })),
+  deleteMhxyPriceCatalogItem: vi.fn(async (id) => ({ id })),
   updateMhxyAssetFlip: vi.fn(),
   deleteMhxyAssetFlip: vi.fn(async (id) => ({ id })),
   createMhxyTrade: vi.fn(async (input) => ({ id: "trade-1", ...input })),
@@ -223,10 +258,13 @@ vi.mock("./data-sync-control", async () => {
 import {
   createMhxyAssetFlip,
   createMhxyInventoryTransfer,
+  createMhxyPriceCatalogItem,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
+  deleteMhxyPriceCatalogItem,
   fetchMhxyDashboard,
+  updateMhxyPriceCatalogItem,
   updateMhxyInventoryTransfer,
   updateMhxyPriceSeries,
   updateMhxyTrade,
@@ -340,6 +378,60 @@ describe("MhxyPage", () => {
     await switchTab(container, "资产交易记录");
     expect(container.querySelector('[data-form="asset-flip"]')).not.toBeNull();
     expect(container.querySelector('[data-form="price-snapshot"]')).toBeNull();
+  });
+
+  it("manages the collector allowlist through the price item table", async () => {
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+    await act(async () => { await Promise.resolve(); });
+
+    const catalog = container.querySelector("[data-price-catalog]") as HTMLElement;
+    expect(catalog).not.toBeNull();
+    expect(catalog.textContent).toContain("插件只采集这里的道具");
+    expect(catalog.querySelectorAll("[data-price-catalog-item]")).toHaveLength(2);
+    expect(catalog.textContent).toContain("全服检索");
+    expect(catalog.textContent).toContain("页面识别");
+
+    const addButton = Array.from(catalog.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("新增道具"));
+    await act(async () => { addButton?.click(); });
+    const createForm = container.querySelector('[data-form="price-catalog-item"]') as HTMLFormElement;
+    expect(createForm).not.toBeNull();
+    await act(async () => {
+      change(createForm.querySelector('[name="itemName"]') as HTMLInputElement, "测试灵珠");
+      const matches = createForm.querySelector('[name="matchNames"]') as HTMLTextAreaElement;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(matches, "测试灵珠，测试珠");
+      matches.dispatchEvent(new Event("change", { bubbles: true }));
+      change(createForm.querySelector('[name="carryLimit"]') as HTMLInputElement, "12");
+      change(createForm.querySelector('[name="transferLockDays"]') as HTMLInputElement, "30");
+      change(createForm.querySelector('[name="cbgOverallKindIds"]') as HTMLInputElement, "998877");
+      createForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(createMhxyPriceCatalogItem).toHaveBeenCalledWith(expect.objectContaining({
+      itemName: "测试灵珠",
+      matchNames: ["测试灵珠", "测试珠"],
+      carryLimit: 12,
+      transferLockDays: 30,
+      cbgOverallKindIds: ["998877"]
+    }));
+
+    const firstRow = catalog.querySelector('[data-price-catalog-item="price-item-1"]') as HTMLElement;
+    const editButton = Array.from(firstRow.querySelectorAll("button")).find((button) => button.textContent === "编辑");
+    await act(async () => { editButton?.click(); });
+    const editForm = container.querySelector('[data-form="price-catalog-item"]') as HTMLFormElement;
+    await act(async () => {
+      change(editForm.querySelector('[name="carryLimit"]') as HTMLInputElement, "25");
+      editForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(updateMhxyPriceCatalogItem).toHaveBeenCalledWith("price-item-1", expect.objectContaining({ carryLimit: 25 }));
+
+    const deleteButton = Array.from(firstRow.querySelectorAll("button")).find((button) => button.textContent === "删除");
+    await act(async () => { deleteButton?.click(); });
+    const confirmButton = Array.from(firstRow.querySelectorAll("button")).find((button) => button.textContent === "确认");
+    await act(async () => { confirmButton?.click(); await Promise.resolve(); });
+    expect(deleteMhxyPriceCatalogItem).toHaveBeenCalledWith("price-item-1");
   });
 
   it("keeps cross-server inventory and activity primary while forms stay collapsed", async () => {
@@ -712,6 +804,25 @@ describe("MhxyPage", () => {
     expect(container.textContent).toContain("高级连击");
     expect(container.textContent).toContain("藏宝阁（兽决）");
     expect(container.textContent).toContain("2026-05-30");
+  });
+
+  it("shows the latest automatic lowest-price collection status", async () => {
+    const current = await fetchMhxyDashboard();
+    vi.mocked(fetchMhxyDashboard).mockResolvedValueOnce({
+      ...current,
+      priceSnapshots: current.priceSnapshots.map((snapshot, index) => index === 0
+        ? {
+            ...snapshot,
+            capturedAt: "2026-08-31T10:30:00.000Z",
+            note: "浏览器自动采集最低价｜样本 3"
+          }
+        : snapshot)
+    });
+    const container = await renderPage();
+    await switchTab(container, "物价记录");
+
+    expect(container.querySelector("[data-price-collector-status]")?.textContent)
+      .toContain("最近写入 2026-08-31 10:30");
   });
 
   it("focuses the price workspace on one item's trend and history", async () => {

@@ -244,6 +244,30 @@ describe("control-plane store", () => {
     });
   });
 
+  it("adds the built-in war series when loading existing history operations", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
+    tempDirs.push(dataDir);
+    const initialStore = createControlPlaneStore(dataDir);
+    const legacyState = initialStore.getState();
+
+    legacyState.historyOperations!.series = legacyState.historyOperations!.series.filter(
+      (series) => series.id !== "war-series"
+    );
+    writeFileSync(join(dataDir, "state.json"), JSON.stringify(legacyState, null, 2), "utf8");
+
+    const reloadedStore = createControlPlaneStore(dataDir);
+
+    expect(reloadedStore.getState().historyOperations?.series).toContainEqual(
+      expect.objectContaining({
+        id: "war-series",
+        name: "战争系列",
+        generator: "war",
+        status: "pilot",
+        dailyQuota: 0
+      })
+    );
+  });
+
   it("keeps persistent notifications until they are explicitly cancelled", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-store-test-"));
     tempDirs.push(dataDir);

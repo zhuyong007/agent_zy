@@ -767,13 +767,14 @@ describe("control-plane app", () => {
 
   it("generates a most-series post from the manual generation endpoint", async () => {
     const topic = "谁是中国历史上最富有的商人？";
+    const nextTopic = "中国历史上最昂贵的战争？";
     process.env.HISTORY_POST_FIXTURE_JSON = JSON.stringify({
       topic,
       summary: "限定比较范围与财富口径，并说明可考证据和争议。",
       cover: {
         title: topic,
         subtitle: "比较口径决定答案",
-        imageText: `${topic}\n范围 / 指标 / 证据`,
+        imageText: topic,
         prompt: longHistoryImagePrompt(`${topic} 小红书首图封面`)
       },
       cardCount: 3,
@@ -782,7 +783,10 @@ describe("control-plane app", () => {
         imageText: `第${index}部分`,
         prompt: longHistoryImagePrompt(`${topic} 图${index}`)
       })),
-      xiaohongshuCaption: `${topic} 小红书正文`
+      xiaohongshuCaption: `${topic} 小红书正文。每期用可核查史料讲清一个历史之最。下期看：${nextTopic}`,
+      titleOptions: [`【历史之最】${topic}`],
+      coverTextOptions: [topic],
+      followUpIdeas: [nextTopic]
     });
 
     const isolatedDataDir = mkdtempSync(join(tmpdir(), "agent-zy-control-plane-most-test-"));

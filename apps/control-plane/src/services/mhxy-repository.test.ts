@@ -56,4 +56,24 @@ describe("mhxy repository transactions", () => {
     expect(repository.readTrades()).toEqual([originalTrade]);
     expect(repository.readAssetFlips()).toEqual([]);
   });
+
+  it("seeds the price catalog only when its file is first created", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-repository-"));
+    tempDirs.push(dataDir);
+    const seededItem = {
+      id: "price-item-1",
+      itemName: "测试道具",
+      matchNames: ["测试道具"],
+      matchMode: "exact" as const,
+      carryLimit: 10,
+      transferLockDays: 30,
+      createdAt: "2026-09-06T00:00:00.000Z",
+      updatedAt: "2026-09-06T00:00:00.000Z"
+    };
+    const repository = createMhxyRepository(dataDir, [seededItem]);
+    expect(repository.readPriceCatalogItems()).toEqual([seededItem]);
+
+    repository.writePriceCatalogItems([]);
+    expect(createMhxyRepository(dataDir, [seededItem]).readPriceCatalogItems()).toEqual([]);
+  });
 });

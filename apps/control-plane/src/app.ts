@@ -35,6 +35,9 @@ import {
   mhxyInventoryTargetSchema,
   mhxyInventoryTransferInputSchema,
   mhxyInventoryTransferPatchSchema,
+  mhxyPriceCollectorImportSchema,
+  mhxyPriceCatalogItemInputSchema,
+  mhxyPriceCatalogItemPatchSchema,
   mhxyPriceSeriesUpdateSchema,
   mhxyPriceSnapshotInputSchema,
   mhxyTradeInputSchema,
@@ -288,6 +291,20 @@ export function createControlPlaneApp(options?: {
     reply.code(403).send({
       message: "screen monitor is only available from a local browser"
     });
+    return true;
+  }
+
+  function rejectUntrustedPriceCollectorRequest(request: { headers: Record<string, unknown> }, reply: any) {
+    const origin = request.headers.origin;
+    if (isLocalBrowserRequest(origin)) return false;
+    if (typeof origin === "string") {
+      try {
+        if (new URL(origin).protocol === "chrome-extension:") return false;
+      } catch {
+        // Fall through to the rejection below.
+      }
+    }
+    reply.code(403).send({ message: "自动采价只接受本机浏览器扩展写入" });
     return true;
   }
 
@@ -1459,6 +1476,47 @@ export function createControlPlaneApp(options?: {
         parseMhxyInput(mhxyPriceSnapshotInputSchema, request.body ?? {})
       )
     )
+  );
+
+  app.get("/api/mhxy/price-collector/watchlist", async () =>
+    mhxyService.getPriceCollectorWatchlist()
+  );
+
+  app.get("/api/mhxy/price-items", async () => mhxyService.getPriceCatalogItems());
+
+  app.post("/api/mhxy/price-items", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.createPriceCatalogItem(
+        parseMhxyInput(mhxyPriceCatalogItemInputSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.patch("/api/mhxy/price-items/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.updatePriceCatalogItem(
+        (request.params as { id: string }).id,
+        parseMhxyInput(mhxyPriceCatalogItemPatchSchema, request.body ?? {})
+      )
+    )
+  );
+
+  app.delete("/api/mhxy/price-items/:id", async (request, reply) =>
+    mhxyAction(reply, () =>
+      mhxyService.deletePriceCatalogItem((request.params as { id: string }).id)
+    )
+  );
+
+  app.get("/api/mhxy/price-market", async () => mhxyService.getPriceMarket());
+
+  app.post("/api/mhxy/price-collector/import", async (request, reply) =>
+    rejectUntrustedPriceCollectorRequest(request, reply)
+      ? reply
+      : mhxyAction(reply, () =>
+          mhxyService.importCollectedLowestPrices(
+            parseMhxyInput(mhxyPriceCollectorImportSchema, request.body ?? {})
+          )
+        )
   );
 
   app.delete("/api/mhxy/price-snapshots/:id", async (request, reply) =>

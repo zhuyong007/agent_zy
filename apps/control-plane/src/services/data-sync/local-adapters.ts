@@ -8,6 +8,7 @@ import type {
   MhxyAssetFlipRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
+  MhxyPriceCatalogItem,
   MhxyPriceSnapshot,
   MhxyTradeRecord,
   ModelProfile,
@@ -34,6 +35,18 @@ interface HistoryTopicArchiveEntry {
   firstGeneratedAt: string;
   lastGeneratedAt: string;
   generatedCount: number;
+}
+
+interface HistoryPlannedTopic {
+  topic: string;
+  promisedFromTopic: string;
+  plannedAt: string;
+  scope?: "china" | "world";
+}
+
+interface HistoryTopicArchiveFile {
+  entries: HistoryTopicArchiveEntry[];
+  plannedNextTopics?: Record<string, HistoryPlannedTopic>;
 }
 
 function atomicWriteJson(path: string, value: unknown) {
@@ -107,11 +120,26 @@ function createHistoryAdapter(options: {
     else atomicWriteJson(archivePath, { entries: [] });
   }
 
-  function readArchive(): HistoryTopicArchiveEntry[] {
+  function readArchive(): HistoryTopicArchiveFile {
     ensureArchive();
-    const parsed = JSON.parse(readFileSync(archivePath, "utf8")) as { entries?: unknown };
+    const parsed = JSON.parse(readFileSync(archivePath, "utf8")) as {
+      entries?: unknown;
+      plannedNextTopics?: unknown;
+    };
     if (!Array.isArray(parsed.entries)) throw new Error(`历史选题归档格式无效：${archivePath}`);
-    return parsed.entries.map((entry) => asRecord(entry, "历史选题") as unknown as HistoryTopicArchiveEntry);
+    const plannedNextTopics = parsed.plannedNextTopics === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(asRecord(parsed.plannedNextTopics, "历史下期选题")).map(([key, value]) => [
+            key,
+            asRecord(value, "历史下期选题") as unknown as HistoryPlannedTopic
+          ])
+        );
+
+    return {
+      entries: parsed.entries.map((entry) => asRecord(entry, "历史选题") as unknown as HistoryTopicArchiveEntry),
+      ...(plannedNextTopics && Object.keys(plannedNextTopics).length > 0 ? { plannedNextTopics } : {})
+    };
   }
 
   return {
@@ -133,15 +161,20 @@ function createHistoryAdapter(options: {
           sourceUrl: xhs.sourceUrl
         });
       }
-      for (const entry of readArchive()) {
+      const archive = readArchive();
+      for (const entry of archive.entries) {
         records.set(`topic:${entry.topic}`, asRecord(entry, "历史选题"));
+      }
+      for (const [key, plan] of Object.entries(archive.plannedNextTopics ?? {})) {
+        records.set(`topic-plan:${key}`, { ...asRecord(plan, "历史下期选题"), id: key });
       }
       return records;
     },
     write(records) {
-      assertKnownPrefixes(records, ["notification:", "xhs-post:", "xhs-meta:", "topic:"], "历史知识");
+      assertKnownPrefixes(records, ["notification:", "xhs-post:", "xhs-meta:", "topic:", "topic-plan:"], "历史知识");
       assertRecordIds(records, "notification:", "历史内容");
       assertRecordIds(records, "xhs-post:", "小红书指标");
+      assertRecordIds(records, "topic-plan:", "历史下期选题");
       for (const [key, value] of records) {
         if (key.startsWith("topic:") && value.topic !== key.slice("topic:".length)) {
           throw new Error(`历史选题与同步键不匹配：${key}`);
@@ -180,7 +213,14 @@ function createHistoryAdapter(options: {
         lastError: currentXhs?.lastError ?? null
       };
       const entries = recordsWithPrefix(records, "topic:") as unknown as HistoryTopicArchiveEntry[];
-      atomicWriteJson(archivePath, { entries: entries.sort((left, right) => left.topic.localeCompare(right.topic)) });
+      const plans = recordsWithPrefix(records, "topic-plan:") as unknown as Array<HistoryPlannedTopic & { id: string }>;
+      const plannedNextTopics = Object.fromEntries(
+        plans.map(({ id, ...plan }) => [id, plan])
+      );
+      atomicWriteJson(archivePath, {
+        entries: entries.sort((left, right) => left.topic.localeCompare(right.topic)),
+        ...(plans.length > 0 ? { plannedNextTopics } : {})
+      });
       options.store.replaceState(state);
     }
   };
@@ -215,13 +255,14 @@ function createBrowserAdapter(store: ControlPlaneStore): LocalDataSyncAdapter {
 }
 
 function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
-  const repository = createMhxyRepository(dataDir);
   const service = createMhxyService(dataDir);
+  const repository = createMhxyRepository(dataDir);
   return {
     read() {
       const records: SyncRecordMap = new Map();
       for (const item of repository.readTrades()) setUniqueRecord(records, `trade:${item.id}`, item, "梦幻交易");
       for (const item of repository.readPriceSnapshots()) setUniqueRecord(records, `price-snapshot:${item.id}`, item, "价格快照");
+      for (const item of repository.readPriceCatalogItems()) setUniqueRecord(records, `price-item:${item.id}`, item, "道具表");
       for (const item of repository.readInventoryTransfers()) setUniqueRecord(records, `inventory-transfer:${item.id}`, item, "库存转移");
       for (const item of repository.readInventoryTargets()) {
         const identity = canonicalJson([item.itemName, item.serverName, item.characterName]);
@@ -234,6 +275,7 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
       const prefixes = [
         "trade:",
         "price-snapshot:",
+        "price-item:",
         "inventory-transfer:",
         "inventory-target:",
         "asset-flip:",
@@ -260,6 +302,7 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
       const next = {
         trades: recordsWithPrefix(records, "trade:") as unknown as MhxyTradeRecord[],
         snapshots: recordsWithPrefix(records, "price-snapshot:") as unknown as MhxyPriceSnapshot[],
+        priceCatalogItems: recordsWithPrefix(records, "price-item:") as unknown as MhxyPriceCatalogItem[],
         transfers: recordsWithPrefix(records, "inventory-transfer:") as unknown as MhxyInventoryTransferRecord[],
         targets: recordsWithPrefix(records, "inventory-target:") as unknown as MhxyInventoryTarget[],
         assetFlips: recordsWithPrefix(records, "asset-flip:") as unknown as MhxyAssetFlipRecord[]
@@ -267,6 +310,7 @@ function createMhxyAdapter(dataDir: string): LocalDataSyncAdapter {
       service.replaceAllData({
         trades: next.trades,
         priceSnapshots: next.snapshots,
+        priceCatalogItems: next.priceCatalogItems,
         inventoryTransfers: next.transfers,
         inventoryTargets: next.targets,
         assetFlips: next.assetFlips

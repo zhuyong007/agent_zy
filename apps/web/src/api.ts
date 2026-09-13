@@ -55,6 +55,10 @@ import type {
   MhxyInventoryTransferInput,
   MhxyInventoryTransferPatch,
   MhxyInventoryTransferRecord,
+  MhxyPriceCatalogItem,
+  MhxyPriceCatalogItemInput,
+  MhxyPriceCatalogItemPatch,
+  MhxyPriceMarket,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
   MhxyPriceSeriesUpdateInput,
@@ -937,7 +941,7 @@ export async function importSummaries(input: SummaryExportPayload): Promise<{
 
 export type HistoryGenerateInput = {
   reason?: string;
-  mode?: "topic" | "dynasty" | "most";
+  mode?: "topic" | "dynasty" | "most" | "war";
   topic?: string;
   dynasty?: string;
   editorialTopicId?: string;
@@ -952,7 +956,7 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
         }
       : {
           reason: input.reason ?? "manual",
-          mode: input.mode === "dynasty" || input.mode === "most" ? input.mode : undefined,
+          mode: input.mode === "dynasty" || input.mode === "most" || input.mode === "war" ? input.mode : undefined,
           topic: input.topic?.trim() || undefined,
           dynasty: input.dynasty?.trim() || undefined,
           editorialTopicId: input.editorialTopicId?.trim() || undefined,
@@ -983,6 +987,8 @@ export async function generateHistory(input: HistoryGenerateInput | string = "ma
     console.warn("[history-generate] dedicated endpoint missing; falling back to chat route");
     const chatPrompt = request.mode === "most"
       ? "请自动选择一个有明确比较依据的历史之最，生成小红书历史知识推文策划"
+      : request.mode === "war"
+        ? "请自动选择一场资料较充分的具体历史战争或战役，生成小红书历史知识推文策划"
       : request.topic
         ? `请围绕「${request.topic}」生成历史知识点小红书推文策划`
         : "请生成今天的历史知识点小红书推文策划";
@@ -1366,6 +1372,15 @@ async function mhxyJsonRequest<T>(path: string, method: string, body?: unknown):
 }
 
 export const fetchMhxyDashboard = () => mhxyJsonRequest<MhxyDashboard>("/api/mhxy", "GET");
+export const fetchMhxyPriceMarket = () => mhxyJsonRequest<MhxyPriceMarket>("/api/mhxy/price-market", "GET");
+export const fetchMhxyPriceCatalogItems = () =>
+  mhxyJsonRequest<MhxyPriceCatalogItem[]>("/api/mhxy/price-items", "GET");
+export const createMhxyPriceCatalogItem = (input: MhxyPriceCatalogItemInput) =>
+  mhxyJsonRequest<MhxyPriceCatalogItem>("/api/mhxy/price-items", "POST", input);
+export const updateMhxyPriceCatalogItem = (id: string, input: MhxyPriceCatalogItemPatch) =>
+  mhxyJsonRequest<MhxyPriceCatalogItem>(`/api/mhxy/price-items/${id}`, "PATCH", input);
+export const deleteMhxyPriceCatalogItem = (id: string) =>
+  mhxyJsonRequest<{ id: string }>(`/api/mhxy/price-items/${id}`, "DELETE");
 export const createMhxyAssetFlip = (input: MhxyAssetFlipInput) =>
   mhxyJsonRequest<MhxyAssetFlipRecord>("/api/mhxy/asset-flips", "POST", input);
 export const updateMhxyAssetFlip = (id: string, input: MhxyAssetFlipPatch) =>

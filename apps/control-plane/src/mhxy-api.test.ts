@@ -280,6 +280,168 @@ describe("mhxy API", () => {
     }
   });
 
+  it("exposes the browser price watchlist and imports the lowest candidate", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-snapshots",
+        payload: {
+          itemName: "金刚石",
+          serverName: "藏宝阁（全部道具）",
+          currency: "rmb",
+          rmbUnitPrice: 340,
+          capturedAt: "2026-08-30T10:00:00.000Z"
+        }
+      });
+      const watchlist = await app.inject({
+        method: "GET",
+        url: "/api/mhxy/price-collector/watchlist"
+      });
+      expect(watchlist.statusCode).toBe(200);
+      expect(watchlist.json()).toMatchObject({ priceRule: "lowest" });
+      expect(watchlist.json().catalogCount).toBeGreaterThan(50);
+      const watchedItem = watchlist.json().items.find((item: { itemName: string; serverName?: string }) =>
+        item.itemName === "金刚石" && item.serverName === "藏宝阁（全部道具）"
+      );
+      expect(watchedItem).toBeTruthy();
+
+      const imported = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-collector/import",
+        payload: {
+          sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=query",
+          capturedAt: "2026-08-31T02:00:00.000Z",
+          records: [{
+            watchKey: watchedItem.watchKey,
+            candidates: [
+              { rmbPrice: 330, listingId: "listing-2", serverId: "101", regionName: "测试大区", serverName: "测试一服" },
+              { rmbPrice: 299, listingId: "listing-1", serverId: "101", regionName: "测试大区", serverName: "测试一服" }
+            ]
+          }]
+        }
+      });
+      expect(imported.statusCode).toBe(200);
+      expect(imported.json()).toMatchObject({
+        priceRule: "lowest",
+        importedCount: 1,
+        imported: [expect.objectContaining({ rmbUnitPrice: 299, serverName: "测试一服" })]
+      });
+      const market = await app.inject({ method: "GET", url: "/api/mhxy/price-market" });
+      expect(market.statusCode).toBe(200);
+      expect(market.json()).toMatchObject({
+        itemCount: 1,
+        serverCount: 1,
+        quotes: [expect.objectContaining({ itemName: "金刚石", serverName: "测试一服", rmbUnitPrice: 299 })]
+      });
+
+      const malformed = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-collector/import",
+        payload: {
+          sourcePageUrl: "https://xyq.cbg.163.com/",
+          capturedAt: "2026-08-31T02:00:00.000Z",
+          records: [{ watchKey: watchedItem.watchKey, candidates: [] }]
+        }
+      });
+      expect(malformed.statusCode).toBe(400);
+
+      const untrusted = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-collector/import",
+        headers: { origin: "https://example.com" },
+        payload: {
+          sourcePageUrl: "https://xyq.cbg.163.com/",
+          capturedAt: "2026-08-31T02:00:00.000Z",
+          records: [{
+            watchKey: watchedItem.watchKey,
+            candidates: [{ rmbPrice: 299 }]
+          }]
+        }
+      });
+      expect(untrusted.statusCode).toBe(403);
+      expect(untrusted.json().message).toContain("本机浏览器扩展");
+
+      const discovered = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-collector/import",
+        payload: {
+          sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=query",
+          capturedAt: "2026-09-01T02:00:00.000Z",
+          records: [{
+            itemName: "炼兽珍经",
+            candidates: [{ rmbPrice: 42 }, { rmbPrice: 38 }]
+          }]
+        }
+      });
+      expect(discovered.statusCode).toBe(200);
+      expect(discovered.json()).toMatchObject({
+        importedCount: 1,
+        createdSeriesCount: 1,
+        imported: [expect.objectContaining({ itemName: "炼兽珍经", rmbUnitPrice: 38 })]
+      });
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("supports price catalog CRUD and immediately updates the collector watchlist", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-price-catalog-api-"));
+    const app = createControlPlaneApp({ dataDir, startSchedulers: false });
+    await app.ready();
+
+    try {
+      const initial = await app.inject({ method: "GET", url: "/api/mhxy/price-items" });
+      expect(initial.statusCode).toBe(200);
+      expect(initial.json().length).toBeGreaterThan(50);
+
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/mhxy/price-items",
+        payload: {
+          itemName: "测试灵珠",
+          matchNames: ["测试灵珠", "测试珠"],
+          matchMode: "exact",
+          carryLimit: 12,
+          transferLockDays: null,
+          cbgOverallKindIds: ["998877"]
+        }
+      });
+      expect(created.statusCode).toBe(200);
+      expect(created.json()).toMatchObject({ itemName: "测试灵珠", carryLimit: 12 });
+
+      const updated = await app.inject({
+        method: "PATCH",
+        url: `/api/mhxy/price-items/${created.json().id}`,
+        payload: { carryLimit: 18, matchMode: "contains" }
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json()).toMatchObject({ carryLimit: 18, matchMode: "contains" });
+
+      const watchlist = await app.inject({ method: "GET", url: "/api/mhxy/price-collector/watchlist" });
+      expect(watchlist.json().items).toContainEqual(expect.objectContaining({
+        itemName: "测试灵珠",
+        carryLimit: 18,
+        allServerSearch: { searchType: "overall_search_equip", kindIds: ["998877"] }
+      }));
+
+      const deleted = await app.inject({
+        method: "DELETE",
+        url: `/api/mhxy/price-items/${created.json().id}`
+      });
+      expect(deleted.statusCode).toBe(200);
+      const afterDelete = await app.inject({ method: "GET", url: "/api/mhxy/price-collector/watchlist" });
+      expect(afterDelete.json().items.some((item: { itemName: string }) => item.itemName === "测试灵珠")).toBe(false);
+    } finally {
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("creates and edits RMB-only summon equipment asset flips", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agent-zy-mhxy-api-"));
     const app = createControlPlaneApp({ dataDir, startSchedulers: false });

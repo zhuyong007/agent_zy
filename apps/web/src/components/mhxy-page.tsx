@@ -10,6 +10,10 @@ import type {
   MhxyInventoryPosition,
   MhxyInventoryTransferInput,
   MhxyInventoryTransferRecord,
+  MhxyPriceCatalogItem,
+  MhxyPriceCatalogItemInput,
+  MhxyPriceCatalogItemPatch,
+  MhxyPriceMarket,
   MhxyPriceSnapshot,
   MhxyPriceSnapshotInput,
   MhxyPriceSeriesUpdateInput,
@@ -22,17 +26,22 @@ import type {
 import {
   createMhxyAssetFlip,
   createMhxyInventoryTransfer,
+  createMhxyPriceCatalogItem,
   createMhxyPriceSnapshot,
   createMhxyTrade,
   deleteMhxyAssetFlip,
   deleteMhxyInventoryTransfer,
+  deleteMhxyPriceCatalogItem,
   deleteMhxyPriceSnapshot,
   deleteMhxyTrade,
   fetchMhxyDashboard,
+  fetchMhxyPriceCatalogItems,
+  fetchMhxyPriceMarket,
   setMhxyInventoryTarget,
   updateMhxyPriceSeries,
   updateMhxyAssetFlip,
   updateMhxyInventoryTransfer,
+  updateMhxyPriceCatalogItem,
   updateMhxyTrade
 } from "../api";
 import {
@@ -324,8 +333,31 @@ export function MhxyPage() {
   const [snapshotCurrency, setSnapshotCurrency] = useState<MhxyTradeCurrency>("rmb");
   const [editingTransfer, setEditingTransfer] = useState<MhxyRoleInventoryTransferRecord | null>(null);
   const [transferFormOpen, setTransferFormOpen] = useState(false);
-  const query = useQuery({ queryKey: ["mhxy"], queryFn: fetchMhxyDashboard });
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["mhxy"] });
+  const query = useQuery({
+    queryKey: ["mhxy"],
+    queryFn: fetchMhxyDashboard,
+    refetchInterval: workspace === "prices" ? 5_000 : false,
+    refetchIntervalInBackground: false
+  });
+  const priceMarketQuery = useQuery({
+    queryKey: ["mhxy-price-market"],
+    queryFn: fetchMhxyPriceMarket,
+    enabled: workspace === "prices",
+    refetchInterval: workspace === "prices" ? 5_000 : false,
+    refetchIntervalInBackground: false
+  });
+  const priceCatalogQuery = useQuery({
+    queryKey: ["mhxy-price-items"],
+    queryFn: fetchMhxyPriceCatalogItems,
+    enabled: workspace === "prices"
+  });
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["mhxy"] }),
+      queryClient.invalidateQueries({ queryKey: ["mhxy-price-market"] }),
+      queryClient.invalidateQueries({ queryKey: ["mhxy-price-items"] })
+    ]);
+  };
   const tradeMutation = useMutation({
     mutationFn: () => editingTradeId ? updateMhxyTrade(editingTradeId, trade) : createMhxyTrade(trade),
     onSuccess: () => {
@@ -385,6 +417,19 @@ export function MhxyPage() {
       void refresh();
     }
   });
+  const createPriceCatalogMutation = useMutation({
+    mutationFn: (input: MhxyPriceCatalogItemInput) => createMhxyPriceCatalogItem(input),
+    onSuccess: () => void refresh()
+  });
+  const updatePriceCatalogMutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: MhxyPriceCatalogItemPatch }) =>
+      updateMhxyPriceCatalogItem(id, input),
+    onSuccess: () => void refresh()
+  });
+  const deletePriceCatalogMutation = useMutation({
+    mutationFn: (id: string) => deleteMhxyPriceCatalogItem(id),
+    onSuccess: () => void refresh()
+  });
   const transferMutation = useMutation({
     mutationFn: (input: MhxyInventoryTransferInput) =>
       editingTransfer
@@ -438,10 +483,15 @@ export function MhxyPage() {
     assetFlipMutation.error,
     snapshotMutation.error,
     priceSeriesMutation.error,
+    createPriceCatalogMutation.error,
+    updatePriceCatalogMutation.error,
+    deletePriceCatalogMutation.error,
     transferMutation.error,
     targetMutation.error,
     deleteMutation.error,
-    query.error
+    query.error,
+    priceMarketQuery.error,
+    priceCatalogQuery.error
   ]
     .find((item) => item instanceof Error) as Error | undefined;
 
@@ -719,17 +769,28 @@ export function MhxyPage() {
         ) : null}
 
         {workspace === "prices" ? (
-          <PriceTrendWorkspace
-            snapshots={dashboard?.priceSnapshots ?? []}
-            currency={snapshotCurrency}
-            setCurrency={setSnapshotCurrency}
-            submit={(input) => snapshotMutation.mutateAsync(input)}
-            pending={snapshotMutation.isPending}
-            updateSeries={(input) => priceSeriesMutation.mutateAsync(input)}
-            updatePending={priceSeriesMutation.isPending}
-            deletePending={deleteMutation.isPending}
-            onDelete={(id) => deleteMutation.mutate({ kind: "snapshot", id })}
-          />
+          <section className="mhxy-prices-workspace" data-price-workspace>
+            <PriceCatalogPanel
+              items={priceCatalogQuery.data ?? []}
+              loading={priceCatalogQuery.isPending}
+              createItem={(input) => createPriceCatalogMutation.mutateAsync(input)}
+              updateItem={(id, input) => updatePriceCatalogMutation.mutateAsync({ id, input })}
+              deleteItem={(id) => deletePriceCatalogMutation.mutateAsync(id)}
+              pending={createPriceCatalogMutation.isPending || updatePriceCatalogMutation.isPending || deletePriceCatalogMutation.isPending}
+            />
+            <PriceTrendWorkspace
+              snapshots={dashboard?.priceSnapshots ?? []}
+              market={priceMarketQuery.data}
+              currency={snapshotCurrency}
+              setCurrency={setSnapshotCurrency}
+              submit={(input) => snapshotMutation.mutateAsync(input)}
+              pending={snapshotMutation.isPending}
+              updateSeries={(input) => priceSeriesMutation.mutateAsync(input)}
+              updatePending={priceSeriesMutation.isPending}
+              deletePending={deleteMutation.isPending}
+              onDelete={(id) => deleteMutation.mutate({ kind: "snapshot", id })}
+            />
+          </section>
         ) : null}
 
         {workspace === "roleAssets" ? (
@@ -864,10 +925,150 @@ export function MhxyPage() {
   );
 }
 
+function splitCatalogValues(value: FormDataEntryValue | null) {
+  return [...new Set(String(value ?? "")
+    .split(/[,，\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean))];
+}
+
+function PriceCatalogPanel({
+  items,
+  loading,
+  createItem,
+  updateItem,
+  deleteItem,
+  pending
+}: {
+  items: MhxyPriceCatalogItem[];
+  loading: boolean;
+  createItem: (input: MhxyPriceCatalogItemInput) => Promise<unknown>;
+  updateItem: (id: string, input: MhxyPriceCatalogItemPatch) => Promise<unknown>;
+  deleteItem: (id: string) => Promise<unknown>;
+  pending: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const [editor, setEditor] = useState<MhxyPriceCatalogItem | null | undefined>(undefined);
+  const normalizedSearch = search.trim().toLocaleLowerCase("zh-CN");
+  const visibleItems = items.filter((item) => !normalizedSearch || [
+    item.itemName,
+    ...item.matchNames,
+    ...(item.cbgOverallKindIds ?? [])
+  ].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalizedSearch)));
+  const searchableCount = items.filter((item) => item.cbgOverallKindIds?.length).length;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const lockValue = String(data.get("transferLockDays") ?? "").trim();
+    const note = String(data.get("note") ?? "").trim();
+    const input: MhxyPriceCatalogItemInput = {
+      itemName: String(data.get("itemName") ?? "").trim(),
+      matchNames: splitCatalogValues(data.get("matchNames")),
+      matchMode: data.get("matchMode") === "contains" ? "contains" : "exact",
+      carryLimit: Number(data.get("carryLimit")),
+      transferLockDays: lockValue === "" ? null : Number(lockValue),
+      ...(note ? { note } : {}),
+      ...(splitCatalogValues(data.get("cbgOverallKindIds")).length
+        ? { cbgOverallKindIds: splitCatalogValues(data.get("cbgOverallKindIds")) }
+        : {})
+    };
+    try {
+      if (editor) await updateItem(editor.id, input);
+      else await createItem(input);
+      setEditor(undefined);
+    } catch {
+      // Mutation errors are shown by the page; keep the editor and values intact.
+    }
+  }
+
+  return (
+    <section className="mhxy-price-catalog" data-price-catalog>
+      <header className="mhxy-price-catalog__header">
+        <div>
+          <p className="mhxy-market__eyebrow">ITEM REGISTER · 采价名册</p>
+          <h2>道具表</h2>
+          <p>插件只采集这里的道具。删除道具不会删除已有价格记录。</p>
+        </div>
+        <div className="mhxy-price-catalog__stats" aria-label="道具表统计">
+          <span><strong>{items.length}</strong>采价道具</span>
+          <span><strong>{searchableCount}</strong>全服可查</span>
+          <button type="button" onClick={() => setEditor(null)}>＋ 新增道具</button>
+        </div>
+      </header>
+
+      <div className="mhxy-price-catalog__toolbar">
+        <label>
+          <span>筛选道具</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索道具名、匹配名或检索编码"
+          />
+        </label>
+        <small>{loading ? "正在读取道具表…" : `显示 ${visibleItems.length} / ${items.length}`}</small>
+      </div>
+
+      <div className="mhxy-price-catalog__table" role="table" aria-label="物价采集道具表">
+        <div className="mhxy-price-catalog__row mhxy-price-catalog__row--head" role="row">
+          <span>道具与匹配名</span><span>携带</span><span>时间锁</span><span>采集能力</span><span>操作</span>
+        </div>
+        <div className="mhxy-price-catalog__body">
+          {visibleItems.map((item) => (
+            <article className="mhxy-price-catalog__row" role="row" data-price-catalog-item={item.id} key={item.id}>
+              <span><strong>{item.itemName}</strong><small>{item.matchNames.join(" / ")}{item.note ? ` · ${item.note}` : ""}</small></span>
+              <span>{item.carryLimit}</span>
+              <span>{item.transferLockDays === null ? "无" : `${item.transferLockDays} 天`}</span>
+              <span>
+                <b className={item.cbgOverallKindIds?.length ? "is-searchable" : "is-page-only"}>
+                  {item.cbgOverallKindIds?.length ? "全服检索" : "页面识别"}
+                </b>
+                <small>{item.cbgOverallKindIds?.join(", ") || (item.matchMode === "contains" ? "包含匹配" : "精确匹配")}</small>
+              </span>
+              <span className="mhxy-price-catalog__actions">
+                <button type="button" onClick={() => setEditor(item)}>编辑</button>
+                <ConfirmDeleteButton pending={pending} onConfirm={() => void deleteItem(item.id).catch(() => undefined)} />
+              </span>
+            </article>
+          ))}
+          {!loading && visibleItems.length === 0 ? <p className="mhxy-price-catalog__empty">没有符合条件的道具。</p> : null}
+        </div>
+      </div>
+
+      {editor !== undefined ? (
+        <div className="mhxy-price-catalog__backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !pending) setEditor(undefined); }}>
+          <section className="mhxy-price-catalog__dialog" role="dialog" aria-modal="true" aria-label={editor ? "编辑道具" : "新增道具"}>
+            <header>
+              <div><p className="mhxy-market__eyebrow">{editor ? "EDIT ITEM" : "NEW ITEM"}</p><h3>{editor ? "编辑道具" : "新增道具"}</h3></div>
+              <button type="button" aria-label="关闭道具编辑" disabled={pending} onClick={() => setEditor(undefined)}>×</button>
+            </header>
+            <form className="mhxy-price-catalog__form" data-form="price-catalog-item" onSubmit={submit}>
+              <label>道具名<input name="itemName" required defaultValue={editor?.itemName ?? ""} /></label>
+              <label>页面匹配名<textarea name="matchNames" required defaultValue={editor?.matchNames.join("，") ?? ""} placeholder="多个名称用逗号分隔" /></label>
+              <label>匹配方式<select name="matchMode" defaultValue={editor?.matchMode ?? "exact"}><option value="exact">精确匹配</option><option value="contains">包含匹配</option></select></label>
+              <div className="mhxy-price-catalog__form-pair">
+                <label>携带上限<input name="carryLimit" type="number" min="1" max="10000" step="1" required defaultValue={editor?.carryLimit ?? 1} /></label>
+                <label>转服时间锁（天）<input name="transferLockDays" type="number" min="0" max="3650" step="1" defaultValue={editor?.transferLockDays ?? ""} placeholder="留空表示无" /></label>
+              </div>
+              <label>藏宝阁全服检索编码<input name="cbgOverallKindIds" defaultValue={editor?.cbgOverallKindIds?.join(", ") ?? ""} placeholder="没有可留空；多个编码用逗号分隔" /></label>
+              <label>说明<textarea name="note" defaultValue={editor?.note ?? ""} placeholder="等级、种类或携带限制说明" /></label>
+              <p>保存后，插件下一次开始采集时会读取最新道具表。</p>
+              <button type="submit" disabled={pending}>{pending ? "正在保存…" : editor ? "保存修改" : "添加到道具表"}</button>
+            </form>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 interface PriceSeries {
   key: string;
   itemName: string;
   serverName?: string;
+  regionName?: string;
+  transferStatus?: MhxyPriceSnapshot["transferStatus"];
   sourceName: string;
   records: MhxyPriceSnapshot[];
 }
@@ -898,8 +1099,91 @@ function signedMoney(value: number) {
   return `${prefix}¥${Math.abs(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const marketQuoteKey = (quote: MhxyPriceMarket["quotes"][number]) =>
+  quote.serverId || JSON.stringify([quote.regionName ?? "", quote.serverName]);
+
+const transferStatusLabel = (status: MhxyPriceMarket["quotes"][number]["transferStatus"]) => ({
+  flat: "平转",
+  open: "开放",
+  firework: "烟花",
+  unknown: "待确认"
+})[status];
+
+function AllServerPriceComparison({ market }: { market?: MhxyPriceMarket }) {
+  const itemNames = [...new Set((market?.quotes ?? []).map((quote) => quote.itemName))]
+    .sort((left, right) => left.localeCompare(right, "zh-CN"));
+  const [selectedItem, setSelectedItem] = useState("");
+  const activeItem = itemNames.includes(selectedItem) ? selectedItem : itemNames[0] ?? "";
+  const quotes = (market?.quotes ?? [])
+    .filter((quote) => quote.itemName === activeItem)
+    .sort((left, right) => left.rmbUnitPrice - right.rmbUnitPrice);
+  const quoteKeys = quotes.map(marketQuoteKey);
+  const [sourceKey, setSourceKey] = useState("");
+  const [targetKey, setTargetKey] = useState("");
+
+  useEffect(() => {
+    if (!quotes.length) {
+      setSourceKey("");
+      setTargetKey("");
+      return;
+    }
+    setSourceKey((current) => quoteKeys.includes(current) ? current : quoteKeys[0]);
+    setTargetKey((current) => quoteKeys.includes(current) && current !== quoteKeys[0]
+      ? current
+      : quoteKeys[1] ?? quoteKeys[0]);
+  }, [activeItem, market?.generatedAt]);
+
+  if (!market?.quotes.length) {
+    return (
+      <section className="mhxy-server-market mhxy-server-market--empty" data-all-server-market>
+        <div><p className="mhxy-market__eyebrow">ALL SERVER MARKET</p><h3>列表商品在所有区的物价</h3></div>
+        <p>等待“藏宝阁采集”插件完成第一轮全服记录。当前 {market?.allServerSearchableCount ?? 0}/{market?.catalogCount ?? 0} 项具有藏宝阁官方精确检索编码；其余项目不会用相似商品代替。</p>
+      </section>
+    );
+  }
+
+  const source = quotes.find((quote) => marketQuoteKey(quote) === sourceKey) ?? quotes[0];
+  const target = quotes.find((quote) => marketQuoteKey(quote) === targetKey) ?? quotes[1] ?? quotes[0];
+  const difference = source && target ? target.rmbUnitPrice - source.rmbUnitPrice : 0;
+  const percentage = source?.rmbUnitPrice ? difference / source.rmbUnitPrice * 100 : 0;
+  const optionLabel = (quote: MhxyPriceMarket["quotes"][number]) =>
+    `${quote.regionName ? `${quote.regionName} · ` : ""}${quote.serverName}${quote.transferStatus === "flat" ? " · 平转" : ""} · ${money(quote.rmbUnitPrice)}`;
+
+  return (
+    <section className="mhxy-server-market" data-all-server-market>
+      <header>
+        <div>
+          <p className="mhxy-market__eyebrow">ALL SERVER MARKET · 全服横比</p>
+          <h3>列表商品在所有区的物价</h3>
+          <p>{market.itemCount} 种道具 · {market.serverCount} 个区服 · 精确支持 {market.allServerSearchableCount}/{market.catalogCount}{market.transferStatusDate ? ` · 平转状态 ${market.transferStatusDate}` : ""}</p>
+        </div>
+        <label><span>对比道具</span><select aria-label="选择全服对比道具" value={activeItem} onChange={(event) => setSelectedItem(event.target.value)}>{itemNames.map((itemName) => <option value={itemName} key={itemName}>{itemName}</option>)}</select></label>
+      </header>
+
+      <div className="mhxy-server-compare">
+        <label><span>区服 A</span><select aria-label="选择对比区服 A" value={marketQuoteKey(source)} onChange={(event) => setSourceKey(event.target.value)}>{quotes.map((quote) => <option value={marketQuoteKey(quote)} key={`source-${marketQuoteKey(quote)}`}>{optionLabel(quote)}</option>)}</select></label>
+        <div className="mhxy-server-compare__result">
+          <span>区服 B 相对 A</span>
+          <strong className={difference > 0 ? "is-up" : difference < 0 ? "is-down" : "is-flat"}>{signedMoney(difference)}</strong>
+          <small>{percentage > 0 ? "+" : ""}{percentage.toFixed(1)}% · {difference === 0 ? "价格相同" : difference < 0 ? "B 更便宜" : "B 更贵"}</small>
+        </div>
+        <label><span>区服 B</span><select aria-label="选择对比区服 B" value={marketQuoteKey(target)} onChange={(event) => setTargetKey(event.target.value)}>{quotes.map((quote) => <option value={marketQuoteKey(quote)} key={`target-${marketQuoteKey(quote)}`}>{optionLabel(quote)}</option>)}</select></label>
+      </div>
+
+      <div className="mhxy-server-quotes" role="table" aria-label={`${activeItem}全服最低价排行`}>
+        <div className="mhxy-server-quote mhxy-server-quote--head" role="row"><span>区服</span><span>转服</span><span>最低价</span><span>比全服最低</span><span>采集时间</span></div>
+        {quotes.map((quote) => {
+          const delta = quote.rmbUnitPrice - quotes[0].rmbUnitPrice;
+          return <div className="mhxy-server-quote" role="row" key={marketQuoteKey(quote)}><span><strong>{quote.serverName}</strong><small>{quote.regionName || "大区待确认"}</small></span><span><b className={`mhxy-transfer-badge is-${quote.transferStatus}`}>{transferStatusLabel(quote.transferStatus)}</b></span><span><strong>{money(quote.rmbUnitPrice)}</strong></span><span className={delta > 0 ? "is-up" : "is-flat"}>{delta > 0 ? signedMoney(delta) : "最低"}</span><span>{quote.capturedAt.slice(0, 16).replace("T", " ")}</span></div>;
+        })}
+      </div>
+    </section>
+  );
+}
+
 function PriceTrendWorkspace({
   snapshots,
+  market,
   currency,
   setCurrency,
   submit,
@@ -910,6 +1194,7 @@ function PriceTrendWorkspace({
   onDelete
 }: {
   snapshots: MhxyPriceSnapshot[];
+  market?: MhxyPriceMarket;
   currency: MhxyTradeCurrency;
   setCurrency: (value: MhxyTradeCurrency) => void;
   submit: (input: MhxyPriceSnapshotInput) => Promise<unknown>;
@@ -927,12 +1212,16 @@ function PriceTrendWorkspace({
   const seriesMap = new Map<string, PriceSeries>();
   for (const snapshot of snapshots) {
     const serverName = snapshot.serverName || undefined;
-    const sourceName = serverName ?? "未分类来源";
+    const sourceName = snapshot.sourceName && serverName
+      ? [snapshot.regionName, serverName].filter(Boolean).join(" · ")
+      : snapshot.sourceName ?? serverName ?? "未分类来源";
     const key = priceSeriesKey({ serverName, itemName: snapshot.itemName });
     const current = seriesMap.get(key) ?? {
       key,
       itemName: snapshot.itemName,
       serverName,
+      regionName: snapshot.regionName,
+      transferStatus: snapshot.transferStatus,
       sourceName,
       records: []
     };
@@ -944,6 +1233,9 @@ function PriceTrendWorkspace({
     records: [...item.records].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
   }));
   const activeSeries = series.find((item) => item.key === selectedKey) ?? series[0] ?? null;
+  const latestAutomaticSnapshot = snapshots
+    .filter((snapshot) => snapshot.note?.startsWith("浏览器自动采集最低价"))
+    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))[0];
   if (!currentKeyRef.current && activeSeries) currentKeyRef.current = activeSeries.key;
 
   if (!activeSeries) {
@@ -996,12 +1288,20 @@ function PriceTrendWorkspace({
           <p className="mhxy-market__eyebrow">PRICE THREAD · 行情丝线</p>
           <h2>道具价格观察台</h2>
           <p>选一个道具，只看它自己的历史价格。</p>
+          <span className="mhxy-market__collector-status" data-price-collector-status>
+            <i aria-hidden="true" />
+            {latestAutomaticSnapshot
+              ? `自动采集最低价 · 最近写入 ${latestAutomaticSnapshot.capturedAt.slice(0, 16).replace("T", " ")}`
+              : "自动采集最低价 · 等待浏览器扩展首次写入"}
+          </span>
         </div>
         <details className="mhxy-price-add">
           <summary>＋ 添加记录</summary>
           <SnapshotForm currency={currency} setCurrency={setCurrency} submit={submit} pending={pending} />
         </details>
       </header>
+
+      <AllServerPriceComparison market={market} />
 
       <div className="mhxy-market__layout">
         <aside className="mhxy-market-watchlist" aria-label="选择观察道具">
@@ -1028,7 +1328,7 @@ function PriceTrendWorkspace({
                   }}
                   key={item.key}
                 >
-                  <span><strong>{item.itemName}</strong><small>{item.sourceName}</small></span>
+                  <span><strong>{item.itemName}</strong><small>{item.sourceName}{item.transferStatus === "flat" ? " · 平转" : ""}</small></span>
                   <span className="mhxy-market-watchlist__price"><strong>{money(itemLatest.rmbUnitPrice)}</strong><small className={itemDifference > 0 ? "is-up" : itemDifference < 0 ? "is-down" : "is-flat"}>{item.records.length} 期 · {itemPercentage > 0 ? "+" : ""}{itemPercentage.toFixed(1)}%</small></span>
                 </button>
               );

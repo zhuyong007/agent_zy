@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -191,6 +192,275 @@ describe("mhxy service", () => {
       gameCoinUnitPriceWan: 1500,
       capturedAt: "2026-06-02T10:00:00.000Z"
     } as never)).toThrow("游戏币价格快照必须填写");
+  });
+
+  it("imports only the lowest watched CBG price and deduplicates identical daily observations", () => {
+    const service = createService();
+    service.createPriceSnapshot({
+      itemName: "金刚石",
+      serverName: "藏宝阁（全部道具）",
+      currency: "rmb",
+      rmbUnitPrice: 340,
+      capturedAt: "2026-08-30T10:00:00.000Z"
+    });
+
+    const watchlist = service.getPriceCollectorWatchlist();
+    expect(watchlist.priceRule).toBe("lowest");
+    expect(watchlist.catalogCount).toBeGreaterThan(50);
+    const watchedItem = watchlist.items.find((item) =>
+      item.itemName === "金刚石" && item.serverName === "藏宝阁（全部道具）"
+    );
+    expect(watchedItem).toMatchObject({ latestRmbUnitPrice: 340 });
+    const watchKey = watchedItem?.watchKey ?? "";
+    const input = {
+      sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=query",
+      capturedAt: "2026-08-31T02:00:00.000Z",
+      records: [{
+        watchKey,
+        candidates: [
+          { rmbPrice: 339, listingId: "listing-high" },
+          { rmbPrice: 298.88, listingId: "listing-low" },
+          { rmbPrice: 320, listingId: "listing-middle" }
+        ]
+      }]
+    };
+
+    const first = service.importCollectedLowestPrices(input);
+    expect(first).toMatchObject({ priceRule: "lowest", importedCount: 1, skippedCount: 0 });
+    expect(first.imported[0]).toMatchObject({
+      itemName: "金刚石",
+      serverName: "藏宝阁（全部道具）",
+      currency: "rmb",
+      rmbUnitPrice: 298.88,
+      capturedAt: "2026-08-31T02:00:00.000Z"
+    });
+    expect(first.imported[0].note).toContain("浏览器自动采集最低价");
+    expect(first.imported[0].note).toContain("样本 3");
+    expect(first.imported[0].note).toContain("最低价商品 listing-low");
+
+    const duplicate = service.importCollectedLowestPrices(input);
+    expect(duplicate).toMatchObject({ importedCount: 0, skippedCount: 1 });
+    expect(duplicate.skipped[0].reason).toBe("duplicate");
+
+    const nextDay = service.importCollectedLowestPrices({
+      ...input,
+      capturedAt: "2026-09-01T02:00:00.000Z"
+    });
+    expect(nextDay.importedCount).toBe(1);
+    expect(service.getDashboard().priceSnapshots).toHaveLength(3);
+  });
+
+  it("uses the maintained price catalog as the collector's only allowlist", () => {
+    const service = createService();
+    const existing = service.getPriceCatalogItems().find((item) => item.itemName === "炼兽珍经");
+    expect(existing).toBeTruthy();
+
+    service.deletePriceCatalogItem(existing!.id);
+    expect(service.getPriceCollectorWatchlist().items.some((item) => item.itemName === "炼兽珍经")).toBe(false);
+    expect(service.importCollectedLowestPrices({
+      sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=query",
+      capturedAt: "2026-09-01T03:00:00.000Z",
+      records: [{ itemName: "炼兽珍经", candidates: [{ rmbPrice: 38 }] }]
+    })).toMatchObject({ importedCount: 0, skippedCount: 1 });
+
+    const created = service.createPriceCatalogItem({
+      itemName: "测试灵珠",
+      matchNames: ["测试灵珠", "测试珠"],
+      matchMode: "exact",
+      carryLimit: 12,
+      transferLockDays: 30,
+      note: "测试道具",
+      cbgOverallKindIds: ["998877"]
+    });
+    service.updatePriceCatalogItem(created.id, { carryLimit: 18, matchMode: "contains" });
+    expect(service.getPriceCollectorWatchlist()).toMatchObject({
+      catalogCount: expect.any(Number),
+      items: expect.arrayContaining([expect.objectContaining({
+        itemName: "测试灵珠",
+        carryLimit: 18,
+        matchMode: "contains",
+        allServerSearch: { searchType: "overall_search_equip", kindIds: ["998877"] }
+      })])
+    });
+    expect(service.importCollectedLowestPrices({
+      sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=query",
+      capturedAt: "2026-09-01T04:00:00.000Z",
+      records: [{ itemName: "测试珠", candidates: [{ rmbPrice: 66 }] }]
+    })).toMatchObject({
+      importedCount: 1,
+      imported: [expect.objectContaining({ itemName: "测试灵珠", rmbUnitPrice: 66 })]
+    });
+  });
+
+  it("creates a new lowest-price series for an item discovered by the record-all button", () => {
+    const service = createService();
+    const result = service.importCollectedLowestPrices({
+      sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=query",
+      capturedAt: "2026-09-01T03:00:00.000Z",
+      records: [{
+        itemName: "神兜兜",
+        candidates: [
+          { rmbPrice: 99, listingId: "listing-high" },
+          { rmbPrice: 88.5, listingId: "listing-low" }
+        ]
+      }]
+    });
+
+    expect(result).toMatchObject({
+      importedCount: 1,
+      createdSeriesCount: 1,
+      imported: [expect.objectContaining({
+        itemName: "神兜兜",
+        serverName: "藏宝阁（全部道具）",
+        rmbUnitPrice: 88.5
+      })]
+    });
+    expect(service.getPriceCollectorWatchlist().items).toContainEqual(expect.objectContaining({
+      itemName: "神兜兜",
+      latestRmbUnitPrice: 88.5
+    }));
+  });
+
+  it("keeps one lowest quote per server and exposes flat-transfer comparison data", () => {
+    const transferDir = mkdtempSync(join(tmpdir(), "agent-zy-transfer-status-"));
+    tempDirs.push(transferDir);
+    const databasePath = join(transferDir, "transfer.sqlite3");
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE game_servers (
+        id INTEGER PRIMARY KEY,
+        region_name TEXT NOT NULL,
+        server_name TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TABLE transfer_snapshots (
+        id INTEGER PRIMARY KEY,
+        server_id INTEGER NOT NULL,
+        snapshot_date TEXT NOT NULL,
+        status TEXT NOT NULL
+      );
+      INSERT INTO game_servers (id, region_name, server_name, active) VALUES
+        (1, '测试大区', '平转一服', 1),
+        (2, '测试大区', '开放二服', 1);
+      INSERT INTO transfer_snapshots (server_id, snapshot_date, status) VALUES
+        (1, '2026-09-02', 'flat'),
+        (2, '2026-09-02', 'open');
+    `);
+    database.close();
+    const previousPath = process.env.MHXY_TRANSFER_DATABASE_PATH;
+    process.env.MHXY_TRANSFER_DATABASE_PATH = databasePath;
+    try {
+      const service = createService(() => new Date("2026-09-02T08:00:00.000Z"));
+      const watchKey = service.getPriceCollectorWatchlist().items
+        .find((item) => item.itemName === "金刚石")?.watchKey ?? "";
+      const imported = service.importCollectedLowestPrices({
+        sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/equipquery.py?act=show_overall_search_equip",
+        capturedAt: "2026-09-02T07:00:00.000Z",
+        records: [{
+          watchKey,
+          candidates: [
+            { rmbPrice: 130, serverId: "101", regionName: "测试大区", serverName: "平转一服" },
+            { rmbPrice: 118, serverId: "101", regionName: "测试大区", serverName: "平转一服" },
+            { rmbPrice: 95, serverId: "102", regionName: "测试大区", serverName: "开放二服" }
+          ]
+        }]
+      });
+
+      expect(imported.importedCount).toBe(2);
+      expect(imported.imported).toEqual(expect.arrayContaining([
+        expect.objectContaining({ serverName: "平转一服", rmbUnitPrice: 118, transferStatus: "flat" }),
+        expect.objectContaining({ serverName: "开放二服", rmbUnitPrice: 95, transferStatus: "open" })
+      ]));
+      expect(service.getPriceMarket()).toMatchObject({
+        itemCount: 1,
+        serverCount: 2,
+        transferStatusDate: "2026-09-02",
+        quotes: expect.arrayContaining([
+          expect.objectContaining({ serverName: "平转一服", transferStatus: "flat", rmbUnitPrice: 118 }),
+          expect.objectContaining({ serverName: "开放二服", transferStatus: "open", rmbUnitPrice: 95 })
+        ])
+      });
+    } finally {
+      if (previousPath === undefined) delete process.env.MHXY_TRANSFER_DATABASE_PATH;
+      else process.env.MHXY_TRANSFER_DATABASE_PATH = previousPath;
+    }
+  });
+
+  it("keeps separate lowest-price series for each 百炼精铁 level and rejects missing levels", () => {
+    const service = createService(() => new Date("2026-09-02T08:00:00.000Z"));
+    const watchKey = service.getPriceCollectorWatchlist().items
+      .find((item) => item.itemName === "百炼精铁")?.watchKey ?? "";
+
+    const result = service.importCollectedLowestPrices({
+      sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/equipquery.py?act=show_overall_search_equip",
+      capturedAt: "2026-09-02T07:00:00.000Z",
+      records: [{
+        watchKey,
+        candidates: [
+          { rmbPrice: 35, itemLevel: 130, serverId: "101", regionName: "测试大区", serverName: "测试一服" },
+          { rmbPrice: 30, itemLevel: 130, serverId: "101", regionName: "测试大区", serverName: "测试一服" },
+          { rmbPrice: 30, itemLevel: 140, serverId: "101", regionName: "测试大区", serverName: "测试一服" },
+          { rmbPrice: 3, serverId: "101", regionName: "测试大区", serverName: "测试一服" }
+        ]
+      }]
+    });
+
+    expect(result).toMatchObject({ importedCount: 2, skippedCount: 1 });
+    expect(result.skipped).toContainEqual(expect.objectContaining({ reason: "missing-required-level" }));
+    expect(result.imported).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemName: "百炼精铁（130级）", itemLevel: 130, rmbUnitPrice: 30 }),
+      expect.objectContaining({ itemName: "百炼精铁（140级）", itemLevel: 140, rmbUnitPrice: 30 })
+    ]));
+    expect(service.getPriceMarket()).toMatchObject({ itemCount: 2, serverCount: 1 });
+    expect(() => service.createPriceSnapshot({
+      itemName: "百炼精铁",
+      serverName: "测试一服",
+      currency: "rmb",
+      rmbUnitPrice: 30,
+      capturedAt: "2026-09-02T07:00:00.000Z"
+    })).toThrow("百炼精铁等级");
+  });
+
+  it("rejects role, equipment, pet, and other items outside the transfer-item catalog", () => {
+    const service = createService();
+    service.createPriceSnapshot({
+      itemName: "玉龙",
+      serverName: "藏宝阁（全部道具）",
+      currency: "rmb",
+      rmbUnitPrice: 3.5,
+      capturedAt: "2026-08-31T03:00:00.000Z"
+    });
+    const result = service.importCollectedLowestPrices({
+      sourcePageUrl: "https://xyq.cbg.163.com/cgi-bin/query.py?act=recommend_search",
+      capturedAt: "2026-09-01T03:00:00.000Z",
+      records: [
+        { itemName: "13141314", candidates: [{ rmbPrice: 16000 }] },
+        { itemName: "玉龙", candidates: [{ rmbPrice: 3.5 }] },
+        { itemName: "超级神牛", candidates: [{ rmbPrice: 9999 }] }
+      ]
+    });
+
+    expect(result).toMatchObject({ importedCount: 0, createdSeriesCount: 0, skippedCount: 3 });
+    expect(result.skipped.every((record) => record.reason === "not-allowed")).toBe(true);
+    expect(service.getPriceCollectorWatchlist().items.some((record) => record.itemName === "玉龙")).toBe(false);
+    expect(service.getDashboard().priceSnapshots).toHaveLength(1);
+  });
+
+  it("rejects automatic price imports from non-CBG pages", () => {
+    const service = createService();
+    service.createPriceSnapshot({
+      itemName: "高级连击",
+      currency: "rmb",
+      rmbUnitPrice: 340,
+      capturedAt: "2026-08-30T10:00:00.000Z"
+    });
+    const watchKey = service.getPriceCollectorWatchlist().items[0].watchKey;
+
+    expect(() => service.importCollectedLowestPrices({
+      sourcePageUrl: "https://example.com/fake-price-list",
+      capturedAt: "2026-08-31T02:00:00.000Z",
+      records: [{ watchKey, candidates: [{ rmbPrice: 1 }] }]
+    })).toThrow("只接受梦幻西游藏宝阁页面");
   });
 
   it("moves every item held by a role without capitalizing the transfer expense", () => {

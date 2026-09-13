@@ -114,7 +114,8 @@ const historyOperations: HistoryOperationsState = {
   },
   series: [
     { id: "dynasty-series", name: "朝代系列", description: "从夏到清", status: "winding_down", generator: "dynasty", dailyQuota: 2, plannedTotal: null, publishedCount: 0, promptInstruction: "生成朝代四件套", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-05-24T08:00:00.000Z", updatedAt: "2026-05-24T08:00:00.000Z" },
-    { id: "most-series", name: "最系列", description: "历史之最", status: "active", generator: "most", dailyQuota: 1, plannedTotal: null, publishedCount: 0, promptInstruction: "明确比较口径", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-05-24T08:00:00.000Z", updatedAt: "2026-05-24T08:00:00.000Z" }
+    { id: "most-series", name: "最系列", description: "历史之最", status: "active", generator: "most", dailyQuota: 1, plannedTotal: null, publishedCount: 0, promptInstruction: "明确比较口径", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-05-24T08:00:00.000Z", updatedAt: "2026-05-24T08:00:00.000Z" },
+    { id: "war-series", name: "战争系列", description: "具体战争与战役", status: "pilot", generator: "war", dailyQuota: 0, plannedTotal: null, publishedCount: 0, promptInstruction: "讲清战争进程与影响", successorSeriesId: null, startDate: null, endDate: null, createdAt: "2026-05-24T08:00:00.000Z", updatedAt: "2026-05-24T08:00:00.000Z" }
   ],
   directions: [],
   topics: [],
@@ -426,6 +427,7 @@ describe("HistoryPage", () => {
     expect(container.textContent).toContain("朝代系列");
     expect(container.textContent).toContain("收尾中");
     expect(container.textContent).toContain("最系列");
+    expect(container.textContent).toContain("战争系列");
     expect(container.textContent).toContain("表现形式");
     expect(container.textContent).toContain("图文");
     expect(container.textContent).not.toContain("视频");
@@ -436,6 +438,43 @@ describe("HistoryPage", () => {
     expect(container.textContent).not.toContain("小红书数据总览");
     expect(container.textContent).not.toContain("评论回复");
     expect(container.textContent).not.toContain("口播稿");
+  });
+
+  it("hides archived series from the content production selector", async () => {
+    const dashboardWithArchivedSeries: DashboardData = {
+      ...dashboard,
+      historyOperations: {
+        ...historyOperations,
+        series: [
+          ...historyOperations.series,
+          {
+            id: "archived-series",
+            name: "已归档系列",
+            description: "已经结束的内容系列",
+            status: "archived",
+            generator: "generic",
+            dailyQuota: 0,
+            plannedTotal: 10,
+            publishedCount: 10,
+            promptInstruction: "",
+            successorSeriesId: null,
+            startDate: null,
+            endDate: "2026-08-01",
+            createdAt: "2026-07-01T08:00:00.000Z",
+            updatedAt: "2026-08-01T08:00:00.000Z"
+          }
+        ]
+      }
+    } as DashboardData;
+
+    await renderHistoryPage(dashboardWithArchivedSeries);
+
+    const seriesSelect = container.querySelector('select[aria-label="选择内容系列"]') as HTMLSelectElement | null;
+    const optionLabels = Array.from(seriesSelect?.options ?? []).map((option) => option.textContent);
+
+    expect(optionLabels).toContain("朝代系列");
+    expect(optionLabels).toContain("最系列");
+    expect(optionLabels).not.toContain("已归档系列");
   });
 
   it("shows the history data synchronization control", async () => {
@@ -563,6 +602,34 @@ describe("HistoryPage", () => {
       reason: "manual",
       mode: "most",
       seriesId: "most-series"
+    });
+  });
+
+  it("submits the war series without a topic input", async () => {
+    await renderHistoryPage();
+
+    const seriesSelect = container.querySelector('select[aria-label="选择内容系列"]') as HTMLSelectElement | null;
+
+    expect(seriesSelect).toBeTruthy();
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      setter?.call(seriesSelect, "war-series");
+      seriesSelect?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("自动选择一场资料较充分、值得讲清的历史战争");
+    expect(container.querySelector('.history-topic-form input[type="text"]')).toBeNull();
+
+    const submitButton = container.querySelector(".history-generate-button") as HTMLButtonElement | null;
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(generateHistory).toHaveBeenCalledWith({
+      reason: "manual",
+      mode: "war",
+      seriesId: "war-series"
     });
   });
 
@@ -699,9 +766,7 @@ describe("HistoryPage", () => {
       copyCoverTextButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(writeText).toHaveBeenCalledWith(
-      "Silk Road\nA trade route that moved ideas\nSilk Road\nroutes / exchanges / long-term impact"
-    );
+    expect(writeText).toHaveBeenCalledWith("Silk Road");
 
     await act(async () => {
       copyCoverPromptButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

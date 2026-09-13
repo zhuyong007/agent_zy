@@ -345,7 +345,13 @@ function SeriesEditor(props: { series: HistorySeries; allSeries: HistorySeries[]
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard"] })
   });
   const remaining = draft.plannedTotal === null ? null : Math.max(0, draft.plannedTotal - draft.publishedCount);
-  const generatorLabel = draft.generator === "dynasty" ? "朝代四件套" : draft.generator === "most" ? "历史之最" : "通用系列图文";
+  const generatorLabel = draft.generator === "dynasty"
+    ? "朝代四件套"
+    : draft.generator === "most"
+      ? "历史之最"
+      : draft.generator === "war"
+        ? "历史战争"
+        : "通用系列图文";
 
   return (
     <article className={`history-series-row is-${draft.status}`}>

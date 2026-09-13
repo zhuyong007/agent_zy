@@ -29,7 +29,7 @@ const STAGES: HistoryEditorialStage[] = [
 ];
 
 const SERIES_STATUSES: HistorySeriesStatus[] = ["idea", "pilot", "active", "winding_down", "retired", "archived"];
-const SERIES_GENERATORS: HistorySeriesGenerator[] = ["generic", "dynasty", "most"];
+const SERIES_GENERATORS: HistorySeriesGenerator[] = ["generic", "dynasty", "most", "war"];
 
 const DEFAULT_SCORES: HistoryTopicScores = {
   demand: 3,
@@ -86,6 +86,22 @@ export function createDefaultHistoryOperationsState(now = new Date().toISOString
         plannedTotal: null,
         publishedCount: 0,
         promptInstruction: "自动选择有明确比较依据的历史之最，说明比较范围和口径。",
+        successorSeriesId: null,
+        startDate: null,
+        endDate: null,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "war-series",
+        name: "战争系列",
+        description: "自动选择一场具体战争或战役，讲清背景、进程、转折、结果与长期影响。",
+        status: "pilot",
+        generator: "war",
+        dailyQuota: 0,
+        plannedTotal: null,
+        publishedCount: 0,
+        promptInstruction: "自动选择资料较充分的具体战争或战役，区分战争、战役与战斗层级，交代交战方、时间地点、关键阶段、结果影响和史料争议。",
         successorSeriesId: null,
         startDate: null,
         endDate: null,

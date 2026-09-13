@@ -350,12 +350,40 @@ export interface MhxyTradeRecord extends Omit<MhxyTradeInput, "feeRmb"> {
   updatedAt: string;
 }
 
+export type MhxyPriceCatalogMatchMode = "exact" | "contains";
+
+export interface MhxyPriceCatalogItemInput {
+  itemName: string;
+  matchNames: string[];
+  matchMode: MhxyPriceCatalogMatchMode;
+  carryLimit: number;
+  transferLockDays: number | null;
+  note?: string;
+  cbgOverallKindIds?: string[];
+}
+
+export interface MhxyPriceCatalogItem extends MhxyPriceCatalogItemInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MhxyPriceCatalogItemPatch = Partial<MhxyPriceCatalogItemInput>;
+
 interface MhxyPriceSnapshotBase {
   itemName: string;
+  itemLevel?: number;
   capturedAt: string;
   serverName?: string;
+  serverId?: string;
+  regionName?: string;
+  sourceName?: string;
+  transferStatus?: MhxyServerTransferStatus;
+  transferStatusDate?: string;
   note?: string;
 }
+
+export type MhxyServerTransferStatus = "flat" | "open" | "firework" | "unknown";
 
 export type MhxyPriceSnapshotInput = MhxyPriceSnapshotBase & (
   | {
@@ -393,6 +421,31 @@ export type MhxyPriceSnapshot = MhxyPriceSnapshotBase & {
 export interface MhxyPriceSeriesIdentity {
   itemName: string;
   serverName?: string;
+}
+
+export interface MhxyPriceMarketQuote {
+  itemName: string;
+  itemLevel?: number;
+  rmbUnitPrice: number;
+  capturedAt: string;
+  serverName: string;
+  serverId?: string;
+  regionName?: string;
+  sourceName?: string;
+  transferStatus: MhxyServerTransferStatus;
+  transferStatusDate?: string;
+  snapshotId: string;
+}
+
+export interface MhxyPriceMarket {
+  generatedAt: string;
+  transferStatusDate?: string;
+  catalogCount: number;
+  allServerSearchableCount: number;
+  unsupportedItemNames: string[];
+  itemCount: number;
+  serverCount: number;
+  quotes: MhxyPriceMarketQuote[];
 }
 
 export interface MhxyPriceSeriesUpdateInput {
@@ -554,6 +607,7 @@ export interface MhxyOverviewSummary {
 export interface MhxyDataSet {
   trades: MhxyTradeRecord[];
   priceSnapshots: MhxyPriceSnapshot[];
+  priceCatalogItems?: MhxyPriceCatalogItem[];
   inventoryTransfers: MhxyInventoryTransferRecord[];
   inventoryTargets: MhxyInventoryTarget[];
   assetFlips: MhxyAssetFlipRecord[];
@@ -930,7 +984,7 @@ export interface HistoryContentDirection {
 
 export type HistorySeriesStatus = "idea" | "pilot" | "active" | "winding_down" | "retired" | "archived";
 
-export type HistorySeriesGenerator = "generic" | "dynasty" | "most";
+export type HistorySeriesGenerator = "generic" | "dynasty" | "most" | "war";
 
 export interface HistorySeries {
   id: string;

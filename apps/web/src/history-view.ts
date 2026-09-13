@@ -85,6 +85,10 @@ export function getHistoryNotificationCategory(notification: HistoryNotification
       return "最";
     }
 
+    if (explicitCategory === "战争系列") {
+      return "战争";
+    }
+
     return explicitCategory;
   }
 
@@ -96,6 +100,10 @@ export function getHistoryNotificationCategory(notification: HistoryNotification
     return "最";
   }
 
+  if (/^[“"]?战争[”"]?系列[：:]/u.test(notification.title.trim())) {
+    return "战争";
+  }
+
   return "主题";
 }
 
@@ -105,6 +113,9 @@ function getHistoryCategoryOrder(category: string) {
   }
   if (category === "最") {
     return 1;
+  }
+  if (category === "战争") {
+    return 2;
   }
   if (category === "主题") {
     return 99;

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type {
   MhxyAssetFlipInput,
@@ -13,6 +13,10 @@ import type {
   MhxyInventoryTransferPatch,
   MhxyInventoryTransferRecord,
   MhxyLegacyInventoryTransferRecord,
+  MhxyPriceCatalogItem,
+  MhxyPriceCatalogItemInput,
+  MhxyPriceCatalogItemPatch,
+  MhxyPriceMarket,
   MhxyPriceSeriesIdentity,
   MhxyPriceSeriesUpdateInput,
   MhxyPriceSeriesUpdateResult,
@@ -25,10 +29,40 @@ import type {
 } from "@agent-zy/shared-types";
 
 import { createMhxyRepository } from "./mhxy-repository";
+import {
+  MHXY_DEFAULT_PRICE_CATALOG,
+  MHXY_DEFAULT_PRICE_SOURCE_NAME
+} from "./mhxy-price-catalog";
+import { createMhxyTransferStatusResolver } from "./mhxy-transfer-status";
 
 type ReplayEvent =
   | { kind: "trade"; record: MhxyTradeRecord }
   | { kind: "transfer"; record: MhxyInventoryTransferRecord };
+
+export interface MhxyPriceCollectorImportInput {
+  sourcePageUrl: string;
+  capturedAt: string;
+  records: Array<{
+    watchKey?: string;
+    itemName?: string;
+    candidates: Array<{
+      rmbPrice: number;
+      itemLevel?: number;
+      listingId?: string;
+      serverId?: string;
+      serverName?: string;
+      regionName?: string;
+    }>;
+  }>;
+}
+
+const PRICE_COLLECTOR_NOTE_PREFIX = "浏览器自动采集最低价";
+const LEVEL_SENSITIVE_ITEM_NAME = "百炼精铁";
+const ALLOWED_EXISTING_PRICE_SOURCES = new Set([
+  "藏宝阁（兽决）",
+  "藏宝阁（高内丹）",
+  "藏宝阁（附魔）"
+]);
 
 const toRmbCents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const fromRmbCents = (value: number) => value / 100;
@@ -38,6 +72,150 @@ const nowIso = () => new Date().toISOString();
 const normalizeLabel = (value: string | undefined) => value?.trim() ?? "";
 const inventoryKey = (itemName: string, serverName?: string, characterName?: string) =>
   JSON.stringify([itemName.trim(), normalizeLabel(serverName), normalizeLabel(characterName)]);
+const priceCollectorWatchKey = (itemName: string, serverName?: string) =>
+  JSON.stringify([normalizeLabel(serverName) || null, itemName.trim()]);
+
+function priceCollectorDay(value: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(value));
+}
+
+function priceCollectorFingerprint(
+  watchKey: string,
+  price: number,
+  capturedAt: string,
+  serverId?: string,
+  serverName?: string,
+  itemLevel?: number
+) {
+  return createHash("sha256")
+    .update(JSON.stringify([
+      watchKey,
+      normalizeLabel(serverId) || normalizeLabel(serverName) || null,
+      itemLevel ?? null,
+      roundRmb(price),
+      priceCollectorDay(capturedAt)
+    ]))
+    .digest("hex")
+    .slice(0, 20);
+}
+
+function ironLevelFromName(itemName: string) {
+  const normalized = itemName.trim();
+  const suffixMatch = normalized.match(/^百炼精铁(?:[（(]?\s*(\d{1,3})\s*级[）)]?)?$/);
+  const prefixMatch = normalized.match(/^(\d{1,3})\s*级百炼精铁$/);
+  const value = suffixMatch?.[1] ?? prefixMatch?.[1];
+  return value ? Number(value) : undefined;
+}
+
+function normalizeIronLevel(value: number | undefined) {
+  if (!Number.isSafeInteger(value) || (value as number) < 10 || (value as number) > 160 || (value as number) % 10 !== 0) {
+    throw new Error("百炼精铁等级必须是 10 到 160 之间的整十等级");
+  }
+  return value as number;
+}
+
+function normalizePriceItemIdentity(itemName: string, itemLevel?: number) {
+  const normalizedName = itemName.trim();
+  const nameLevel = ironLevelFromName(normalizedName);
+  const isIron = normalizedName === LEVEL_SENSITIVE_ITEM_NAME || nameLevel !== undefined;
+  if (!isIron) {
+    return {
+      itemName: normalizedName,
+      ...(itemLevel !== undefined ? { itemLevel } : {})
+    };
+  }
+  if (itemLevel !== undefined && nameLevel !== undefined && itemLevel !== nameLevel) {
+    throw new Error("百炼精铁名称中的等级与等级字段不一致");
+  }
+  const level = normalizeIronLevel(itemLevel ?? nameLevel);
+  return { itemName: `${LEVEL_SENSITIVE_ITEM_NAME}（${level}级）`, itemLevel: level };
+}
+
+function normalizeCollectorSourceUrl(value: string) {
+  const source = new URL(value);
+  if (!/^https?:$/.test(source.protocol) || !source.hostname.endsWith(".cbg.163.com")) {
+    throw new Error("自动采价只接受梦幻西游藏宝阁页面");
+  }
+  source.hash = "";
+  return source.toString().slice(0, 1200);
+}
+
+function findPriceCatalogItem(catalog: MhxyPriceCatalogItem[], discoveredItemName: string) {
+  const catalogName = discoveredItemName === LEVEL_SENSITIVE_ITEM_NAME || ironLevelFromName(discoveredItemName) !== undefined
+    ? LEVEL_SENSITIVE_ITEM_NAME
+    : discoveredItemName;
+  return catalog.find((catalogItem) =>
+    catalogItem.matchNames.some((matchName) =>
+      catalogItem.matchMode === "contains"
+        ? catalogName.includes(matchName)
+        : catalogName === matchName
+    )
+  );
+}
+
+function normalizePriceCatalogItem(
+  input: MhxyPriceCatalogItemInput,
+  existing?: MhxyPriceCatalogItem,
+  timestamp = nowIso()
+): MhxyPriceCatalogItem {
+  const itemName = input.itemName.trim();
+  if (!itemName) throw new Error("道具名不能为空");
+  if (input.matchMode !== "exact" && input.matchMode !== "contains") {
+    throw new Error("匹配方式无效");
+  }
+  if (!Number.isSafeInteger(input.carryLimit) || input.carryLimit <= 0 || input.carryLimit > 10000) {
+    throw new Error("携带上限必须是 1 到 10000 之间的整数");
+  }
+  if (
+    input.transferLockDays !== null &&
+    (!Number.isSafeInteger(input.transferLockDays) || input.transferLockDays < 0 || input.transferLockDays > 3650)
+  ) {
+    throw new Error("转服时间锁必须是 0 到 3650 之间的整数，或留空表示无");
+  }
+  const matchNames = [...new Set(input.matchNames.map((value) => value.trim()).filter(Boolean))];
+  if (matchNames.length === 0) throw new Error("至少填写一个匹配名称");
+  if (matchNames.length > 50 || matchNames.some((value) => value.length > 160)) {
+    throw new Error("匹配名称数量或长度超出限制");
+  }
+  const cbgOverallKindIds = [...new Set((input.cbgOverallKindIds ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean))];
+  if (cbgOverallKindIds.length > 100 || cbgOverallKindIds.some((value) => !/^\d{1,12}$/.test(value))) {
+    throw new Error("全服检索编码必须是数字，且最多填写 100 个");
+  }
+  const note = input.note?.trim();
+  if (note && note.length > 500) throw new Error("说明不能超过 500 个字");
+  return {
+    id: existing?.id ?? randomUUID(),
+    itemName,
+    matchNames,
+    matchMode: input.matchMode,
+    carryLimit: input.carryLimit,
+    transferLockDays: input.transferLockDays,
+    ...(note ? { note } : {}),
+    ...(cbgOverallKindIds.length ? { cbgOverallKindIds } : {}),
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function initialPriceCatalog(timestamp: string): MhxyPriceCatalogItem[] {
+  return MHXY_DEFAULT_PRICE_CATALOG.map((catalogItem) => normalizePriceCatalogItem(
+    catalogItem,
+    {
+      ...catalogItem,
+      id: `price-item-${createHash("sha256").update(catalogItem.itemName).digest("hex").slice(0, 16)}`,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    },
+    timestamp
+  ));
+}
 
 function assertFiniteNonNegative(value: number, name: string) {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${name}不能小于 0`);
@@ -221,8 +399,9 @@ function normalizeSnapshot(
   if (input.currency !== "rmb" && input.currency !== "gameCoin") {
     throw new Error("快照币种必须是人民币或游戏币");
   }
-  const itemName = input.itemName.trim();
-  if (!itemName) throw new Error("道具名不能为空");
+  const rawItemName = input.itemName.trim();
+  if (!rawItemName) throw new Error("道具名不能为空");
+  const normalizedItem = normalizePriceItemIdentity(rawItemName, input.itemLevel);
   if (!input.capturedAt || Number.isNaN(Date.parse(input.capturedAt))) throw new Error("快照时间无效");
   let rmbUnitPrice: number;
   if (input.currency === "gameCoin") {
@@ -237,16 +416,40 @@ function normalizeSnapshot(
     assertFiniteNonNegative(input.rmbUnitPrice, "人民币单价");
     rmbUnitPrice = roundRmb(input.rmbUnitPrice);
   }
-  const { serverName, ...snapshotInput } = input;
+  const {
+    serverName,
+    serverId,
+    regionName,
+    sourceName,
+    transferStatus,
+    transferStatusDate,
+    itemLevel: _itemLevel,
+    ...snapshotInput
+  } = input;
   const normalizedServerName = normalizeLabel(serverName);
+  const normalizedServerId = normalizeLabel(serverId);
+  const normalizedRegionName = normalizeLabel(regionName);
+  const normalizedSourceName = normalizeLabel(sourceName);
+  const normalizedTransferStatus = transferStatus === "flat" || transferStatus === "open" || transferStatus === "firework"
+    ? transferStatus
+    : transferStatus === "unknown"
+      ? "unknown"
+      : undefined;
+  const normalizedTransferStatusDate = normalizeLabel(transferStatusDate);
   const timestamp = nowIso();
   return {
     ...snapshotInput,
     id: existing?.id ?? randomUUID(),
-    itemName,
+    itemName: normalizedItem.itemName,
+    ...(normalizedItem.itemLevel !== undefined ? { itemLevel: normalizedItem.itemLevel } : {}),
     rmbUnitPrice,
     capturedAt: new Date(input.capturedAt).toISOString(),
     ...(normalizedServerName ? { serverName: normalizedServerName } : {}),
+    ...(normalizedServerId ? { serverId: normalizedServerId } : {}),
+    ...(normalizedRegionName ? { regionName: normalizedRegionName } : {}),
+    ...(normalizedSourceName ? { sourceName: normalizedSourceName } : {}),
+    ...(normalizedTransferStatus ? { transferStatus: normalizedTransferStatus } : {}),
+    ...(normalizedTransferStatusDate ? { transferStatusDate: normalizedTransferStatusDate } : {}),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
   };
@@ -479,6 +682,9 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
   for (const [records, label] of [
     [input.trades, "交易记录"],
     [input.priceSnapshots, "价格快照"],
+    ...(input.priceCatalogItems === undefined
+      ? []
+      : [[input.priceCatalogItems, "道具表"]] as const),
     [input.inventoryTransfers, "库存转移"],
     [input.inventoryTargets, "库存目标"],
     [input.assetFlips, "资产记录"]
@@ -496,24 +702,43 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
     const snapshotInput: MhxyPriceSnapshotInput = record.currency === "gameCoin"
       ? {
           itemName: record.itemName,
+          itemLevel: record.itemLevel,
           currency: "gameCoin",
           gameCoinUnitPriceWan: record.gameCoinUnitPriceWan,
           rmbPerGameCoinWan: record.rmbPerGameCoinWan,
           capturedAt: record.capturedAt,
           serverName: record.serverName,
+          serverId: record.serverId,
+          regionName: record.regionName,
+          sourceName: record.sourceName,
+          transferStatus: record.transferStatus,
+          transferStatusDate: record.transferStatusDate,
           note: record.note
         }
       : {
           itemName: record.itemName,
+          itemLevel: record.itemLevel,
           currency: "rmb",
           rmbUnitPrice: record.rmbUnitPrice,
           capturedAt: record.capturedAt,
           serverName: record.serverName,
+          serverId: record.serverId,
+          regionName: record.regionName,
+          sourceName: record.sourceName,
+          transferStatus: record.transferStatus,
+          transferStatusDate: record.transferStatusDate,
           note: record.note
         };
     const normalized = normalizeSnapshot(snapshotInput, record);
     return { ...normalized, updatedAt: record.updatedAt };
   });
+  const priceCatalogItems = input.priceCatalogItems?.map((record) => {
+    assertRecordMetadata(record, "道具表记录");
+    return normalizePriceCatalogItem(record, record, record.updatedAt);
+  });
+  if (priceCatalogItems && new Set(priceCatalogItems.map((item) => item.itemName)).size !== priceCatalogItems.length) {
+    throw new Error("道具表中的道具名不能重复");
+  }
   const inventoryTransfers = input.inventoryTransfers.map((record) => {
     assertRecordMetadata(record, "库存转移记录");
     const normalized = isRoleTransfer(record)
@@ -537,6 +762,7 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
   return {
     trades,
     priceSnapshots,
+    ...(priceCatalogItems ? { priceCatalogItems } : {}),
     inventoryTransfers,
     inventoryTargets,
     assetFlips: recalculateAssetFlips(assetFlips)
@@ -544,7 +770,71 @@ function normalizeDataSet(input: MhxyDataSet): MhxyDataSet {
 }
 
 export function createMhxyService(dataDir: string, now: () => Date = () => new Date()) {
-  const repository = createMhxyRepository(dataDir);
+  const repository = createMhxyRepository(dataDir, initialPriceCatalog(now().toISOString()));
+  const transferStatusResolver = createMhxyTransferStatusResolver();
+
+  function getPriceMarket(): MhxyPriceMarket {
+    const priceCatalog = repository.readPriceCatalogItems();
+    const latest = new Map<string, MhxyPriceSnapshot>();
+    const ordered = repository.readPriceSnapshots().sort((left, right) => {
+      const capturedAt = right.capturedAt.localeCompare(left.capturedAt);
+      return capturedAt !== 0 ? capturedAt : right.createdAt.localeCompare(left.createdAt);
+    });
+    for (const snapshot of ordered) {
+      const serverName = normalizeLabel(snapshot.serverName);
+      if (!serverName || ALLOWED_EXISTING_PRICE_SOURCES.has(serverName) || serverName === MHXY_DEFAULT_PRICE_SOURCE_NAME) {
+        continue;
+      }
+      const serverIdentity = normalizeLabel(snapshot.serverId)
+        || JSON.stringify([normalizeLabel(snapshot.regionName), serverName]);
+      const key = JSON.stringify([snapshot.itemName, serverIdentity]);
+      if (!latest.has(key)) latest.set(key, snapshot);
+    }
+
+    const quotes = [...latest.values()].map((snapshot) => {
+      const currentTransfer = transferStatusResolver.find(snapshot.serverName, snapshot.regionName);
+      return {
+        itemName: snapshot.itemName,
+        ...(snapshot.itemLevel !== undefined ? { itemLevel: snapshot.itemLevel } : {}),
+        rmbUnitPrice: snapshot.rmbUnitPrice,
+        capturedAt: snapshot.capturedAt,
+        serverName: snapshot.serverName as string,
+        ...(snapshot.serverId ? { serverId: snapshot.serverId } : {}),
+        ...(snapshot.regionName || currentTransfer?.regionName
+          ? { regionName: snapshot.regionName || currentTransfer?.regionName }
+          : {}),
+        ...(snapshot.sourceName ? { sourceName: snapshot.sourceName } : {}),
+        transferStatus: currentTransfer?.status ?? snapshot.transferStatus ?? "unknown",
+        ...(currentTransfer?.snapshotDate || snapshot.transferStatusDate
+          ? { transferStatusDate: currentTransfer?.snapshotDate || snapshot.transferStatusDate }
+          : {}),
+        snapshotId: snapshot.id
+      };
+    }).sort((left, right) =>
+      left.itemName.localeCompare(right.itemName, "zh-CN")
+      || left.rmbUnitPrice - right.rmbUnitPrice
+      || left.serverName.localeCompare(right.serverName, "zh-CN")
+    );
+
+    return {
+      generatedAt: now().toISOString(),
+      ...(transferStatusResolver.snapshotDate
+        ? { transferStatusDate: transferStatusResolver.snapshotDate }
+        : {}),
+      catalogCount: priceCatalog.length,
+      allServerSearchableCount: priceCatalog
+        .filter((item) => item.cbgOverallKindIds?.length).length,
+      unsupportedItemNames: priceCatalog
+        .filter((item) => !item.cbgOverallKindIds?.length)
+        .map((item) => item.itemName),
+      itemCount: new Set(quotes.map((quote) => quote.itemName)).size,
+      serverCount: new Set(quotes.map((quote) => JSON.stringify([
+        quote.regionName ?? "",
+        quote.serverName
+      ]))).size,
+      quotes
+    };
+  }
 
   function replayAll(
     trades = repository.readTrades(),
@@ -701,6 +991,223 @@ export function createMhxyService(dataDir: string, now: () => Date = () => new D
 
   return {
     getDashboard,
+    getPriceMarket,
+    getPriceCatalogItems() {
+      return repository.readPriceCatalogItems()
+        .sort((left, right) => left.itemName.localeCompare(right.itemName, "zh-CN"));
+    },
+    createPriceCatalogItem(input: MhxyPriceCatalogItemInput) {
+      const records = repository.readPriceCatalogItems();
+      const record = normalizePriceCatalogItem(input);
+      if (records.some((item) => item.itemName === record.itemName)) {
+        throw new Error("道具表中已存在同名道具");
+      }
+      repository.writePriceCatalogItems([...records, record]);
+      return record;
+    },
+    updatePriceCatalogItem(id: string, patch: MhxyPriceCatalogItemPatch) {
+      const records = repository.readPriceCatalogItems();
+      const existing = records.find((item) => item.id === id);
+      if (!existing) throw new Error("道具表记录不存在");
+      const record = normalizePriceCatalogItem({ ...existing, ...patch }, existing);
+      if (records.some((item) => item.id !== id && item.itemName === record.itemName)) {
+        throw new Error("道具表中已存在同名道具");
+      }
+      repository.writePriceCatalogItems(records.map((item) => item.id === id ? record : item));
+      return record;
+    },
+    deletePriceCatalogItem(id: string) {
+      const records = repository.readPriceCatalogItems();
+      if (!records.some((item) => item.id === id)) throw new Error("道具表记录不存在");
+      repository.writePriceCatalogItems(records.filter((item) => item.id !== id));
+      return { id };
+    },
+    getPriceCollectorWatchlist() {
+      const priceCatalog = repository.readPriceCatalogItems();
+      const snapshots = repository.readPriceSnapshots();
+      const items = priceCatalog.map((catalogItem) => {
+        const latest = snapshots
+          .filter((snapshot) => findPriceCatalogItem(priceCatalog, snapshot.itemName)?.itemName === catalogItem.itemName)
+          .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))[0];
+        return {
+          watchKey: priceCollectorWatchKey(catalogItem.itemName, MHXY_DEFAULT_PRICE_SOURCE_NAME),
+          itemName: catalogItem.itemName,
+          serverName: MHXY_DEFAULT_PRICE_SOURCE_NAME,
+          sourceName: MHXY_DEFAULT_PRICE_SOURCE_NAME,
+          matchNames: catalogItem.matchNames,
+          matchMode: catalogItem.matchMode,
+          catalog: true as const,
+          carryLimit: catalogItem.carryLimit,
+          transferLockDays: catalogItem.transferLockDays,
+          ...(catalogItem.note ? { catalogNote: catalogItem.note } : {}),
+          ...(catalogItem.cbgOverallKindIds?.length
+            ? {
+                allServerSearch: {
+                  searchType: "overall_search_equip" as const,
+                  kindIds: catalogItem.cbgOverallKindIds
+                }
+              }
+            : {}),
+          ...(latest
+            ? {
+                latestRmbUnitPrice: latest.rmbUnitPrice,
+                latestCapturedAt: latest.capturedAt
+              }
+            : {})
+        };
+      });
+
+      return {
+        priceRule: "lowest" as const,
+        catalogCount: priceCatalog.length,
+        allServerSearchableCount: items.filter((item) => item.allServerSearch).length,
+        items: items.sort((left, right) => left.itemName.localeCompare(right.itemName, "zh-CN"))
+      };
+    },
+    importCollectedLowestPrices(input: MhxyPriceCollectorImportInput) {
+      const sourcePageUrl = normalizeCollectorSourceUrl(input.sourcePageUrl);
+      const existing = repository.readPriceSnapshots();
+      const priceCatalog = repository.readPriceCatalogItems();
+      const watchlist = new Map<string, MhxyPriceCatalogItem>();
+      for (const catalogItem of priceCatalog) {
+        const watchKey = priceCollectorWatchKey(catalogItem.itemName, MHXY_DEFAULT_PRICE_SOURCE_NAME);
+        watchlist.set(watchKey, catalogItem);
+      }
+
+      const imported: MhxyPriceSnapshot[] = [];
+      const skipped: Array<{
+        watchKey: string;
+        reason: "not-watched" | "not-allowed" | "duplicate" | "missing-required-level";
+      }> = [];
+      const existingSeriesKeys = new Set(existing.map((record) => JSON.stringify([
+        record.itemName,
+        normalizeLabel(record.serverId) || normalizeLabel(record.serverName)
+      ])));
+      const createdSeriesKeys = new Set<string>();
+
+      for (const collectedRecord of input.records) {
+        const discoveredItemName = normalizeLabel(collectedRecord.itemName);
+        let resolvedWatchKey = collectedRecord.watchKey?.trim() || "";
+        let watched = resolvedWatchKey ? watchlist.get(resolvedWatchKey) : undefined;
+        if (!watched && discoveredItemName) watched = findPriceCatalogItem(priceCatalog, discoveredItemName);
+        if (watched) {
+          resolvedWatchKey = priceCollectorWatchKey(watched.itemName, MHXY_DEFAULT_PRICE_SOURCE_NAME);
+        }
+        const resultWatchKey = resolvedWatchKey || discoveredItemName || "unknown";
+        if (!watched) {
+          skipped.push({
+            watchKey: resultWatchKey,
+            reason: discoveredItemName ? "not-allowed" : "not-watched"
+          });
+          continue;
+        }
+
+        const candidatesByServer = new Map<string, typeof collectedRecord.candidates>();
+        for (const candidate of collectedRecord.candidates) {
+          const serverName = normalizeLabel(candidate.serverName);
+          const regionName = normalizeLabel(candidate.regionName);
+          const serverId = normalizeLabel(candidate.serverId);
+          let itemLevel: number | undefined;
+          if (watched.itemName === LEVEL_SENSITIVE_ITEM_NAME) {
+            try {
+              itemLevel = normalizeIronLevel(candidate.itemLevel);
+            } catch {
+              skipped.push({
+                watchKey: serverName ? `${resolvedWatchKey} · ${serverName}` : resolvedWatchKey,
+                reason: "missing-required-level"
+              });
+              continue;
+            }
+          }
+          const serverKey = serverName
+            ? JSON.stringify([serverId || null, regionName || null, serverName, itemLevel ?? null])
+            : JSON.stringify(["legacy-page", itemLevel ?? null]);
+          const group = candidatesByServer.get(serverKey) ?? [];
+          group.push(candidate);
+          candidatesByServer.set(serverKey, group);
+        }
+
+        for (const candidates of candidatesByServer.values()) {
+          const orderedCandidates = [...candidates]
+            .sort((left, right) => left.rmbPrice - right.rmbPrice);
+          const lowestCandidate = orderedCandidates[0];
+          const lowestRmbPrice = roundRmb(lowestCandidate.rmbPrice);
+          const itemLevel = watched.itemName === LEVEL_SENSITIVE_ITEM_NAME
+            ? normalizeIronLevel(lowestCandidate.itemLevel)
+            : lowestCandidate.itemLevel;
+          const normalizedItem = normalizePriceItemIdentity(watched.itemName, itemLevel);
+          const actualServerName = normalizeLabel(lowestCandidate.serverName);
+          const serverName = actualServerName || MHXY_DEFAULT_PRICE_SOURCE_NAME;
+          const serverId = normalizeLabel(lowestCandidate.serverId);
+          const regionName = normalizeLabel(lowestCandidate.regionName);
+          const fingerprint = priceCollectorFingerprint(
+            resolvedWatchKey,
+            lowestRmbPrice,
+            input.capturedAt,
+            serverId,
+            serverName,
+            normalizedItem.itemLevel
+          );
+          if ([...existing, ...imported].some((record) => record.note?.includes(`采集指纹 ${fingerprint}`))) {
+            skipped.push({
+              watchKey: actualServerName ? `${resolvedWatchKey} · ${actualServerName}` : resolvedWatchKey,
+              reason: "duplicate"
+            });
+            continue;
+          }
+
+          const transferStatus = actualServerName
+            ? transferStatusResolver.find(actualServerName, regionName)
+            : undefined;
+          const listing = lowestCandidate.listingId?.trim();
+          const note = [
+            PRICE_COLLECTOR_NOTE_PREFIX,
+            ...(normalizedItem.itemLevel !== undefined ? [`等级 ${normalizedItem.itemLevel}`] : []),
+            `样本 ${candidates.length}`,
+            ...(listing ? [`最低价商品 ${listing.slice(0, 160)}`] : []),
+            `采集指纹 ${fingerprint}`,
+            `来源 ${sourcePageUrl}`
+          ].join("｜");
+          imported.push(normalizeSnapshot({
+            itemName: normalizedItem.itemName,
+            ...(normalizedItem.itemLevel !== undefined ? { itemLevel: normalizedItem.itemLevel } : {}),
+            serverName,
+            ...(serverId ? { serverId } : {}),
+            ...(regionName || transferStatus?.regionName
+              ? { regionName: regionName || transferStatus?.regionName }
+              : {}),
+            ...(actualServerName ? { sourceName: MHXY_DEFAULT_PRICE_SOURCE_NAME } : {}),
+            ...(transferStatus
+              ? {
+                  transferStatus: transferStatus.status,
+                  transferStatusDate: transferStatus.snapshotDate
+                }
+              : actualServerName
+                ? { transferStatus: "unknown" as const }
+                : {}),
+            currency: "rmb",
+            rmbUnitPrice: lowestRmbPrice,
+            capturedAt: input.capturedAt,
+            note
+          }));
+          const seriesKey = JSON.stringify([normalizedItem.itemName, serverId || serverName]);
+          if (!existingSeriesKeys.has(seriesKey)) createdSeriesKeys.add(seriesKey);
+        }
+      }
+
+      if (imported.length > 0) {
+        repository.writePriceSnapshots([...existing, ...imported]);
+      }
+
+      return {
+        priceRule: "lowest" as const,
+        imported,
+        skipped,
+        importedCount: imported.length,
+        skippedCount: skipped.length,
+        createdSeriesCount: createdSeriesKeys.size
+      };
+    },
     createTrade(input: MhxyTradeInput) {
       const record = normalizeTrade(input);
       const next = [...repository.readTrades(), record];
@@ -865,6 +1372,7 @@ export function createMhxyService(dataDir: string, now: () => Date = () => new D
       repository.transaction(() => {
         repository.writeTrades(next.trades);
         repository.writePriceSnapshots(next.priceSnapshots);
+        if (next.priceCatalogItems) repository.writePriceCatalogItems(next.priceCatalogItems);
         repository.writeInventoryTransfers(next.inventoryTransfers);
         repository.writeInventoryTargets(next.inventoryTargets);
         repository.writeAssetFlips(next.assetFlips);

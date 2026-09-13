@@ -1594,11 +1594,15 @@ const HISTORY_SERIES_STATUSES = new Set<HistorySeriesStatus>([
   "retired",
   "archived"
 ]);
-const HISTORY_SERIES_GENERATORS = new Set<HistorySeriesGenerator>(["generic", "dynasty", "most"]);
+const HISTORY_SERIES_GENERATORS = new Set<HistorySeriesGenerator>(["generic", "dynasty", "most", "war"]);
 
 function normalizeHistoryOperationsState(value: Partial<HistoryOperationsState> | undefined): HistoryOperationsState {
   const fallback = createDefaultHistoryOperationsState();
-  const seriesDraft = (value?.series ?? fallback.series).map((series) => ({
+  const sourceSeries = value?.series ?? fallback.series;
+  const missingBuiltInSeries = value?.series
+    ? fallback.series.filter((series) => series.id === "war-series" && !sourceSeries.some((item) => item.id === series.id))
+    : [];
+  const seriesDraft = [...sourceSeries, ...missingBuiltInSeries].map((series) => ({
     id: series.id,
     name: series.name,
     description: series.description ?? "",

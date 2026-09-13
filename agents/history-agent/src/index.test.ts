@@ -145,22 +145,45 @@ function createHistoryCards(topic: string, count = 3) {
 }
 
 function createHistoryCover(topic: string) {
+  const title = `${topic}，一眼看懂`;
+
   return {
-    title: `${topic}，一眼看懂`,
+    title,
     subtitle: "被低估的历史转折点",
-    imageText: `${topic}\n关键人物 / 时间线 / 长期影响`,
-    prompt: `${topic}，竖版小红书历史知识首图封面，强标题层级，主体清晰居中，时代服饰和器物准确，背景包含地图、书卷、建筑纹样与柔和光线，暖金与青灰配色，画面上方预留醒目中文标题区域，中部留出副标题和知识标签，下方保留简短解释文字空间，质感像博物馆展陈海报，适合信息流首屏点击。`
+    imageText: title,
+    prompt: `${topic}，3:4竖版构图，小红书历史知识首图封面，点击型设计，一个与主题直接相关的强视觉主体，主体占据主要视觉面积，准确时代氛围，电影感光影，画面干净有冲击力，用关键一刻制造悬念，图片与标题相互解释。`
   };
 }
 
 function createMostPayload(topic = "谁是中国历史上最富有的商人？") {
+  const nextTopic = topic.includes("昂贵")
+    ? "中国史上最长的战争是哪场？"
+    : "中国史上最富有的皇帝是谁？";
+
   return {
     topic,
     summary: "限定在有可靠财富记录的中国古代商人中，比较可考资产、商业规模与时代购买力。",
     cover: createHistoryCover(topic),
     cardCount: 3,
     cards: createHistoryCards(topic),
-    xiaohongshuCaption: `${topic} 正文`
+    xiaohongshuCaption: `${topic} 正文。关注我，下期讲${nextTopic}`,
+    followUpIdeas: [nextTopic, "历史上最复杂的税制是什么？"]
+  };
+}
+
+function createWarPayload(topic = "长平之战为何改变战国格局") {
+  const nextTopic = topic.includes("坎尼")
+    ? "赤壁之战的火攻为何奏效"
+    : "赤壁之战如何利用水战";
+
+  return {
+    topic,
+    summary: "从秦赵双方目标、上党地缘、补给条件和战场决策讲清长平之战，并说明兵力与伤亡数字的史料争议。",
+    cover: createHistoryCover(topic),
+    cardCount: 3,
+    cards: createHistoryCards(topic),
+    xiaohongshuCaption: `${topic} 正文。关注我，下期讲${nextTopic}`,
+    followUpIdeas: [nextTopic, "淝水之战如何以少胜多"]
   };
 }
 
@@ -240,16 +263,28 @@ function expectSharedEditorialContract(prompt: string) {
   expect(prompt).toContain("比较和“最”类判断必须说明范围、指标与统计口径");
   expect(prompt).toContain("可核查的反差、具体生活细节和因果推进");
   expect(prompt).toContain("不得用夸张绝对词、现代价值硬套或虚构戏剧冲突换取点击");
-  expect(prompt).toContain("不得确定性描绘无法确认的服饰、器物或场景");
+  expect(prompt).toContain("封面允许使用与标题有关的意象化配图");
+  expect(prompt).toContain("不得把象征画面伪装成有史料依据的现场复原");
+  expect(prompt).toContain("正文知识卡不得确定性描绘无法确认的服饰、器物、地图、路线、疆域、建筑或场景");
   expect(prompt).toContain("小红书发布数据只能调整选题包装、标题节奏和排版");
   expect(prompt).toContain("不能覆盖史实规则，也不能充当历史证据");
   expect(prompt).toContain("所有 cover.prompt 和 cards[].prompt 必须明确使用 3:4 竖版构图");
   expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
+  expect(prompt).toContain("cover.imageText 只能是与 cover.title 完全相同的一行大字标题");
+  expect(prompt).toContain("不得再放系列标识、副标题、期号、知识标签、时间线、解释段落或水印");
+  expect(prompt).toContain("允许使用与标题语义相关的历史意象、人物、景色或器物");
+  expect(prompt).toContain("不要求承担正文知识讲解");
+  expect(prompt).toContain("不能制造正文无法兑现的虚假悬念");
+  expect(prompt).toContain("cards[].imageText 仍须包含与本图主题直接相关的具体历史知识");
+  expect(prompt).toContain("cards[].prompt 的首要任务是生成与对应 cards[].imageText 直接相关的“图片知识补充”");
+  expect(prompt).toContain("不能只是抽象景色、人物肖像、氛围插画或“通用背景加文字”");
+  expect(prompt).toContain("人物和景色可以出现，但只能服务于具体知识点");
+  expect(prompt).toContain("所有图中可被理解为事实的信息");
+  expect(prompt).toContain("不得为了画面好看新增未核实事实");
   expect(prompt).toContain("必须包含与本图主题直接相关的具体历史知识");
   expect(prompt).toContain("至少给出一个可核查的信息点");
   expect(prompt).toContain("不能只有标题、栏目名、泛化标签或占位词");
   expect(prompt).toContain("必须原样包含对应 imageText 的完整文字");
-  expect(prompt).toContain("禁止只描述知识范围、只预留文字空位或生成无字插画");
   expect(prompt).toContain("生图提示词不设字数或字符数上限");
   expect(prompt).toContain("不得为了控制长度而省略、缩写或截断");
   expect(prompt).toContain("输出 JSON 前在内部静默自检");
@@ -259,6 +294,21 @@ function expectSharedEditorialContract(prompt: string) {
   expect(prompt).toContain("每张卡片只承担一个清楚问题");
   expect(prompt).toContain("至少包含一个具体而可信的细节");
   expect(prompt).toContain("钩子是否与正文结论一致");
+  expect(prompt).toContain("每张正文图片是否确实提供了与对应文字相关且正确的图片知识补充");
+  expect(prompt).toContain("对主题模式、朝代各模块、现有系列和今后新增的任何系列一律生效");
+  expect(prompt).toContain("每篇都必须让读者一眼知道这不是孤立知识点");
+  expect(prompt).toContain("系列标识不占用封面文字");
+  expect(prompt).toContain("cover.imageText 和 coverTextOptions 都只提供单行大字标题");
+  expect(prompt).toContain("titleOptions 至少有一个方案带系列标识");
+  expect(prompt).toContain("【宋朝冷知识 01】");
+  expect(prompt).toContain("只有上下文提供了可核实期号");
+  expect(prompt).toContain("关注后能持续获得什么");
+  expect(prompt).toContain("禁止只写“关注我”“持续更新”");
+  expect(prompt).toContain("下期看/下期讲/下一篇");
+  expect(prompt).toContain("正文必须原样写出 followUpIdeas[0]");
+  expect(prompt).toContain("系统会把它记录为该系列下一篇的必做选题");
+  expect(prompt).toContain("每篇都按 topic、summary、xiaohongshuCaption、cover、cardCount、cards、titleOptions、coverTextOptions、followUpIdeas 输出完整字段");
+  expect(prompt).toContain("封面是否只有一个大字标题");
 }
 
 describe("history agent", () => {
@@ -322,7 +372,7 @@ describe("history agent", () => {
           cover: expect.objectContaining({
             title: "玄奘取经为什么重要，一眼看懂",
             subtitle: "被低估的历史转折点",
-            imageText: expect.stringContaining("关键人物"),
+            imageText: "玄奘取经为什么重要，一眼看懂",
             prompt: expect.stringContaining("小红书历史知识首图封面")
           }),
           cardCount: 3,
@@ -362,9 +412,45 @@ describe("history agent", () => {
     expect(getPostPayload(result).cover).toMatchObject({
       title: "商鞅变法为什么能改变秦国",
       subtitle: expect.stringContaining("制度变化"),
-      imageText: expect.stringContaining("商鞅变法为什么能改变秦国"),
+      imageText: "商鞅变法为什么能改变秦国",
       prompt: expect.stringContaining("小红书历史知识首图封面")
     });
+  });
+
+  it("keeps only one large headline in the generated cover", async () => {
+    const headline = "商鞅变法靠什么逆袭？";
+    const verboseImageText = "【变法史 01】\n商鞅变法靠什么逆袭？\n制度背景 / 时间线 / 长期影响";
+    const restore = mockModelResponse({
+      topic: headline,
+      summary: "商鞅变法通过制度重组增强秦国的组织和动员能力。",
+      cover: {
+        title: headline,
+        subtitle: "用视觉反差表现改革前后的国力变化",
+        imageText: verboseImageText,
+        prompt: `3:4竖版构图，小红书历史知识首图封面，主体清晰居中，画面文字：${verboseImageText}，中部放副标题和知识标签，下方放解释文字，电影感光影。`
+      },
+      cardCount: 3,
+      cards: createHistoryCards(headline),
+      xiaohongshuCaption: "商鞅变法正文",
+      coverTextOptions: ["商鞅变法为何奏效", "一场变法如何改写秦国"]
+    });
+
+    const result = await agent.execute(createRequest());
+    restore();
+
+    const cover = getPostPayload(result).cover;
+
+    expect(result.status).toBe("completed");
+    expect(cover?.imageText).toBe(headline);
+    expect(cover?.prompt).toContain("【唯一封面标题】");
+    expect(cover?.prompt).toContain(headline);
+    expect(cover?.prompt).toContain("画面只允许出现一个醒目的单行简体中文大字标题");
+    expect(cover?.prompt).toContain("配图允许使用与标题语义直接相关的历史意象、人物、景色、器物或关键场景");
+    expect(cover?.prompt).toContain("象征性画面不得冒充有史料依据的历史现场");
+    expect(cover?.prompt).toContain("其余信息全部通过与主题匹配的视觉主体");
+    expect(cover?.prompt).not.toContain("制度背景 / 时间线 / 长期影响");
+    expect(cover?.prompt).not.toContain("中部放副标题和知识标签");
+    expect(cover?.prompt).not.toContain("下方放解释文字");
   });
 
   it("limits all generated titles to 20 characters including punctuation", async () => {
@@ -495,6 +581,11 @@ describe("history agent", () => {
     expect(prompt).toContain(imageText);
     expect(prompt).toContain("不得省略、改写、替换或截断");
     expect(prompt).toContain("不要只生成历史场景或无字插画");
+    expect(prompt).toContain("图片知识表达与正确性要求（最高优先级）");
+    expect(prompt).toContain("图像本身必须直接解释或补充对应文字中的一个事实、关系、结构、过程或差异");
+    expect(prompt).toContain("人物和景色可以出现，但只能服务于具体知识点");
+    expect(prompt).toContain("不得自行新增未经核实的事实");
+    expect(prompt).toContain("不得虚构确定性细节");
     expect(chineseCharacterCount).toBeGreaterThan(200);
     expect(payload.cover?.prompt).toContain(payload.cover?.imageText);
   });
@@ -564,27 +655,36 @@ describe("history agent", () => {
     expectThreeFourAspectRatio(getPostPayload(result));
   });
 
-  it("instructs the model to separate image description from text knowledge ranges in image prompts", async () => {
+  it("instructs the model to separate minimal cover text from detailed knowledge cards", async () => {
     const archiveDir = mkdtempSync(join(tmpdir(), "history-agent-"));
     process.env.HISTORY_TOPIC_ARCHIVE_PATH = join(archiveDir, "topic-archive.json");
     const restore = mockModelRuntimeText((prompt) => {
-      expect(prompt).toContain("图片描述");
-      expect(prompt).toContain("图片中应该以文字类型展示哪些具体知识");
+      expect(prompt).toContain("封面单独按“点击型首图”设计");
+      expect(prompt).toContain("imageText 必须与 title 完全相同");
+      expect(prompt).toContain("画面只允许出现这一处标题文字");
+      expect(prompt).toContain("封面配图可以是与标题语义直接相关的历史意象、人物、景色、器物或关键场景");
+      expect(prompt).toContain("不强求像正文知识卡一样承载解释信息");
+      expect(prompt).toContain("不能把无史料依据的象征画面写成确定的历史现场");
+      expect(prompt).toContain("禁止添加系列标识、期号、副标题、知识标签、时间线、解释文字、水印或其他小字");
+      expect(prompt).toContain("禁止做成多栏知识卡、目录页或元素堆砌的信息海报");
+      expect(prompt).toContain("第一职责是生成与对应 imageText 直接相关且正确的图片知识补充");
+      expect(prompt).toContain("禁止只用抽象景色、人物肖像、氛围插画或通用背景承载文字");
+      expect(prompt).toContain("优先使用可核查的地图与路线、时间或流程关系、器物与建筑结构");
+      expect(prompt).toContain("所有年代、地点、路线、疆域、比例、服饰、器物、建筑、旗帜、文字和人物关系必须符合可靠史料");
+      expect(prompt).toContain("存在争议或无法确认外观时，改用中性示意、范围表达或明确复原边界");
       expect(prompt).toContain("根据内容判断需要多少张");
       expect(prompt).toContain("cover");
-      expect(prompt).toContain("小红书首图封面");
+      expect(prompt).toContain("小红书历史知识首图封面");
       expect(prompt).toContain("下限 3 张，上限 10 张");
-      expect(prompt).toContain("展示哪些具体知识");
-      expect(prompt).toContain("不能只写“留出空白位置以用于某种内容”");
-      expect(prompt).toContain("同步明确空白部分需要填充的具体文字内容");
+      expect(prompt).toContain("若提到文字区域，必须写明需要填充的具体文字");
       expect(prompt).not.toContain("只给出大概知识范围");
       expect(prompt).not.toContain("不必写详细知识");
       expect(prompt).toContain("所有标题最长 20 个字，标点也计入");
       expect(prompt).toContain("不要把字数、字符数或类似“xx字”的说明写进 prompt 字段");
       expect(prompt).toContain("不设字数或字符数上限");
-      expect(prompt).toContain("原样逐字包含同一对象的完整 imageText");
+      expect(prompt).toContain("原样逐字包含完整 imageText");
       expect(prompt).toContain("禁止只生成历史场景或无字插画");
-      expect(prompt).toContain("不能只有标题、栏目名、泛化标签或“相关知识”等占位词");
+      expect(prompt).toContain("不能只有标题、栏目名、泛化标签或占位词");
       expect(prompt).not.toContain("系统会自行校验长度");
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
       expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
@@ -769,6 +869,7 @@ describe("history agent", () => {
     };
     const restore = mockModelRuntimeText((prompt) => {
       expect(prompt).toContain("所属系列：城市生活史");
+      expect(prompt).toContain("本篇系列期号：01（根据后台已发布 0 篇计算）");
       expect(prompt).toContain("系列生成要求：每篇从一个生活问题切入");
       expect(prompt).toContain("内容方向：城市史");
       expect(prompt).toContain("切入角度：从营业时间和城市管理切入");
@@ -780,7 +881,7 @@ describe("history agent", () => {
         summary: "从史料边界讲清宋代夜市。",
         cardCount: 3,
         cards: createHistoryCards("宋代夜市"),
-        xiaohongshuCaption: "宋代夜市正文",
+        xiaohongshuCaption: "宋代夜市正文。关注我，下期讲宋代城市如何宵禁",
         titleOptions: ["宋代夜市通宵吗", "夜市几点才收摊"],
         coverTextOptions: ["宋代夜市真相"],
         followUpIdeas: ["宋代城市如何宵禁"]
@@ -807,6 +908,28 @@ describe("history agent", () => {
         needsFactReview: false
       }
     });
+
+    const restoreNext = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("上期已经公开预告本期主题为「宋代城市如何宵禁」");
+      expect(prompt).toContain("topic 必须原样等于「宋代城市如何宵禁」");
+      return JSON.stringify({
+        topic: "宋代城市如何宵禁",
+        summary: "从制度和执行边界讲清宋代城市宵禁。",
+        cardCount: 3,
+        cards: createHistoryCards("宋代城市宵禁"),
+        xiaohongshuCaption: "宋代城市宵禁正文。关注我，下期讲宋代早市几点开门",
+        titleOptions: ["宋代城市如何宵禁"],
+        coverTextOptions: ["宋代宵禁真相"],
+        followUpIdeas: ["宋代早市几点开门"]
+      });
+    });
+    const nextRequest = createRequest(state);
+    nextRequest.meta = { ...nextRequest.meta, seriesId: "city-series" };
+    const nextResult = await agent.execute(nextRequest);
+    restoreNext();
+
+    expect(nextResult.status).toBe("completed");
+    expect(getPostPayload(nextResult).topic).toBe("宋代城市如何宵禁");
   });
 
   it("accepts content-block array responses that contain JSON text", async () => {
@@ -1070,7 +1193,14 @@ ${JSON.stringify({
           scope: "china",
           generatedCount: 1
         })
-      ]
+      ],
+      plannedNextTopics: {
+        "generator:most": expect.objectContaining({
+          topic: "中国史上最富有的皇帝是谁？",
+          promisedFromTopic: "谁是中国历史上最富有的商人？",
+          scope: "china"
+        })
+      }
     });
   });
 
@@ -1169,6 +1299,200 @@ ${JSON.stringify({
     expect(existsSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!)).toBe(false);
   });
 
+  it("generates the war series with a grounded randomly selected conflict", async () => {
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("“战争”系列");
+      expect(prompt).toContain("随机选择一场具体战争或战役");
+      expect(prompt).toContain("中国历史");
+      expect(prompt).toContain("参战方及各自目标");
+      expect(prompt).toContain("关键阶段与转折");
+      expect(prompt).toContain("严格区分战争、战役和战斗层级");
+      expect(prompt).toContain("兵力、伤亡、路线、日期");
+      expect(prompt).toContain("不得美化战争");
+      expect(prompt).toContain("地理、后勤、兵力、制度、联盟、情报和决策");
+      expect(prompt).toContain("3:4竖版构图");
+      expect(prompt).toContain("禁止横版、横向画幅、宽幅或方形画幅");
+      expectSharedEditorialContract(prompt);
+
+      return JSON.stringify(createWarPayload());
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: {
+        localDate: "2026-05-07",
+        mode: "war"
+      }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expectThreeFourAspectRatio(getPostPayload(result));
+    expect(result.summary).toBe("生成“战争”系列：长平之战为何改变战国格局");
+    expect(result.notifications?.[0]).toMatchObject({
+      kind: "history-post",
+      title: "“战争”系列：长平之战为何改变战国格局",
+      payload: expect.objectContaining({
+        category: "战争",
+        topic: "长平之战为何改变战国格局"
+      })
+    });
+    expect(JSON.parse(readFileSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!, "utf8"))).toEqual({
+      entries: [
+        expect.objectContaining({
+          topic: "长平之战为何改变战国格局",
+          series: "war",
+          scope: "china",
+          generatedCount: 1
+        })
+      ],
+      plannedNextTopics: {
+        "generator:war": expect.objectContaining({
+          topic: "赤壁之战如何利用水战",
+          promisedFromTopic: "长平之战为何改变战国格局",
+          scope: "china"
+        })
+      }
+    });
+  });
+
+  it("records the promised war topic and requires the next generation to fulfill it", async () => {
+    writeFileSync(
+      process.env.HISTORY_TOPIC_ARCHIVE_PATH!,
+      JSON.stringify({
+        entries: [{
+          topic: "长平之战为何改变战国格局",
+          firstGeneratedAt: "2026-05-06T00:00:00.000Z",
+          lastGeneratedAt: "2026-05-06T00:00:00.000Z",
+          generatedCount: 1,
+          series: "war",
+          scope: "china"
+        }],
+        plannedNextTopics: {
+          "generator:war": {
+            topic: "坎尼会战的合围为何奏效",
+            promisedFromTopic: "长平之战为何改变战国格局",
+            plannedAt: "2026-05-06T00:00:00.000Z",
+            scope: "world"
+          }
+        }
+      }),
+      "utf8"
+    );
+    let attempts = 0;
+    const restore = mockModelRuntimeText((prompt) => {
+      attempts += 1;
+      expect(prompt).toContain("上期已经公开预告本期主题为「坎尼会战的合围为何奏效」");
+      expect(prompt).toContain("本次不得重新随机选题");
+      expect(prompt).toContain("topic 必须原样等于「坎尼会战的合围为何奏效」");
+
+      return JSON.stringify(
+        attempts === 1
+          ? createWarPayload("赤壁之战如何利用水战")
+          : createWarPayload("坎尼会战的合围为何奏效")
+      );
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "war" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(attempts).toBe(2);
+    expect(getPostPayload(result).topic).toBe("坎尼会战的合围为何奏效");
+    expect(JSON.parse(readFileSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!, "utf8"))).toMatchObject({
+      plannedNextTopics: {
+        "generator:war": {
+          topic: "赤壁之战的火攻为何奏效",
+          promisedFromTopic: "坎尼会战的合围为何奏效",
+          scope: "china"
+        }
+      }
+    });
+  });
+
+  it("uses world history for every fifth successful war-series generation", async () => {
+    writeFileSync(
+      process.env.HISTORY_TOPIC_ARCHIVE_PATH!,
+      JSON.stringify({
+        entries: Array.from({ length: 4 }, (_, index) => ({
+          topic: `中国历史战争系列${index + 1}`,
+          firstGeneratedAt: `2026-05-0${index + 1}T00:00:00.000Z`,
+          lastGeneratedAt: `2026-05-0${index + 1}T00:00:00.000Z`,
+          generatedCount: 1,
+          series: "war",
+          scope: "china"
+        }))
+      }),
+      "utf8"
+    );
+    const restore = mockModelRuntimeText((prompt) => {
+      expect(prompt).toContain("世界历史");
+      expect(prompt).toContain("中国历史战争系列1");
+      expect(prompt).toContain("中国历史战争系列4");
+
+      return JSON.stringify(createWarPayload("坎尼会战为何改写罗马战局"));
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "war" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    const archive = JSON.parse(readFileSync(process.env.HISTORY_TOPIC_ARCHIVE_PATH!, "utf8"));
+    expect(archive.entries.at(-1)).toMatchObject({
+      series: "war",
+      scope: "world"
+    });
+  });
+
+  it("accepts a specifically named naval battle in the war series", async () => {
+    let attempts = 0;
+    const restore = mockModelRuntimeText((prompt) => {
+      attempts += 1;
+      expect(prompt).toContain("海战");
+
+      return JSON.stringify(createWarPayload("萨拉米斯海战：希腊舰队为何能以少胜多"));
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "war" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(attempts).toBe(1);
+    expect(getPostPayload(result).topic).toBe("萨拉米斯海战：希腊舰队为何能以少胜多");
+  });
+
+  it("retries war-series generation when the topic does not name a war or battle", async () => {
+    let attempts = 0;
+    const restore = mockModelRuntimeText(() => {
+      attempts += 1;
+
+      return JSON.stringify(
+        attempts === 1
+          ? createWarPayload("秦赵为何争夺上党")
+          : createWarPayload()
+      );
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "war" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(attempts).toBe(2);
+    expect(getPostPayload(result).topic).toContain("之战");
+  });
+
   it("generates a dynasty four-module payload from dynasty metadata", async () => {
     const restore = mockModelRuntimeText((prompt) => {
       expect(prompt).toContain("朝代名称");
@@ -1195,12 +1519,18 @@ ${JSON.stringify({
       expect(prompt).toContain("xiaohongshuCaption 控制在 200–400 字");
       expect(prompt).toContain("使用自然换行形成漂亮、易读的排版");
       expect(prompt).toContain("3–5 个相关话题标签");
-      expect(prompt).toContain("不能只写“留出空白位置以用于某种内容”");
-      expect(prompt).toContain("同步明确空白部分需要填充的具体文字内容");
+      expect(prompt).toContain("封面单独按“点击型首图”设计");
+      expect(prompt).toContain("imageText 必须与 title 完全相同");
+      expect(prompt).toContain("画面只允许出现这一处标题文字");
+      expect(prompt).toContain("封面配图可以是与标题语义直接相关的历史意象、人物、景色、器物或关键场景");
+      expect(prompt).toContain("第一职责是生成与对应 imageText 直接相关且正确的图片知识补充");
+      expect(prompt).toContain("禁止只用抽象景色、人物肖像、氛围插画或通用背景承载文字");
+      expect(prompt).toContain("不得凭想象新增事实");
+      expect(prompt).toContain("若提到文字区域，必须写明需要填充的具体文字");
       expect(prompt).toContain("不设字数或字符数上限");
-      expect(prompt).toContain("原样逐字包含同一对象的完整 imageText");
+      expect(prompt).toContain("原样逐字包含完整 imageText");
       expect(prompt).toContain("禁止只生成历史场景或无字插画");
-      expect(prompt).toContain("不能只有标题、栏目名、泛化标签或“相关知识”等占位词");
+      expect(prompt).toContain("不能只有标题、栏目名、泛化标签或占位词");
       expect(prompt).not.toContain("系统会自行校验长度");
 
       return JSON.stringify({
@@ -1287,6 +1617,29 @@ ${JSON.stringify({
     restore();
 
     expect(result.status).toBe("completed");
+  });
+
+  it("removes concrete next-issue promises from dynasty batches that cannot auto-fulfill them", async () => {
+    let attempts = 0;
+    const restore = mockModelRuntimeText(() => {
+      attempts += 1;
+      const modules = createDynastyModules("东汉");
+      if (attempts === 1) {
+        modules[0]!.xiaohongshuCaption += "。关注我，下期讲东汉外戚政治";
+      }
+
+      return JSON.stringify({ dynasty: "东汉", modules });
+    });
+
+    const result = await agent.execute({
+      ...createRequest(),
+      meta: { mode: "dynasty", dynasty: "东汉" }
+    });
+    restore();
+
+    expect(result.status).toBe("completed");
+    expect(attempts).toBe(2);
+    expect(getDynastyPayload(result).modules[0]?.xiaohongshuCaption).not.toContain("下期");
   });
 
   it("retries dynasty output when the figure module overclaims that every person changed the dynasty", async () => {

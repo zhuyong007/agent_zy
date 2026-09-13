@@ -5,6 +5,7 @@ import type {
   MhxyAssetFlipRecord,
   MhxyInventoryTarget,
   MhxyInventoryTransferRecord,
+  MhxyPriceCatalogItem,
   MhxyPriceSnapshot,
   MhxyTradeRecord
 } from "@agent-zy/shared-types";
@@ -15,6 +16,8 @@ export interface MhxyRepository {
   writeTrades(records: MhxyTradeRecord[]): void;
   readPriceSnapshots(): MhxyPriceSnapshot[];
   writePriceSnapshots(records: MhxyPriceSnapshot[]): void;
+  readPriceCatalogItems(): MhxyPriceCatalogItem[];
+  writePriceCatalogItems(records: MhxyPriceCatalogItem[]): void;
   readInventoryTransfers(): MhxyInventoryTransferRecord[];
   writeInventoryTransfers(records: MhxyInventoryTransferRecord[]): void;
   readInventoryTargets(): MhxyInventoryTarget[];
@@ -23,14 +26,14 @@ export interface MhxyRepository {
   writeAssetFlips(records: MhxyAssetFlipRecord[]): void;
 }
 
-function ensureArrayFile(path: string) {
+function ensureArrayFile(path: string, initialRecords: unknown[] = []) {
   try {
     readFileSync(path, "utf8");
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
       throw error;
     }
-    writeFileSync(path, "[]", "utf8");
+    writeFileSync(path, JSON.stringify(initialRecords, null, 2), "utf8");
   }
 }
 
@@ -50,16 +53,22 @@ function writeTextAtomic(path: string, content: string) {
   renameSync(tempPath, path);
 }
 
-export function createMhxyRepository(dataDir: string): MhxyRepository {
+export function createMhxyRepository(
+  dataDir: string,
+  initialPriceCatalogItems: MhxyPriceCatalogItem[] = []
+): MhxyRepository {
   const dir = resolve(dataDir, "mhxy");
   mkdirSync(dir, { recursive: true });
   const trades = resolve(dir, "trades.json");
   const snapshots = resolve(dir, "price-snapshots.json");
+  const priceCatalogItems = resolve(dir, "price-catalog.json");
   const transfers = resolve(dir, "inventory-transfers.json");
   const targets = resolve(dir, "inventory-targets.json");
   const assetFlips = resolve(dir, "asset-flips.json");
-  const paths = [trades, snapshots, transfers, targets, assetFlips];
-  paths.forEach(ensureArrayFile);
+  const paths = [trades, snapshots, priceCatalogItems, transfers, targets, assetFlips];
+  for (const path of paths) {
+    ensureArrayFile(path, path === priceCatalogItems ? initialPriceCatalogItems : []);
+  }
 
   return {
     transaction: <T>(operation: () => T) => {
@@ -85,6 +94,8 @@ export function createMhxyRepository(dataDir: string): MhxyRepository {
     writeTrades: (records) => writeArray(trades, records),
     readPriceSnapshots: () => readArray(snapshots),
     writePriceSnapshots: (records) => writeArray(snapshots, records),
+    readPriceCatalogItems: () => readArray(priceCatalogItems),
+    writePriceCatalogItems: (records) => writeArray(priceCatalogItems, records),
     readInventoryTransfers: () => readArray(transfers),
     writeInventoryTransfers: (records) => writeArray(transfers, records),
     readInventoryTargets: () => readArray(targets),

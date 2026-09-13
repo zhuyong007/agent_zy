@@ -30,7 +30,17 @@ describe("local data sync adapters", () => {
     mkdirSync(join(projectDir, "data", "history"), { recursive: true });
     writeFileSync(
       join(projectDir, "data", "history", "topic-archive.json"),
-      JSON.stringify({ entries: [{ topic: "张骞出使西域", firstGeneratedAt: "2026-01-01", lastGeneratedAt: "2026-01-02", generatedCount: 2 }] })
+      JSON.stringify({
+        entries: [{ topic: "张骞出使西域", firstGeneratedAt: "2026-01-01", lastGeneratedAt: "2026-01-02", generatedCount: 2 }],
+        plannedNextTopics: {
+          "generator:war": {
+            topic: "坎尼会战的合围为何奏效",
+            promisedFromTopic: "长平之战为何改变战国格局",
+            plannedAt: "2026-01-02",
+            scope: "world"
+          }
+        }
+      })
     );
     const state = store.getState();
     state.notifications = [
@@ -55,9 +65,23 @@ describe("local data sync adapters", () => {
     expect(records.has("notification:task-1")).toBe(false);
     expect(records.has("xhs-post:post-1")).toBe(true);
     expect(records.has("topic:张骞出使西域")).toBe(true);
+    expect(records.get("topic-plan:generator:war")).toMatchObject({
+      id: "generator:war",
+      topic: "坎尼会战的合围为何奏效"
+    });
     expect(serialized).not.toContain("private error");
     expect(serialized).not.toContain("lastTriggeredDate");
     expect(existsSync(join(dataDir, "history", "topic-archive.json"))).toBe(true);
+
+    adapters.history.write(records);
+    expect(JSON.parse(readFileSync(join(dataDir, "history", "topic-archive.json"), "utf8"))).toMatchObject({
+      plannedNextTopics: {
+        "generator:war": {
+          topic: "坎尼会战的合围为何奏效",
+          promisedFromTopic: "长平之战为何改变战国格局"
+        }
+      }
+    });
   });
 
   it("exports browser configuration without runs, screenshots, or extracted data", () => {
@@ -171,6 +195,7 @@ describe("local data sync adapters", () => {
 
     const records = adapters.mhxy.read();
     expect([...records.keys()].some((key) => key.startsWith("game-coin-"))).toBe(false);
+    expect([...records.keys()].some((key) => key.startsWith("price-item:"))).toBe(true);
     records.set("game-coin-purchase:legacy", {
       id: "legacy",
       acquiredAt: "2026-01-01",
@@ -195,6 +220,7 @@ describe("local data sync adapters", () => {
     adapters.mhxy.write(records);
 
     expect(repository.readTrades()).toHaveLength(2);
+    expect(repository.readPriceCatalogItems().length).toBeGreaterThan(50);
   });
 
   it("imports legacy mhxy game coin trades that already have a fixed RMB amount", () => {

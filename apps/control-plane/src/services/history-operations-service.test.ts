@@ -30,7 +30,8 @@ describe("history operations service", () => {
     expect(state.strategy.weeklyCadence).toBe(21);
     expect(state.series.map((item) => [item.name, item.status, item.dailyQuota])).toEqual([
       ["朝代系列", "winding_down", 2],
-      ["最系列", "active", 1]
+      ["最系列", "active", 1],
+      ["战争系列", "pilot", 0]
     ]);
     expect(state.directions).toHaveLength(6);
     expect(state.directions.map((item) => item.name)).toContain("古人的日常生活");

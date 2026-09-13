@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HistoryDynastyPayload, HistoryEditorialTopic, HistoryPostPayload } from "@agent-zy/shared-types";
+import type { HistoryDynastyPayload, HistoryEditorialTopic, HistoryPostPayload, HistorySeriesStatus } from "@agent-zy/shared-types";
 
 import { cancelNotification, fetchDashboard, generateHistory, importHistoryXhsAnalytics, openDashboardStream, reportClientEvent, updateHistoryTopic } from "../api";
 import {
@@ -65,6 +65,10 @@ function copyText(value: string) {
 
 const HISTORY_PROMPT_COPY_STORAGE_PREFIX = "agent-zy:history:copied-prompt-keys:";
 
+function isSeriesAvailableForProduction(status: HistorySeriesStatus) {
+  return status !== "retired" && status !== "archived";
+}
+
 function getCopiedPromptStorageKey(notificationId: string | null | undefined) {
   return notificationId ? `${HISTORY_PROMPT_COPY_STORAGE_PREFIX}${notificationId}` : null;
 }
@@ -119,7 +123,7 @@ export function HistoryPage() {
     queryFn: fetchDashboard
   });
   const historyGenerateMutation = useMutation({
-    mutationFn: async (input: { mode: "topic" | "dynasty" | "most"; value?: string; editorialTopicId?: string; seriesId?: string }) => {
+    mutationFn: async (input: { mode: "topic" | "dynasty" | "most" | "war"; value?: string; editorialTopicId?: string; seriesId?: string }) => {
       const value = input.value?.trim() || undefined;
 
       const nextDashboard = await generateHistory(
@@ -130,10 +134,10 @@ export function HistoryPage() {
               dynasty: value,
               seriesId: input.seriesId
             }
-          : input.mode === "most"
+          : input.mode === "most" || input.mode === "war"
             ? {
                 reason: "manual",
-                mode: "most",
+                mode: input.mode,
                 seriesId: input.seriesId
               }
           : {
@@ -227,7 +231,13 @@ export function HistoryPage() {
     const series = dashboard?.historyOperations?.series.find((item) => item.id === topic.seriesId);
     setGeneratingTopicId(topic.id);
     historyGenerateMutation.mutate({
-      mode: series?.generator === "dynasty" ? "dynasty" : series?.generator === "most" ? "most" : "topic",
+      mode: series?.generator === "dynasty"
+        ? "dynasty"
+        : series?.generator === "most"
+          ? "most"
+          : series?.generator === "war"
+            ? "war"
+            : "topic",
       value: topic.title,
       editorialTopicId: topic.id,
       seriesId: series?.id
@@ -294,9 +304,7 @@ export function HistoryPage() {
   const selectedDynastyPayload: HistoryDynastyPayload | null =
     selectedPayload && isHistoryDynastyPayload(selectedPayload) ? selectedPayload : null;
   const selectedCover = selectedPostPayload?.cover ?? null;
-  const selectedCoverText = selectedCover
-    ? [selectedCover.title, selectedCover.subtitle, selectedCover.imageText].filter(Boolean).join("\n")
-    : "";
+  const selectedCoverText = selectedCover?.title ?? "";
   const selectedTitle = selectedPayload ? getHistoryPayloadTitle(selectedPayload) : null;
   const selectedSummary = selectedPayload ? getHistoryPayloadSummary(selectedPayload) : null;
   const selectedUpdatedAt = selectedNotification ? getHistoryPayloadUpdatedAt(selectedNotification) : null;
@@ -324,12 +332,14 @@ export function HistoryPage() {
   }
 
   const productionSeries = (dashboard.historyOperations?.series ?? [])
-    .filter((series) => series.status !== "retired" && series.status !== "archived");
+    .filter((series) => isSeriesAvailableForProduction(series.status));
   const selectedGenerationSeries = productionSeries.find((series) => series.id === generationSeriesId) ?? productionSeries[0] ?? null;
   const activeGenerationMode = selectedGenerationSeries?.generator === "dynasty"
     ? "dynasty"
     : selectedGenerationSeries?.generator === "most"
       ? "most"
+      : selectedGenerationSeries?.generator === "war"
+        ? "war"
       : "topic";
 
   const xhsAnalyticsDetail = (
@@ -465,7 +475,8 @@ export function HistoryPage() {
                       seriesId: selectedGenerationSeries?.id ?? null,
                       hasTopic: activeGenerationMode === "topic" && Boolean(topicInput.trim()),
                       hasDynasty: activeGenerationMode === "dynasty" && Boolean(topicInput.trim()),
-                      isMostSeries: activeGenerationMode === "most"
+                      isMostSeries: activeGenerationMode === "most",
+                      isWarSeries: activeGenerationMode === "war"
                     }
                   }).catch(() => undefined);
                   historyGenerateMutation.mutate({
@@ -488,8 +499,12 @@ export function HistoryPage() {
                   </label>
                   <span>表现形式<strong>图文</strong></span>
                 </div>
-                {activeGenerationMode === "most" ? (
-                  <p className="history-most-hint">自动选择一个有明确比较依据的历史之最</p>
+                {activeGenerationMode === "most" || activeGenerationMode === "war" ? (
+                  <p className="history-random-hint">
+                    {activeGenerationMode === "most"
+                      ? "自动选择一个有明确比较依据的历史之最"
+                      : "自动选择一场资料较充分、值得讲清的历史战争"}
+                  </p>
                 ) : (
                   <input
                     type="text"
